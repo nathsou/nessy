@@ -7,7 +7,7 @@ pub mod rom;
 
 use self::memory::{MappedMemory, Memory};
 use self::rom::ROM;
-use ppu::PPU;
+use super::ppu::PPU;
 
 use std::fmt;
 

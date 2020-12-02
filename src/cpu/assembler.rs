@@ -1,4 +1,4 @@
-use cpu::opcodes::{INST_ADDR_MODE_NAMES, INST_LENGTHS};
+use super::opcodes::{INST_ADDR_MODE_NAMES, INST_LENGTHS};
 use std::collections::HashMap;
 use std::u8;
 

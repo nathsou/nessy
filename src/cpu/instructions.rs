@@ -1,6 +1,9 @@
+use super::opcodes::{
+    INST_ADDR_MODES, INST_ADDR_MODE_NAMES, INST_CYCLES, INST_LENGTHS, INST_NAMES,
+};
+
 use super::Memory;
-use cpu::opcodes::{INST_ADDR_MODES, INST_ADDR_MODE_NAMES, INST_CYCLES, INST_LENGTHS, INST_NAMES};
-use cpu::MOS6502;
+use super::MOS6502;
 use std::cmp::Ordering;
 
 impl MOS6502 {

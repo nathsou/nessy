@@ -3,7 +3,7 @@ mod screen;
 
 use self::registers::PPU_Registers;
 use self::screen::Screen;
-use cpu::memory::{MappedMemory, Memory};
+use super::cpu::memory::{MappedMemory, Memory};
 
 struct VRAM {
     nametables: [u8; 2 * 1024],
