@@ -1,12 +1,13 @@
-use super::opcodes::{
-    INST_ADDR_MODES, INST_ADDR_MODE_NAMES, INST_CYCLES, INST_LENGTHS, INST_NAMES,
-};
+use crate::cpu::opcodes::AddressingMode;
 
-use super::Memory;
-use super::MOS6502;
+use super::opcodes::{INST_ADDR_MODES, INST_CYCLES, INST_LENGTHS, INST_NAMES};
+
+use super::memory::Memory;
+use super::CPU;
 use std::cmp::Ordering;
+use std::fmt::Binary;
 
-impl MOS6502 {
+impl CPU {
     pub fn step(&mut self) -> u16 {
         self.cycles = 0;
         let op_code = self.next_byte();
@@ -174,7 +175,7 @@ impl MOS6502 {
             0x28 => self.plp(),
             0x08 => self.php(),
 
-            0x20 => self.jsr_abs(),
+            0x20 => self.jsr(),
             0x60 => self.rts(),
             0x40 => self.rti(),
 
@@ -194,31 +195,87 @@ impl MOS6502 {
             0x7E => self.ror_abs_x(),
 
             _ => {
-                panic!("Unknown opcode: {:#X}", op_code);
+                panic!("Unknown opcode: {op_code:#X}");
             }
         }
 
         self.cycles + INST_CYCLES[op_code as usize]
     }
 
+    #[allow(dead_code)]
     pub fn trace_step(&mut self) -> u16 {
-        println!("{:?}", self);
+        println!("{self:?}");
         {
-            let op_code = self.read_byte(self.pc) as usize;
+            let op_code = self.bus.read_byte(self.pc) as usize;
             let inst_name = INST_NAMES[op_code].unwrap();
-            let addr_mode = INST_ADDR_MODE_NAMES[INST_ADDR_MODES[op_code] as usize];
-
+            let addr_mode = format!("{}", INST_ADDR_MODES[op_code]);
             let mut opcodes = String::new();
 
-            for pc in
-                (self.pc + 1)..(self.pc + (INST_LENGTHS[self.read_byte(self.pc) as usize]) as u16)
+            for pc in (self.pc + 1)
+                ..(self.pc + (INST_LENGTHS[self.bus.read_byte(self.pc) as usize]) as u16)
             {
-                opcodes.push_str(&format!("{:02X} ", self.read_byte(pc))[..]);
+                opcodes.push_str(&format!("{:02X} ", self.bus.read_byte(pc))[..]);
             }
 
             println!(
                 "[{:04X}]: {} ({}) {}",
                 self.pc, inst_name, addr_mode, opcodes
+            );
+        }
+
+        self.step()
+    }
+
+    #[allow(dead_code)]
+    pub fn trace_step_nestest(&mut self) -> u16 {
+        {
+            let op_code = self.bus.read_byte(self.pc) as usize;
+            let inst_name = INST_NAMES[op_code].unwrap();
+            let addr_mode = AddressingMode::from(INST_ADDR_MODES[op_code]);
+            let mut args: Vec<String> = vec![];
+
+            for pc in (self.pc + 1)
+                ..(self.pc + (INST_LENGTHS[self.bus.read_byte(self.pc) as usize]) as u16)
+            {
+                args.push(format!("{:02X}", self.bus.read_byte(pc)));
+            }
+
+            let formatted_args = args.join(" ");
+
+            let args = {
+                use AddressingMode::*;
+                match addr_mode {
+                    Immediate => format!("#${}", args[0]),
+                    ZeroPage => format!("${}", args[0]),
+                    ZeroPageX => format!("${},X", args[0]),
+                    ZeroPageY => format!("${},Y", args[0]),
+                    Absolute => format!("${}{}", args[1], args[0]),
+                    AbsoluteX => format!("${}{},X", args[1], args[0]),
+                    AbsoluteY => format!("${}{},Y", args[1], args[0]),
+                    Indirect => format!("(${})", args[0]),
+                    IndirectX => format!("(${},X)", args[0]),
+                    IndirectY => format!("(${}),Y", args[0]),
+                    Implied => "".to_string(),
+                    Relative => format!("${}", args[0]),
+                }
+            };
+
+            let raw_inst = format!("{op_code:02X} {formatted_args}");
+
+            let disasm_inst = format!("{inst_name} {args}",);
+
+            let regs = format!(
+                "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+                self.a,
+                self.x,
+                self.y,
+                self.flags_to_u8(),
+                self.sp
+            );
+
+            println!(
+                "{:04X}  {raw_inst: <8}  {disasm_inst: <10}  {regs}",
+                self.pc
             );
         }
 
@@ -235,53 +292,53 @@ impl MOS6502 {
         self.toggle_nz(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lda_imm(&mut self) {
         let a = self.next_byte();
         self.lda(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lda_zp(&mut self) {
         let a = self.zero_page_val();
         self.lda(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lda_zp_x(&mut self) {
         let a = self.zero_page_x();
         self.lda(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lda_abs(&mut self) {
         let a = self.absolute_val();
         self.lda(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lda_abs_x(&mut self) {
         let a = self.absolute_x_val(true);
         self.lda(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lda_abs_y(&mut self) {
         let a = self.absolute_y_val(true);
         self.lda(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lda_ind_x(&mut self) {
         let addr = self.indirect_x();
-        let a = self.read_byte(addr);
+        let a = self.bus.read_byte(addr);
         self.lda(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lda_ind_y(&mut self) {
         let addr = self.indirect_y(true);
-        let a = self.read_byte(addr);
+        let a = self.bus.read_byte(addr);
         self.lda(a);
     }
 
@@ -292,31 +349,31 @@ impl MOS6502 {
         self.toggle_nz(x);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ldx_imm(&mut self) {
         let x = self.next_byte();
         self.ldx(x);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ldx_zp(&mut self) {
         let x = self.zero_page_val();
         self.ldx(x);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ldx_zp_y(&mut self) {
         let x = self.zero_page_y();
         self.ldx(x);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ldx_abs(&mut self) {
         let x = self.absolute_val();
         self.ldx(x);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ldx_abs_y(&mut self) {
         let x = self.absolute_y_val(true);
         self.ldx(x);
@@ -329,31 +386,31 @@ impl MOS6502 {
         self.toggle_nz(y);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ldy_imm(&mut self) {
         let y = self.next_byte();
         self.ldy(y);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ldy_zp(&mut self) {
         let y = self.zero_page_val();
         self.ldy(y);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ldy_zp_x(&mut self) {
         let y = self.zero_page_x();
         self.ldy(y);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ldy_abs(&mut self) {
         let y = self.absolute_val();
         self.ldy(y);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ldy_abs_x(&mut self) {
         let y = self.absolute_x_val(true);
         self.lda(y);
@@ -362,46 +419,46 @@ impl MOS6502 {
     // STA
     fn sta(&mut self, addr: u16) {
         let a = self.a;
-        self.write_byte(addr, a);
+        self.bus.write_byte(addr, a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sta_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.sta(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sta_zp_x(&mut self) {
         let addr = self.zero_page_x() as u16;
         self.sta(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sta_abs(&mut self) {
         let addr = self.absolute();
         self.sta(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sta_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.sta(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sta_abs_y(&mut self) {
         let addr = self.absolute_y(false);
         self.sta(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sta_ind_x(&mut self) {
         let addr = self.indirect_x();
         self.sta(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sta_ind_y(&mut self) {
         let addr = self.indirect_y(false);
         self.sta(addr);
@@ -410,22 +467,22 @@ impl MOS6502 {
     // STX
     fn stx(&mut self, addr: u16) {
         let x = self.x;
-        self.write_byte(addr, x);
+        self.bus.write_byte(addr, x);
     }
 
-    #[inline(always)]
+    #[inline]
     fn stx_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.stx(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn stx_zp_y(&mut self) {
         let addr = self.zero_page_y() as u16;
         self.stx(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn stx_abs(&mut self) {
         let addr = self.absolute();
         self.stx(addr);
@@ -434,29 +491,29 @@ impl MOS6502 {
     // STY
     fn sty(&mut self, addr: u16) {
         let y = self.y;
-        self.write_byte(addr, y);
+        self.bus.write_byte(addr, y);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sty_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.sty(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sty_zp_x(&mut self) {
         let addr = self.zero_page_x() as u16;
         self.sty(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sty_abs(&mut self) {
         let addr = self.absolute();
         self.sty(addr);
     }
 
     // ADC
-    #[inline(always)]
+    #[inline]
     fn adc(&mut self, val: u8) {
         let val_carry = if self.carry_flag {
             val.wrapping_add(1)
@@ -465,66 +522,63 @@ impl MOS6502 {
         };
 
         let (sum, carry) = self.a.overflowing_add(val_carry);
-
         self.carry_flag = carry;
         // http://www.6502.org/tutorials/vflag.html
-        self.overflow_flag = !(self.a ^ val) & (self.a ^ sum) & 0x80 == 0x80;
-
+        self.overflow_flag = (val ^ sum) & (sum ^ self.a) & 0x80 != 0;
         self.a = sum;
-
         self.toggle_nz(sum);
     }
 
-    #[inline(always)]
+    #[inline]
     fn adc_imm(&mut self) {
         let val = self.next_byte();
         self.adc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn adc_zp(&mut self) {
         let val = self.zero_page_val();
         self.adc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn adc_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.adc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn adc_abs(&mut self) {
         let val = self.absolute_val();
         self.adc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn adc_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.adc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn adc_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.adc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn adc_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.adc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn adc_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.adc(val);
     }
 
     // SBC - Subtract with Carry
-    #[inline(always)]
+    #[inline]
     fn sbc(&mut self, val: u8) {
         let sub = if !self.carry_flag {
             val.wrapping_add(1)
@@ -541,56 +595,56 @@ impl MOS6502 {
         self.toggle_nz(sum);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sbc_imm(&mut self) {
         let val = self.next_byte();
         self.sbc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sbc_zp(&mut self) {
         let val = self.zero_page_val();
         self.sbc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sbc_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.sbc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sbc_abs(&mut self) {
         let val = self.absolute_val();
         self.sbc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sbc_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.sbc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sbc_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.sbc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sbc_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.sbc(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn sbc_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.sbc(val);
     }
 
     // TAX
-    #[inline(always)]
+    #[inline]
     fn tax(&mut self) {
         let x = self.a;
         self.x = x;
@@ -598,7 +652,7 @@ impl MOS6502 {
     }
 
     // TAY
-    #[inline(always)]
+    #[inline]
     fn tay(&mut self) {
         let y = self.a;
         self.y = y;
@@ -606,7 +660,7 @@ impl MOS6502 {
     }
 
     // TSX
-    #[inline(always)]
+    #[inline]
     fn tsx(&mut self) {
         let x = self.sp;
         self.x = x;
@@ -614,7 +668,7 @@ impl MOS6502 {
     }
 
     // TXA
-    #[inline(always)]
+    #[inline]
     fn txa(&mut self) {
         let a = self.x;
         self.a = a;
@@ -622,15 +676,13 @@ impl MOS6502 {
     }
 
     // TXS
-    #[inline(always)]
+    #[inline]
     fn txs(&mut self) {
-        let sp = self.x;
-        self.sp = sp;
-        self.toggle_nz(sp);
+        self.sp = self.x;
     }
 
     // TYA
-    #[inline(always)]
+    #[inline]
     fn tya(&mut self) {
         let a = self.y;
         self.a = a;
@@ -638,184 +690,184 @@ impl MOS6502 {
     }
 
     // AND
-    #[inline(always)]
+    #[inline]
     fn and(&mut self, val: u8) {
         let a = self.a & val;
         self.a = a;
         self.toggle_nz(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn and_imm(&mut self) {
         let val = self.next_byte();
         self.and(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn and_zp(&mut self) {
         let val = self.zero_page_val();
         self.and(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn and_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.and(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn and_abs(&mut self) {
         let val = self.absolute_val();
         self.and(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn and_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.and(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn and_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.and(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn and_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.and(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn and_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.and(val);
     }
 
     // ORA - Logical Inclusive OR
-    #[inline(always)]
+    #[inline]
     fn ora(&mut self, val: u8) {
         let a = self.a | val;
         self.a = a;
         self.toggle_nz(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ora_imm(&mut self) {
         let val = self.next_byte();
         self.ora(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ora_zp(&mut self) {
         let val = self.zero_page_val();
         self.ora(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ora_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.ora(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ora_abs(&mut self) {
         let val = self.absolute_val();
         self.ora(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ora_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.ora(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ora_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.ora(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ora_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.ora(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ora_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.ora(val);
     }
 
     // EOR - Exclusive OR
-    #[inline(always)]
+    #[inline]
     fn eor(&mut self, val: u8) {
         let a = self.a ^ val;
         self.a = a;
         self.toggle_nz(a);
     }
 
-    #[inline(always)]
+    #[inline]
     fn eor_imm(&mut self) {
         let val = self.next_byte();
         self.eor(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn eor_zp(&mut self) {
         let val = self.zero_page_val();
         self.eor(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn eor_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.eor(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn eor_abs(&mut self) {
         let val = self.absolute_val();
         self.eor(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn eor_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.eor(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn eor_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.eor(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn eor_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.eor(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn eor_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.eor(val);
     }
 
     // ASL - Arithmetic Shift Left
-    #[inline(always)]
+    #[inline]
     fn asl(&mut self, addr: u16) {
-        let mut val = self.read_byte(addr);
+        let mut val = self.bus.read_byte(addr);
         self.carry_flag = val & 128 == 128;
         val <<= 1;
-        self.write_byte(addr, val);
+        self.bus.write_byte(addr, val);
         self.toggle_nz(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn asl_acc(&mut self) {
         let mut val = self.a;
         self.carry_flag = val & 128 == 128;
@@ -824,41 +876,41 @@ impl MOS6502 {
         self.toggle_nz(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn asl_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.asl(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn asl_zp_x(&mut self) {
         let addr = self.zero_page_x() as u16;
         self.asl(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn asl_abs(&mut self) {
         let addr = self.absolute();
         self.asl(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn asl_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.asl(addr);
     }
 
     // LSR - Logical Shift Right
-    #[inline(always)]
+    #[inline]
     fn lsr(&mut self, addr: u16) {
-        let val = self.read_byte(addr);
+        let val = self.bus.read_byte(addr);
         self.carry_flag = val & 1 == 1;
         let val = val >> 1;
-        self.write_byte(addr, val);
+        self.bus.write_byte(addr, val);
         self.toggle_nz(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lsr_acc(&mut self) {
         let mut val = self.a;
         self.carry_flag = val & 1 == 1;
@@ -867,65 +919,65 @@ impl MOS6502 {
         self.toggle_nz(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lsr_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.lsr(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lsr_zp_x(&mut self) {
         let addr = self.zero_page_x() as u16;
         self.lsr(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lsr_abs(&mut self) {
         let addr = self.absolute();
         self.lsr(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn lsr_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.lsr(addr);
     }
 
     // INC - Increment Memory
-    #[inline(always)]
+    #[inline]
     fn inc(&mut self, addr: u16) {
-        let val = self.read_byte(addr);
+        let val = self.bus.read_byte(addr);
         let val = if val == 0xff { 0 } else { val + 1 };
-        self.write_byte(addr, val);
+        self.bus.write_byte(addr, val);
         self.toggle_nz(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn inc_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.inc(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn inc_zp_x(&mut self) {
         let addr = self.zero_page_x() as u16;
         self.inc(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn inc_abs(&mut self) {
         let addr = self.absolute();
         self.inc(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn inc_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.inc(addr);
     }
 
     // INX - Increment X Register
-    #[inline(always)]
+    #[inline]
     fn inx(&mut self) {
         let val = self.x;
         let val = if val == 0xff { 0 } else { val + 1 };
@@ -934,7 +986,7 @@ impl MOS6502 {
     }
 
     // INY - Increment Y Register
-    #[inline(always)]
+    #[inline]
     fn iny(&mut self) {
         let val = self.y;
         let val = if val == 0xff { 0 } else { val + 1 };
@@ -943,40 +995,40 @@ impl MOS6502 {
     }
 
     // DEC - Decrement Memory
-    #[inline(always)]
+    #[inline]
     fn dec(&mut self, addr: u16) {
-        let val = self.read_byte(addr);
+        let val = self.bus.read_byte(addr);
         let val = if val == 0 { 0xff } else { val - 1 };
-        self.write_byte(addr, val);
+        self.bus.write_byte(addr, val);
         self.toggle_nz(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn dec_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.dec(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn dec_zp_x(&mut self) {
         let addr = self.zero_page_x() as u16;
         self.dec(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn dec_abs(&mut self) {
         let addr = self.absolute();
         self.dec(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn dec_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.dec(addr);
     }
 
     // DEX - Decrement X Register
-    #[inline(always)]
+    #[inline]
     fn dex(&mut self) {
         let val = self.x;
         let val = if val == 0 { 0xff } else { val - 1 };
@@ -985,7 +1037,7 @@ impl MOS6502 {
     }
 
     // DEY - Decrement Y Register
-    #[inline(always)]
+    #[inline]
     fn dey(&mut self) {
         let val = self.y;
         let val = if val == 0 { 0xff } else { val - 1 };
@@ -994,42 +1046,37 @@ impl MOS6502 {
     }
 
     // JMP - Jump
-    #[inline(always)]
+    #[inline]
     fn jmp(&mut self, addr: u16) {
         self.pc = addr;
     }
 
-    #[inline(always)]
+    #[inline]
     fn jmp_abs(&mut self) {
         let addr = self.absolute();
         self.jmp(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn jmp_ind(&mut self) {
         let addr = self.indirect();
         self.jmp(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn branch_rel(&mut self) {
-        let mut rel = self.next_byte() as i32;
-        if rel > 127 {
-            rel = -(0x100 - rel);
-        }
-
-        let pc = self.pc as i32;
-        self.pc = (pc + rel) as u16;
+        let rel: i8 = self.next_byte() as i8;
+        let (jump_addr, boundary_crossed) = self.pc.overflowing_add(rel as u16);
+        self.pc = jump_addr;
         self.cycles += 1;
 
-        let new_page_check = (pc & 0xff) + rel;
-        if new_page_check > 0xff || new_page_check < 0 {
+        if boundary_crossed {
             self.cycles += 1;
         }
     }
 
     // BCS - Branch if Carry Clear
-    #[inline(always)]
+    #[inline]
     fn bcc_rel(&mut self) {
         if !self.carry_flag {
             self.branch_rel();
@@ -1039,7 +1086,7 @@ impl MOS6502 {
     }
 
     // BCS - Branch if Carry Set
-    #[inline(always)]
+    #[inline]
     fn bcs_rel(&mut self) {
         if self.carry_flag {
             self.branch_rel();
@@ -1049,7 +1096,7 @@ impl MOS6502 {
     }
 
     // BEQ - Branch if Equal
-    #[inline(always)]
+    #[inline]
     fn beq_rel(&mut self) {
         if self.zero_flag {
             self.branch_rel();
@@ -1059,7 +1106,7 @@ impl MOS6502 {
     }
 
     // BNE - Branch if Not Equal
-    #[inline(always)]
+    #[inline]
     fn bne_rel(&mut self) {
         if !self.zero_flag {
             self.branch_rel();
@@ -1069,7 +1116,7 @@ impl MOS6502 {
     }
 
     // BPL - Branch if Positive
-    #[inline(always)]
+    #[inline]
     fn bpl_rel(&mut self) {
         if !self.negative_flag {
             self.branch_rel();
@@ -1079,7 +1126,7 @@ impl MOS6502 {
     }
 
     // BMI - Branch if Minus
-    #[inline(always)]
+    #[inline]
     fn bmi_rel(&mut self) {
         if self.negative_flag {
             self.branch_rel();
@@ -1089,7 +1136,7 @@ impl MOS6502 {
     }
 
     // BVC - Branch if Overflow Clear
-    #[inline(always)]
+    #[inline]
     fn bvc_rel(&mut self) {
         if !self.overflow_flag {
             self.branch_rel();
@@ -1099,9 +1146,9 @@ impl MOS6502 {
     }
 
     // BVS - Branch if Overflow Set
-    #[inline(always)]
+    #[inline]
     fn bvs_rel(&mut self) {
-        if !self.overflow_flag {
+        if self.overflow_flag {
             self.branch_rel();
         } else {
             self.pc += 1;
@@ -1109,187 +1156,167 @@ impl MOS6502 {
     }
 
     // CLC - Clear Carry Flag
-    #[inline(always)]
+    #[inline]
     fn clc(&mut self) {
         self.carry_flag = false;
     }
 
     // SEC - Set Carry Flag
-    #[inline(always)]
+    #[inline]
     fn sec(&mut self) {
         self.carry_flag = true;
     }
 
     // CLD - Clear Decimal Flag
-    #[inline(always)]
+    #[inline]
     fn cld(&mut self) {
         self.dec_mode_flag = false;
     }
 
     // SED - Set Decimal Flag
-    #[inline(always)]
+    #[inline]
     fn sed(&mut self) {
         self.dec_mode_flag = true;
     }
 
     // CLI - Clear Interrupt Disable
-    #[inline(always)]
+    #[inline]
     fn cli(&mut self) {
         self.interrupt_disable_flag = false;
     }
 
     // SEI - Set Interrupt Disable
-    #[inline(always)]
+    #[inline]
     fn sei(&mut self) {
         self.interrupt_disable_flag = true;
     }
 
     // CLV - Clear Overflow Flag
-    #[inline(always)]
+    #[inline]
     fn clv(&mut self) {
         self.overflow_flag = false;
     }
 
     #[inline]
     fn cmp_vals(&mut self, a: u8, b: u8) {
-        match a.cmp(&b) {
-            Ordering::Equal => {
-                self.zero_flag = true;
-                self.negative_flag = false;
-                self.carry_flag = true;
-            }
-            Ordering::Greater => {
-                self.zero_flag = false;
-                self.negative_flag = false;
-                self.overflow_flag = true;
-            }
-            Ordering::Less => {
-                self.zero_flag = false;
-                self.negative_flag = true;
-                self.carry_flag = false;
-            }
-        }
+        self.carry_flag = a >= b;
+        let res = a.wrapping_sub(b);
+        self.toggle_nz(res);
     }
 
     // CMP - Compare
-    #[inline(always)]
+    #[inline]
     fn cmp(&mut self, val: u8) {
-        // let diff = ((self.a as i16) - (val as i16));
-        // if diff >= 0 {
-        //     self.overflow_flag = true;
-        // }
-        // self.toggle_nz((diff & 0xff) as u8);
-        let a = self.a;
-        self.cmp_vals(a, val);
+        self.cmp_vals(self.a, val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cmp_imm(&mut self) {
         let val = self.next_byte();
         self.cmp(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cmp_zp(&mut self) {
         let val = self.zero_page_val();
         self.cmp(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cmp_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.cmp(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cmp_abs(&mut self) {
         let val = self.absolute_val();
         self.cmp(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cmp_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.cmp(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cmp_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.cmp(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cmp_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.cmp(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cmp_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.cmp(val);
     }
 
     // CPX - Compare X Register
-    #[inline(always)]
+    #[inline]
     fn cpx(&mut self, val: u8) {
         let x = self.x;
         self.cmp_vals(x, val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cpx_imm(&mut self) {
         let val = self.next_byte();
         self.cpx(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cpx_zp(&mut self) {
         let val = self.zero_page_val();
         self.cpx(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cpx_abs(&mut self) {
         let val = self.absolute_val();
         self.cpx(val);
     }
 
     // CPY - Compare Y Register
-    #[inline(always)]
+    #[inline]
     fn cpy(&mut self, val: u8) {
         let y = self.y;
         self.cmp_vals(y, val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cpy_imm(&mut self) {
         let val = self.next_byte();
         self.cpy(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cpy_zp(&mut self) {
         let val = self.zero_page_val();
         self.cpy(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn cpy_abs(&mut self) {
         let val = self.absolute_val();
         self.cpy(val);
     }
 
     // PHA - Push Accumulator
-    #[inline(always)]
+    #[inline]
     fn pha(&mut self) {
         let a = self.a;
         self.push(a);
     }
 
     // PLA - Pull Accumulator
-    #[inline(always)]
+    #[inline]
     fn pla(&mut self) {
         let a = self.pull();
         self.a = a;
@@ -1297,20 +1324,23 @@ impl MOS6502 {
     }
 
     // PHP - Push Processor Status
-    #[inline(always)]
+    #[inline]
     fn php(&mut self) {
-        let status_flags = self.flags_to_u8();
+        // set the break flags
+        let status_flags = self.flags_to_u8() | 0b110000;
         self.push(status_flags);
     }
 
     // PLP - Pull Processor Status
     fn plp(&mut self) {
-        let flags = self.pull();
+        let mut flags = self.pull();
+        flags &= 0b11101111;
+        flags |= 0b00100000;
         self.set_flags_from_u8(flags);
     }
 
     // BRK - Force Interrupt
-    #[inline(always)]
+    #[inline]
     fn brk(&mut self) {
         let pc_high = (self.pc >> 8) as u8;
         let pc_low = (self.pc & 0xff) as u8;
@@ -1321,43 +1351,35 @@ impl MOS6502 {
         self.php();
 
         // load the IRQ interrupt vector into the PC
-        let addr = self.read_word(0xfffe);
-        let addr = self.read_word(addr);
+        let addr = self.bus.read_word(0xfffe);
+        let addr = self.bus.read_word(addr);
         self.pc = addr;
-
-        // set the B flag to 1
-        self.break_command_flag = true;
     }
 
     // JSR - Jump to Subroutine
-    #[inline(always)]
-    fn jsr_abs(&mut self) {
+    #[inline]
+    fn jsr(&mut self) {
         let ret_addr = self.pc + 1;
-        let ret_high = (ret_addr >> 8) as u8;
-        let ret_low = (ret_addr & 0xff) as u8;
-
-        self.push(ret_high);
-        self.push(ret_low);
-
+        self.push_word(ret_addr);
         let target_addr = self.absolute();
         self.pc = target_addr;
     }
 
     // RTS - Return from Subroutine
-    #[inline(always)]
+    #[inline]
     fn rts(&mut self) {
         self.pc = self.pull_word() + 1;
     }
 
     // RTI - Return from Interrupt
-    #[inline(always)]
+    #[inline]
     fn rti(&mut self) {
         self.plp();
         self.rts();
     }
 
     // BIT - Bit Test
-    #[inline(always)]
+    #[inline]
     fn bit(&mut self, val: u8) {
         let res = self.a & val;
         self.zero_flag = res == 0;
@@ -1365,30 +1387,30 @@ impl MOS6502 {
         self.negative_flag = val & 0x80 != 0;
     }
 
-    #[inline(always)]
+    #[inline]
     fn bit_zp(&mut self) {
         let val = self.zero_page_val();
         self.bit(val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn bit_abs(&mut self) {
         let val = self.absolute_val();
         self.bit(val);
     }
 
     // ROL - Rotate Left
-    #[inline(always)]
+    #[inline]
     fn rol(&mut self, addr: u16) {
-        let mut val = self.read_byte(addr);
+        let mut val = self.bus.read_byte(addr);
         let next_carry = (val >> 7) == 1;
         val <<= 1;
         val |= if self.carry_flag { 1 } else { 0 };
         self.carry_flag = next_carry;
-        self.write_byte(addr, val);
+        self.bus.write_byte(addr, val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn rol_acc(&mut self) {
         let mut a = self.a;
         let next_carry = (a >> 7) == 1;
@@ -1398,44 +1420,44 @@ impl MOS6502 {
         self.a = a;
     }
 
-    #[inline(always)]
+    #[inline]
     fn rol_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.rol(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn rol_zp_x(&mut self) {
         let addr = self.zero_page_x() as u16;
         self.rol(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn rol_abs(&mut self) {
         let addr = self.absolute();
         self.rol(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn rol_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.rol(addr);
     }
 
     // ROR - Rotate Right
-    #[inline(always)]
+    #[inline]
     fn ror(&mut self, addr: u16) {
-        let mut val = self.read_byte(addr);
+        let mut val = self.bus.read_byte(addr);
         let next_carry = (val & 1) == 1;
         val >>= 1;
         if self.carry_flag {
             val |= 128;
         }
         self.carry_flag = next_carry;
-        self.write_byte(addr, val);
+        self.bus.write_byte(addr, val);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ror_acc(&mut self) {
         let mut a = self.a;
         let next_carry = (a & 1) == 1;
@@ -1447,25 +1469,25 @@ impl MOS6502 {
         self.a = a;
     }
 
-    #[inline(always)]
+    #[inline]
     fn ror_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.ror(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ror_zp_x(&mut self) {
         let addr = self.zero_page_x() as u16;
         self.ror(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ror_abs(&mut self) {
         let addr = self.absolute();
         self.ror(addr);
     }
 
-    #[inline(always)]
+    #[inline]
     fn ror_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.ror(addr);

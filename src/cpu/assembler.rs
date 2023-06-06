@@ -1,4 +1,4 @@
-use super::opcodes::{INST_ADDR_MODE_NAMES, INST_LENGTHS};
+use super::opcodes::{AddressingMode, INST_LENGTHS};
 use std::collections::HashMap;
 use std::u8;
 
@@ -7,7 +7,7 @@ struct InstInfo {
     name: String,
     line_nb: usize,
     opcode: u8,
-    mode: usize,
+    mode: AddressingMode,
     arg: String,
 }
 
@@ -27,7 +27,7 @@ pub struct Assembler {
 impl Assembler {
     pub fn new() -> Assembler {
         let mut opcodes = HashMap::new();
-        /* Name, IMM, ZP,   ZPX,  ZPY,  ABS,  ABSX, ABSY, IND,  INDX, INDY, IMP,  REL */
+        /* Name, IMM, ZP, ZPX, ZPY, ABS, ABSX, ABSY, IND, INDX, INDY, IMP, REL */
         opcodes.insert(
             "ADC".to_string(),
             [
@@ -1030,33 +1030,35 @@ impl Assembler {
             || inst_name == "BVS"
     }
 
-    fn get_addressing_mode(&mut self, arg: &str, inst_name: &str) -> Option<u8> {
+    fn get_addressing_mode(&mut self, arg: &str, inst_name: &str) -> Option<AddressingMode> {
+        use AddressingMode::*;
+
         if self.labels.contains_key(&arg.to_string()) {
             if self.check_relative(inst_name) {
-                return Some(11); // Relative
+                return Some(Relative);
             } else {
-                return Some(4); // Absolute
+                return Some(Absolute);
             }
         }
 
         if self.check_immediate(arg) {
-            return Some(0);
+            return Some(Immediate);
         }
 
         if self.check_zp(arg) {
-            return Some(1);
+            return Some(ZeroPage);
         }
 
         if self.check_abs(arg) {
-            return Some(4);
+            return Some(Absolute);
         }
 
         if self.check_implied(arg) {
-            return Some(10);
+            return Some(Implied);
         }
 
         if self.check_relative(inst_name) {
-            return Some(11);
+            return Some(Relative);
         }
 
         None
@@ -1128,18 +1130,16 @@ impl Assembler {
 
     fn parse_inst(&self, inst: &InstInfo) -> Vec<u8> {
         let mut bytes = vec![inst.opcode];
+        use AddressingMode::*;
 
         bytes.append(
             &mut (match inst.mode {
-                0 => self.parse_immediate(&inst.arg),
-                1 => self.parse_zp(&inst.arg),
-                4 => self.parse_abs(&inst.arg),
-                10 => vec![], // Implied
-                11 => self.parse_rel(&inst.arg),
-                _ => panic!(
-                    "Unhandled addressing mode: {}",
-                    INST_ADDR_MODE_NAMES[inst.mode]
-                ),
+                Immediate => self.parse_immediate(&inst.arg),
+                ZeroPage => self.parse_zp(&inst.arg),
+                Absolute => self.parse_abs(&inst.arg),
+                Implied => vec![],
+                Relative => self.parse_rel(&inst.arg),
+                _ => panic!("Unhandled addressing mode: {}", inst.mode),
             }),
         );
 
@@ -1151,11 +1151,10 @@ impl Assembler {
         let arg = line[3..line.len()].trim();
         let mode = self
             .get_addressing_mode(arg, inst_name)
-            .expect(&format!("unknown addressing mode for '{}'", arg)) as usize;
-        let opcode = self.opcodes.get(inst_name).unwrap()[mode].expect(&format!(
-            "Invalid mode {} for instruction {}",
-            INST_ADDR_MODE_NAMES[mode as usize], inst_name
-        ));
+            .expect(&format!("unknown addressing mode for '{}'", arg));
+        let mode_u8: u8 = mode.into();
+        let opcode = self.opcodes.get(inst_name).unwrap()[mode_u8 as usize]
+            .expect(&format!("Invalid mode {mode} for instruction {inst_name}"));
 
         let line_nb = self.instructions.len();
 
@@ -1206,7 +1205,7 @@ impl Assembler {
         let lines: Vec<&str> = asm
             .split("\n")
             .map(|line| line.trim())
-            .filter(|line| line.len() != 0 && !self.check_label(line))
+            .filter(|line| !line.is_empty() && !self.check_label(line))
             .collect();
 
         println!("{:?}", self.labels);

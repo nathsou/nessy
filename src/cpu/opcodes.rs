@@ -20,6 +20,84 @@ pub const INST_LENGTHS: [u8; 256] = [
     2, 2, 0, 0, 2, 2, 2, 0, 1, 2, 1, 0, 3, 3, 3, 0, 2, 2, 0, 0, 0, 2, 2, 0, 1, 3, 0, 0, 0, 3, 3, 0,
 ];
 
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum AddressingMode {
+    Immediate = 0,
+    ZeroPage,
+    ZeroPageX,
+    ZeroPageY,
+    Absolute,
+    AbsoluteX,
+    AbsoluteY,
+    Indirect,
+    IndirectX,
+    IndirectY,
+    Implied,
+    Relative,
+}
+
+impl From<u8> for AddressingMode {
+    fn from(mode: u8) -> Self {
+        use AddressingMode::*;
+        match mode {
+            0 => Immediate,
+            1 => ZeroPage,
+            2 => ZeroPageX,
+            3 => ZeroPageY,
+            4 => Absolute,
+            5 => AbsoluteX,
+            6 => AbsoluteY,
+            7 => Indirect,
+            8 => IndirectX,
+            9 => IndirectY,
+            10 => Implied,
+            11 => Relative,
+            _ => panic!("Invalid addressing mode: {}", mode),
+        }
+    }
+}
+
+impl Into<u8> for AddressingMode {
+    fn into(self) -> u8 {
+        use AddressingMode::*;
+
+        match self {
+            Immediate => 0,
+            ZeroPage => 1,
+            ZeroPageX => 2,
+            ZeroPageY => 3,
+            Absolute => 4,
+            AbsoluteX => 5,
+            AbsoluteY => 6,
+            Indirect => 7,
+            IndirectX => 8,
+            IndirectY => 9,
+            Implied => 10,
+            Relative => 11,
+        }
+    }
+}
+
+impl std::fmt::Display for AddressingMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use AddressingMode::*;
+        match self {
+            Immediate => write!(f, "Immediate"),
+            ZeroPage => write!(f, "ZeroPage"),
+            ZeroPageX => write!(f, "ZeroPageX"),
+            ZeroPageY => write!(f, "ZeroPageY"),
+            Absolute => write!(f, "Absolute"),
+            AbsoluteX => write!(f, "AbsoluteX"),
+            AbsoluteY => write!(f, "AbsoluteY"),
+            Indirect => write!(f, "Indirect"),
+            IndirectX => write!(f, "IndirectX"),
+            IndirectY => write!(f, "IndirectY"),
+            Implied => write!(f, "Implied"),
+            Relative => write!(f, "Relative"),
+        }
+    }
+}
+
 pub const INST_ADDR_MODES: [u8; 256] = [
     10, 8, 0, 0, 0, 1, 1, 0, 10, 0, 10, 0, 0, 4, 4, 0, 11, 9, 0, 0, 0, 2, 2, 0, 10, 6, 0, 0, 0, 5,
     5, 0, 4, 8, 0, 0, 1, 1, 1, 0, 10, 0, 10, 0, 4, 4, 4, 0, 11, 9, 0, 0, 0, 2, 2, 0, 10, 6, 0, 0,
@@ -30,21 +108,6 @@ pub const INST_ADDR_MODES: [u8; 256] = [
     2, 2, 3, 0, 10, 6, 10, 0, 5, 5, 6, 0, 0, 8, 0, 0, 1, 1, 1, 0, 10, 0, 10, 0, 4, 4, 4, 0, 11, 9,
     0, 0, 0, 2, 2, 0, 10, 6, 0, 0, 0, 5, 5, 0, 0, 8, 0, 0, 1, 1, 1, 0, 10, 0, 10, 0, 4, 4, 4, 0,
     11, 9, 0, 0, 0, 2, 2, 0, 10, 6, 0, 0, 0, 5, 5, 0,
-];
-
-pub const INST_ADDR_MODE_NAMES: [&str; 12] = [
-    "Immediate",
-    "Zero Page",
-    "Zero Page,X",
-    "Zero Page,Y",
-    "Absolute",
-    "Absolute,X",
-    "Absolute,Y",
-    "Indirect",
-    "Indirect,X",
-    "Indirect,Y",
-    "Implied",
-    "Relative",
 ];
 
 pub const INST_NAMES: [Option<&str>; 256] = [

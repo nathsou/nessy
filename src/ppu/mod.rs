@@ -5,6 +5,7 @@ use self::registers::PPU_Registers;
 use self::screen::Screen;
 use super::cpu::memory::{MappedMemory, Memory};
 
+#[allow(clippy::upper_case_acronyms)]
 struct VRAM {
     nametables: [u8; 2 * 1024],
     palette: [u8; 32],
@@ -20,7 +21,7 @@ impl VRAM {
 }
 
 impl MappedMemory for VRAM {
-    fn read_byte(&mut self, addr: u16, rom: &mut Box<dyn Memory>) -> u8 {
+    fn read_byte(&self, addr: u16, rom: &mut Box<dyn Memory>) -> u8 {
         if addr < 0x2000 {
             // pattern table
             rom.read_byte(addr)
@@ -30,7 +31,7 @@ impl MappedMemory for VRAM {
         } else if addr < 0x4000 {
             self.palette[(addr & 31) as usize]
         } else {
-            panic!("incorred VRAM read address: {}", addr)
+            panic!("incorred VRAM read address: {addr}")
         }
     }
 
@@ -63,7 +64,7 @@ impl OAM {
 }
 
 impl Memory for OAM {
-    fn read_byte(&mut self, addr: u16) -> u8 {
+    fn read_byte(&self, addr: u16) -> u8 {
         self.attributes[addr as usize]
     }
 
@@ -72,6 +73,7 @@ impl Memory for OAM {
     }
 }
 
+#[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
     regs: PPU_Registers,
     vram: VRAM,
@@ -94,11 +96,14 @@ impl PPU {
             data_buffer: 0,
         }
     }
-}
 
-impl MappedMemory for PPU {
-    fn read_byte(&mut self, addr: u16, rom: &mut Box<dyn Memory>) -> u8 {
-        match addr & 7 {
+    #[inline]
+    fn mirrored_addr(addr: u16) -> u16 {
+        addr & 0b0010_0000_0000_0111
+    }
+
+    pub fn read_byte(&mut self, addr: u16, rom: &mut Box<dyn Memory>) -> u8 {
+        match PPU::mirrored_addr(addr) {
             0 => self.regs.ctrl.val,
             1 => self.regs.mask.val,
             2 => self.regs.status.val,
@@ -111,8 +116,8 @@ impl MappedMemory for PPU {
         }
     }
 
-    fn write_byte(&mut self, addr: u16, val: u8, rom: &mut Box<dyn Memory>) {
-        match addr & 7 {
+    pub fn write_byte(&mut self, addr: u16, val: u8, rom: &mut Box<dyn Memory>) {
+        match PPU::mirrored_addr(addr) {
             0 => self.regs.ctrl.val = val,
             1 => self.regs.mask.val = val,
             2 => {} // read-only,
@@ -124,9 +129,7 @@ impl MappedMemory for PPU {
             _ => unreachable!(),
         };
     }
-}
 
-impl PPU {
     fn read_ppu_data(&mut self, rom: &mut Box<dyn Memory>) -> u8 {
         let addr = self.regs.addr.addr;
         let val = self.vram.read_byte(addr, rom);
