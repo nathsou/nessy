@@ -306,7 +306,7 @@ impl CPU {
 
     #[inline]
     fn lda_zp_x(&mut self) {
-        let a = self.zero_page_x();
+        let a = self.zero_page_x_val();
         self.lda(a);
     }
 
@@ -330,8 +330,7 @@ impl CPU {
 
     #[inline]
     fn lda_ind_x(&mut self) {
-        let addr = self.indirect_x();
-        let a = self.bus.read_byte(addr);
+        let a = self.indirect_x_val();
         self.lda(a);
     }
 
@@ -400,7 +399,7 @@ impl CPU {
 
     #[inline]
     fn ldy_zp_x(&mut self) {
-        let y = self.zero_page_x();
+        let y = self.zero_page_x_val();
         self.ldy(y);
     }
 
@@ -502,7 +501,7 @@ impl CPU {
 
     #[inline]
     fn sty_zp_x(&mut self) {
-        let addr = self.zero_page_x() as u16;
+        let addr = self.zero_page_x();
         self.sty(addr);
     }
 
@@ -1056,10 +1055,25 @@ impl CPU {
         let addr = self.absolute();
         self.jmp(addr);
     }
-
+    
     #[inline]
     fn jmp_ind(&mut self) {
-        let addr = self.indirect();
+        // An original 6502 does not correctly fetch the target address
+        // if the indirect vector falls on a page boundary
+        // (e.g. $xxFF where xx is any value from $00 to $FF).
+        // In this case fetches the LSB from $xxFF as expected but takes the MSB from $xx00.
+        // This is fixed in some later chips like the 65SC02 so for compatibility
+        // always ensure the indirect vector is not at the end of the page.
+
+        let addr = self.next_word();
+        let addr = if addr & 0x00ff == 0xff {
+            let lo = self.bus.read_byte(addr);
+            let hi = self.bus.read_byte(addr & 0xff00);
+            (hi as u16) << 8 | (lo as u16)
+        } else {
+            self.bus.read_word(addr)
+        };
+
         self.jmp(addr);
     }
 
@@ -1375,7 +1389,7 @@ impl CPU {
     #[inline]
     fn rti(&mut self) {
         self.plp();
-        self.rts();
+        self.pc = self.pull_word();
     }
 
     // BIT - Bit Test
@@ -1408,16 +1422,18 @@ impl CPU {
         val |= if self.carry_flag { 1 } else { 0 };
         self.carry_flag = next_carry;
         self.bus.write_byte(addr, val);
+        self.toggle_nz(val);
     }
 
     #[inline]
     fn rol_acc(&mut self) {
         let mut a = self.a;
-        let next_carry = (a >> 7) == 1;
+        let next_carry = a >> 7 == 1;
         a <<= 1;
         a |= if self.carry_flag { 1 } else { 0 };
         self.carry_flag = next_carry;
         self.a = a;
+        self.toggle_nz(a);
     }
 
     #[inline]
@@ -1448,25 +1464,33 @@ impl CPU {
     #[inline]
     fn ror(&mut self, addr: u16) {
         let mut val = self.bus.read_byte(addr);
-        let next_carry = (val & 1) == 1;
+        let old_carry = self.carry_flag;
+        self.carry_flag = val & 1 == 1;
+
         val >>= 1;
-        if self.carry_flag {
-            val |= 128;
+
+        if old_carry {
+            val |= 1 << 7;
         }
-        self.carry_flag = next_carry;
+
         self.bus.write_byte(addr, val);
+        self.toggle_nz(val);
     }
 
     #[inline]
     fn ror_acc(&mut self) {
         let mut a = self.a;
-        let next_carry = (a & 1) == 1;
+        let old_carry = self.carry_flag;
+        self.carry_flag = a & 1 == 1;
+
         a >>= 1;
-        if self.carry_flag {
-            a |= 128;
-        };
-        self.carry_flag = next_carry;
+
+        if old_carry {
+            a |= 1 << 7;
+        }
+
         self.a = a;
+        self.toggle_nz(a);
     }
 
     #[inline]
