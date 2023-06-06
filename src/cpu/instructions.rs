@@ -362,7 +362,7 @@ impl CPU {
 
     #[inline]
     fn ldx_zp_y(&mut self) {
-        let x = self.zero_page_y();
+        let x = self.zero_page_y_val();
         self.ldx(x);
     }
 
@@ -412,7 +412,7 @@ impl CPU {
     #[inline]
     fn ldy_abs_x(&mut self) {
         let y = self.absolute_x_val(true);
-        self.lda(y);
+        self.ldy(y);
     }
 
     // STA
@@ -1055,7 +1055,7 @@ impl CPU {
         let addr = self.absolute();
         self.jmp(addr);
     }
-    
+
     #[inline]
     fn jmp_ind(&mut self) {
         // An original 6502 does not correctly fetch the target address

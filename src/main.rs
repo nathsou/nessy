@@ -60,6 +60,11 @@ fn test_nestest_dump() {
     cpu.pc = 0xc000;
 
     for log_line in logs {
+        if cpu.pc == 0xc6bd {
+            // illegal opcodes after this point
+            break;
+        }
+
         println!("{log_line}");
         let expected_pc = &log_line[0..4];
         let actual_pc = format!("{:04X}", cpu.pc);

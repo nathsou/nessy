@@ -135,19 +135,24 @@ impl CPU {
     #[inline]
     fn zero_page_x(&mut self) -> u16 {
         // val = PEEK((arg + X) % 256)
-        (self.next_byte() as u16).wrapping_add(self.x as u16)
+        self.next_byte().wrapping_add(self.x) as u16
     }
 
     #[inline]
     fn zero_page_x_val(&mut self) -> u8 {
-        let addr = self.zero_page_x() as u16;
+        let addr = self.zero_page_x();
         self.bus.read_byte(addr)
     }
 
     #[inline]
-    fn zero_page_y(&mut self) -> u8 {
-        let zp = self.zero_page();
-        zp.wrapping_add(self.y)
+    fn zero_page_y(&mut self) -> u16 {
+        self.next_byte().wrapping_add(self.y) as u16
+    }
+
+    #[inline]
+    fn zero_page_y_val(&mut self) -> u8 {
+        let addr = self.zero_page_y();
+        self.bus.read_byte(addr)
     }
 
     #[inline]
