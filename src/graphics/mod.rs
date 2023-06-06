@@ -1,11 +1,10 @@
+use crate::cpu::memory::Memory;
+use crate::cpu::CPU;
 use rand::Rng;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::render::{Texture, WindowCanvas};
-
-use crate::cpu::memory::Memory;
-use crate::cpu::CPU;
 
 fn color_mapping(byte: u8) -> Color {
     match byte {
@@ -37,8 +36,9 @@ fn render(
             buf[idx + 1] = g;
             buf[idx + 2] = b;
             updated = true;
-            idx += 3;
         }
+
+        idx += 3;
     }
 
     if updated {
@@ -48,7 +48,7 @@ fn render(
     }
 }
 
-const SCALE_FACTOR: u32 = 10;
+const SCALE_FACTOR: u32 = 20;
 
 pub fn begin(cpu: &mut CPU) -> Result<(), String> {
     let sdl_context = sdl2::init()?;
@@ -74,7 +74,7 @@ pub fn begin(cpu: &mut CPU) -> Result<(), String> {
         .unwrap();
 
     let mut event_pump = sdl_context.event_pump()?;
-    let mut frame_buffer = [3u8; 32 * 32 * 3];
+    let mut frame_buffer = [0u8; 32 * 32 * 3];
     let mut rng = rand::thread_rng();
 
     'running: loop {
@@ -124,7 +124,7 @@ pub fn begin(cpu: &mut CPU) -> Result<(), String> {
         render(&mut canvas, cpu, &mut frame_buffer, &mut texture);
 
         // Time management!
-        ::std::thread::sleep(std::time::Duration::new(0, 70_000));
+        ::std::thread::sleep(std::time::Duration::new(0, 30_000));
     }
 
     Ok(())

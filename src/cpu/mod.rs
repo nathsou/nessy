@@ -8,11 +8,11 @@ pub mod rom;
 use self::memory::Memory;
 use self::rom::ROM;
 use super::bus::Bus;
-
 use std::fmt;
 
 const RESET_VECTOR: u16 = 0xfffc;
 const STACK_START: u16 = 0x100;
+const STACK_TOP: u8 = 0xff;
 
 // Represents the state of a MOS 6502 CPU
 #[allow(clippy::upper_case_acronyms)]
@@ -41,7 +41,7 @@ impl CPU {
             x: 0,
             y: 0,
             pc: bus.read_word(RESET_VECTOR),
-            sp: 0xfd,
+            sp: STACK_TOP,
             cycles: 0,
             carry_flag: false,
             zero_flag: false,
@@ -56,11 +56,10 @@ impl CPU {
     }
 
     fn reset(&mut self) {
-        println!("0xfffc: {:?}", self.bus.read_word(RESET_VECTOR));
         self.a = 0;
         self.x = 0;
         self.y = 0;
-        self.sp = 0xfd;
+        self.sp = STACK_TOP;
         self.cycles = 0;
         self.carry_flag = false;
         self.zero_flag = false;
@@ -239,8 +238,8 @@ impl CPU {
         let addr2 = addr1.wrapping_add(1);
         let val1 = self.bus.read_byte(addr1 as u16);
         let val2 = self.bus.read_byte(addr2 as u16);
-        let addr = (val1 as u16) + (val2 as u16) * 256;
-        addr
+
+        (val1 as u16) + (val2 as u16) * 256
     }
 
     #[inline]

@@ -41,44 +41,36 @@ impl Bus {
 
 // https://wiki.nesdev.com/w/index.php/CPU_memory_map
 impl Memory for Bus {
-    // fn read_byte(&self, addr: u16) -> u8 {
-    //     self.mapper.read_byte(addr)
-    // }
-
-    // fn write_byte(&mut self, addr: u16, val: u8) {
-    //     self.mapper.write_byte(addr, val);
-    // }
-
     fn read_byte(&self, addr: u16) -> u8 {
-        let res = if addr < 0x2000 {
-            self.ram.read_byte(addr)
-        } else if addr < 0x4000 {
-            todo!("PPU");
-            // self.ppu.read_byte(addr, &mut self.rom)
-        } else if addr < 0x4018 {
-            0 // APU
-        } else {
-            self.mapper.read_byte(addr)
-        };
-        
-        println!("reading {:04X} = {:02X}", addr, res);
-
-        res
+        self.mapper.read_byte(addr)
     }
 
     fn write_byte(&mut self, addr: u16, val: u8) {
-        let res = if addr < 0x2000 {
-            self.ram.write_byte(addr, val);
-        } else if addr < 0x4000 {
-            self.ppu.write_byte(addr, val, &mut self.mapper);
-        } else if addr < 0x4018 {
-            // APU
-        } else {
-            self.mapper.write_byte(addr, val);
-        };
-
-        println!("writing {:04X} = {:02X}", addr, val);
-
-        res
+        self.mapper.write_byte(addr, val);
     }
+
+    // fn read_byte(&self, addr: u16) -> u8 {
+    //     if addr < 0x2000 {
+    //         self.ram.read_byte(addr)
+    //     } else if addr < 0x4000 {
+    //         todo!("PPU");
+    //         // self.ppu.read_byte(addr, &mut self.rom)
+    //     } else if addr < 0x4018 {
+    //         0 // APU
+    //     } else {
+    //         self.mapper.read_byte(addr)
+    //     }
+    // }
+
+    // fn write_byte(&mut self, addr: u16, val: u8) {
+    //     if addr < 0x2000 {
+    //         self.ram.write_byte(addr, val);
+    //     } else if addr < 0x4000 {
+    //         self.ppu.write_byte(addr, val, &mut self.mapper);
+    //     } else if addr < 0x4018 {
+    //         // APU
+    //     } else {
+    //         self.mapper.write_byte(addr, val);
+    //     }
+    // }
 }

@@ -1,11 +1,7 @@
-use crate::cpu::opcodes::AddressingMode;
-
-use super::opcodes::{INST_ADDR_MODES, INST_CYCLES, INST_LENGTHS, INST_NAMES};
-
 use super::memory::Memory;
+use super::opcodes::{INST_ADDR_MODES, INST_CYCLES, INST_LENGTHS, INST_NAMES};
 use super::CPU;
-use std::cmp::Ordering;
-use std::fmt::Binary;
+use crate::cpu::opcodes::AddressingMode;
 
 impl CPU {
     pub fn step(&mut self) -> u16 {
@@ -195,7 +191,7 @@ impl CPU {
             0x7E => self.ror_abs_x(),
 
             _ => {
-                panic!("Unknown opcode: {op_code:#X}");
+                panic!("Unknown opcode: ${op_code:02X}, PC: ${:04X}", self.pc);
             }
         }
 
@@ -261,7 +257,6 @@ impl CPU {
             };
 
             let raw_inst = format!("{op_code:02X} {formatted_args}");
-
             let disasm_inst = format!("{inst_name} {args}",);
 
             let regs = format!(
@@ -274,7 +269,7 @@ impl CPU {
             );
 
             println!(
-                "{:04X}  {raw_inst: <8}  {disasm_inst: <10}  {regs}",
+                "{:04X}  {raw_inst: <8}  {disasm_inst: <12}  {regs}",
                 self.pc
             );
         }
@@ -429,7 +424,7 @@ impl CPU {
 
     #[inline]
     fn sta_zp_x(&mut self) {
-        let addr = self.zero_page_x() as u16;
+        let addr = self.zero_page_x();
         self.sta(addr);
     }
 
@@ -477,7 +472,7 @@ impl CPU {
 
     #[inline]
     fn stx_zp_y(&mut self) {
-        let addr = self.zero_page_y() as u16;
+        let addr = self.zero_page_y();
         self.stx(addr);
     }
 
@@ -883,7 +878,7 @@ impl CPU {
 
     #[inline]
     fn asl_zp_x(&mut self) {
-        let addr = self.zero_page_x() as u16;
+        let addr = self.zero_page_x();
         self.asl(addr);
     }
 
@@ -926,7 +921,7 @@ impl CPU {
 
     #[inline]
     fn lsr_zp_x(&mut self) {
-        let addr = self.zero_page_x() as u16;
+        let addr = self.zero_page_x();
         self.lsr(addr);
     }
 
@@ -959,7 +954,7 @@ impl CPU {
 
     #[inline]
     fn inc_zp_x(&mut self) {
-        let addr = self.zero_page_x() as u16;
+        let addr = self.zero_page_x();
         self.inc(addr);
     }
 
@@ -1010,7 +1005,7 @@ impl CPU {
 
     #[inline]
     fn dec_zp_x(&mut self) {
-        let addr = self.zero_page_x() as u16;
+        let addr = self.zero_page_x();
         self.dec(addr);
     }
 
@@ -1444,7 +1439,7 @@ impl CPU {
 
     #[inline]
     fn rol_zp_x(&mut self) {
-        let addr = self.zero_page_x() as u16;
+        let addr = self.zero_page_x();
         self.rol(addr);
     }
 
@@ -1501,7 +1496,7 @@ impl CPU {
 
     #[inline]
     fn ror_zp_x(&mut self) {
-        let addr = self.zero_page_x() as u16;
+        let addr = self.zero_page_x();
         self.ror(addr);
     }
 
