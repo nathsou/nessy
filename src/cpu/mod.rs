@@ -5,6 +5,8 @@ pub mod memory;
 mod opcodes;
 pub mod rom;
 
+use bitflags::bitflags;
+
 use self::memory::Memory;
 use self::rom::ROM;
 use super::bus::Bus;
@@ -13,6 +15,44 @@ use std::fmt;
 const RESET_VECTOR: u16 = 0xfffc;
 const STACK_START: u16 = 0x100;
 const STACK_TOP: u8 = 0xfd;
+const DEFAULT_STATUS_STATE: u8 = 0b0010_0100;
+
+// 7  bit  0
+// ---- ----
+// NVss DIZC
+// |||| ||||
+// |||| |||+- Carry
+// |||| ||+-- Zero
+// |||| |+--- Interrupt Disable
+// |||| +---- Decimal
+// ||++------ No CPU effect, see: the B flag
+// |+-------- Overflow
+// +--------- Negative
+
+bitflags! {
+    pub struct Status: u8 {
+        const CARRY = 0b0000_0001;
+        const ZERO = 0b0000_0010;
+        const INTERRUPT_DISABLE = 0b0000_0100;
+        const DECIMAL = 0b0000_1000;
+        const BREAK1 = 0b0001_0000;
+        const BREAK2 = 0b0010_0000;
+        const OVERFLOW = 0b0100_0000;
+        const NEGATIVE = 0b1000_0000;
+    }
+}
+
+impl Status {
+    fn update(&mut self, value: u8) {
+        *self.0.bits_mut() = value;
+    }
+}
+
+impl Status {
+    fn new() -> Self {
+        Status::from_bits_truncate(DEFAULT_STATUS_STATE)
+    }
+}
 
 // Represents the state of a MOS 6502 CPU
 #[allow(clippy::upper_case_acronyms)]
@@ -23,14 +63,7 @@ pub struct CPU {
     pub pc: u16,
     sp: u8,
     cycles: u16,
-    negative_flag: bool,
-    overflow_flag: bool,
-    dec_mode_flag: bool,
-    break_command_flag1: bool,
-    break_command_flag2: bool,
-    interrupt_disable_flag: bool,
-    zero_flag: bool,
-    carry_flag: bool,
+    status: Status,
     pub bus: Bus,
 }
 
@@ -43,14 +76,7 @@ impl CPU {
             pc: bus.read_word(RESET_VECTOR),
             sp: STACK_TOP,
             cycles: 0,
-            carry_flag: false,
-            zero_flag: false,
-            interrupt_disable_flag: true,
-            dec_mode_flag: false,
-            break_command_flag1: false,
-            break_command_flag2: true,
-            overflow_flag: false,
-            negative_flag: false,
+            status: Status::new(),
             bus,
         }
     }
@@ -61,14 +87,7 @@ impl CPU {
         self.y = 0;
         self.sp = STACK_TOP;
         self.cycles = 0;
-        self.carry_flag = false;
-        self.zero_flag = false;
-        self.interrupt_disable_flag = true;
-        self.dec_mode_flag = false;
-        self.break_command_flag1 = false;
-        self.break_command_flag2 = true;
-        self.overflow_flag = false;
-        self.negative_flag = false;
+        self.status.update(DEFAULT_STATUS_STATE);
         self.pc = self.bus.read_word(RESET_VECTOR);
     }
 
@@ -250,12 +269,12 @@ impl CPU {
 
     #[inline]
     fn toggle_zero_flag(&mut self, val: u8) {
-        self.zero_flag = val == 0;
+        self.status.set(Status::ZERO, val == 0);
     }
 
     #[inline]
     fn toggle_neg_flag(&mut self, val: u8) {
-        self.negative_flag = val >> 7 == 1;
+        self.status.set(Status::NEGATIVE, val >> 7 == 1);
     }
 
     #[inline]
@@ -264,50 +283,8 @@ impl CPU {
         self.toggle_zero_flag(val);
     }
 
-    // Flags utils
-    fn flags_to_u8(&self) -> u8 {
-        let mut flags = 0;
-        if self.carry_flag {
-            flags |= 0b00000001;
-        }
-        if self.zero_flag {
-            flags |= 0b00000010;
-        }
-        if self.interrupt_disable_flag {
-            flags |= 0b00000100;
-        }
-        if self.dec_mode_flag {
-            flags |= 0b00001000;
-        }
-        if self.break_command_flag1 {
-            flags |= 0b00010000;
-        }
-        if self.break_command_flag2 {
-            flags |= 0b00100000;
-        }
-        if self.overflow_flag {
-            flags |= 0b01000000;
-        }
-        if self.negative_flag {
-            flags |= 0b10000000;
-        }
-
-        flags
-    }
-
-    fn set_flags_from_u8(&mut self, flags: u8) {
-        self.carry_flag = flags & 1 == 1;
-        self.zero_flag = (flags >> 1) & 1 == 1;
-        self.interrupt_disable_flag = (flags >> 2) & 1 == 1;
-        self.dec_mode_flag = (flags >> 3) & 1 == 1;
-        self.break_command_flag1 = (flags >> 4) & 1 == 1;
-        self.break_command_flag2 = (flags >> 5) & 1 == 1;
-        self.overflow_flag = (flags >> 6) & 1 == 1;
-        self.negative_flag = (flags >> 7) & 1 == 1;
-    }
-
     fn flags_to_str(&self) -> String {
-        let flags = self.flags_to_u8();
+        let flags = self.status.bits();
         let mut flags_str = ['N', 'V', '_', 'B', 'D', 'I', 'Z', 'C'];
         let mut curr_flag = 1u8;
 
@@ -345,7 +322,7 @@ impl fmt::Debug for CPU {
             self.a,
             self.x,
             self.y,
-            self.flags_to_u8(),
+            self.status.bits(),
             self.sp,
         )
     }

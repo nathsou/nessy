@@ -1,12 +1,22 @@
 use super::memory::Memory;
 use super::opcodes::{INST_ADDR_MODES, INST_CYCLES, INST_LENGTHS, INST_NAMES};
-use super::CPU;
+use super::{Status, CPU};
+use crate::bus::Interrupt;
 use crate::cpu::opcodes::AddressingMode;
+
+const NMI_VECTOR: u16 = 0xfffa;
+const IRQ_VECTOR: u16 = 0xfffe;
 
 impl CPU {
     pub fn step(&mut self) -> u16 {
         self.cycles = 0;
         let op_code = self.next_byte();
+
+        match self.bus.pull_interrupt_status() {
+            Interrupt::None => {}
+            Interrupt::IRQ => self.irq(),
+            Interrupt::NMI => self.nmi(),
+        }
 
         match op_code {
             0x00 => self.brk(),
@@ -264,7 +274,7 @@ impl CPU {
                 self.a,
                 self.x,
                 self.y,
-                self.flags_to_u8(),
+                self.status.bits(),
                 self.sp
             );
 
@@ -275,6 +285,27 @@ impl CPU {
         }
 
         self.step()
+    }
+
+    // interrupts
+    fn brk(&mut self) {
+        self.push_word(self.pc);
+        self.php();
+        self.sei();
+        self.pc = self.bus.read_word(IRQ_VECTOR);
+    }
+
+    fn nmi(&mut self) {
+        self.push_word(self.pc);
+        self.php();
+        self.sei();
+        self.pc = self.bus.read_word(NMI_VECTOR);
+        self.cycles += 7;
+    }
+
+    fn irq(&mut self) {
+        self.brk();
+        self.cycles += 7;
     }
 
     // NOP: No Operation
@@ -509,16 +540,17 @@ impl CPU {
     // ADC
     #[inline]
     fn adc(&mut self, val: u8) {
-        let val_carry = if self.carry_flag {
+        let val_carry = if self.status.contains(Status::CARRY) {
             val.wrapping_add(1)
         } else {
             val
         };
 
         let (sum, carry) = self.a.overflowing_add(val_carry);
-        self.carry_flag = carry;
+        self.status.set(Status::CARRY, carry);
         // http://www.6502.org/tutorials/vflag.html
-        self.overflow_flag = (val ^ sum) & (sum ^ self.a) & 0x80 != 0;
+        self.status
+            .set(Status::OVERFLOW, (val ^ sum) & (sum ^ self.a) & 0x80 != 0);
         self.a = sum;
         self.toggle_nz(sum);
     }
@@ -574,7 +606,7 @@ impl CPU {
     // SBC - Subtract with Carry
     #[inline]
     fn sbc(&mut self, val: u8) {
-        let sub = if !self.carry_flag {
+        let sub = if !self.status.contains(Status::CARRY) {
             val.wrapping_add(1)
         } else {
             val
@@ -582,10 +614,13 @@ impl CPU {
 
         let (sum, carried) = self.a.overflowing_sub(sub);
 
-        self.overflow_flag = (self.a ^ val) & (self.a ^ sum) & 0x80 == 0x80;
+        self.status.set(
+            Status::OVERFLOW,
+            (self.a ^ val) & (self.a ^ sum) & 0x80 == 0x80,
+        );
 
         self.a = sum;
-        self.carry_flag = !carried;
+        self.status.set(Status::CARRY, !carried);
         self.toggle_nz(sum);
     }
 
@@ -855,7 +890,7 @@ impl CPU {
     #[inline]
     fn asl(&mut self, addr: u16) {
         let mut val = self.bus.read_byte(addr);
-        self.carry_flag = val & 128 == 128;
+        self.status.set(Status::CARRY, val & 128 == 128);
         val <<= 1;
         self.bus.write_byte(addr, val);
         self.toggle_nz(val);
@@ -864,7 +899,7 @@ impl CPU {
     #[inline]
     fn asl_acc(&mut self) {
         let mut val = self.a;
-        self.carry_flag = val & 128 == 128;
+        self.status.set(Status::CARRY, val & 128 == 128);
         val <<= 1;
         self.a = val;
         self.toggle_nz(val);
@@ -898,7 +933,7 @@ impl CPU {
     #[inline]
     fn lsr(&mut self, addr: u16) {
         let val = self.bus.read_byte(addr);
-        self.carry_flag = val & 1 == 1;
+        self.status.set(Status::CARRY, val & 1 == 1);
         let val = val >> 1;
         self.bus.write_byte(addr, val);
         self.toggle_nz(val);
@@ -907,7 +942,7 @@ impl CPU {
     #[inline]
     fn lsr_acc(&mut self) {
         let mut val = self.a;
-        self.carry_flag = val & 1 == 1;
+        self.status.set(Status::CARRY, val & 1 == 1);
         val >>= 1;
         self.a = val;
         self.toggle_nz(val);
@@ -1087,7 +1122,7 @@ impl CPU {
     // BCS - Branch if Carry Clear
     #[inline]
     fn bcc_rel(&mut self) {
-        if !self.carry_flag {
+        if !self.status.contains(Status::CARRY) {
             self.branch_rel();
         } else {
             self.pc += 1;
@@ -1097,7 +1132,7 @@ impl CPU {
     // BCS - Branch if Carry Set
     #[inline]
     fn bcs_rel(&mut self) {
-        if self.carry_flag {
+        if self.status.contains(Status::CARRY) {
             self.branch_rel();
         } else {
             self.pc += 1;
@@ -1107,7 +1142,7 @@ impl CPU {
     // BEQ - Branch if Equal
     #[inline]
     fn beq_rel(&mut self) {
-        if self.zero_flag {
+        if self.status.contains(Status::ZERO) {
             self.branch_rel();
         } else {
             self.pc += 1;
@@ -1117,7 +1152,7 @@ impl CPU {
     // BNE - Branch if Not Equal
     #[inline]
     fn bne_rel(&mut self) {
-        if !self.zero_flag {
+        if !self.status.contains(Status::ZERO) {
             self.branch_rel();
         } else {
             self.pc += 1;
@@ -1127,7 +1162,7 @@ impl CPU {
     // BPL - Branch if Positive
     #[inline]
     fn bpl_rel(&mut self) {
-        if !self.negative_flag {
+        if !self.status.contains(Status::NEGATIVE) {
             self.branch_rel();
         } else {
             self.pc += 1;
@@ -1137,7 +1172,7 @@ impl CPU {
     // BMI - Branch if Minus
     #[inline]
     fn bmi_rel(&mut self) {
-        if self.negative_flag {
+        if self.status.contains(Status::NEGATIVE) {
             self.branch_rel();
         } else {
             self.pc += 1;
@@ -1147,7 +1182,7 @@ impl CPU {
     // BVC - Branch if Overflow Clear
     #[inline]
     fn bvc_rel(&mut self) {
-        if !self.overflow_flag {
+        if !self.status.contains(Status::OVERFLOW) {
             self.branch_rel();
         } else {
             self.pc += 1;
@@ -1157,7 +1192,7 @@ impl CPU {
     // BVS - Branch if Overflow Set
     #[inline]
     fn bvs_rel(&mut self) {
-        if self.overflow_flag {
+        if self.status.contains(Status::OVERFLOW) {
             self.branch_rel();
         } else {
             self.pc += 1;
@@ -1167,48 +1202,48 @@ impl CPU {
     // CLC - Clear Carry Flag
     #[inline]
     fn clc(&mut self) {
-        self.carry_flag = false;
+        self.status.remove(Status::CARRY);
     }
 
     // SEC - Set Carry Flag
     #[inline]
     fn sec(&mut self) {
-        self.carry_flag = true;
+        self.status.insert(Status::CARRY);
     }
 
     // CLD - Clear Decimal Flag
     #[inline]
     fn cld(&mut self) {
-        self.dec_mode_flag = false;
+        self.status.remove(Status::DECIMAL);
     }
 
     // SED - Set Decimal Flag
     #[inline]
     fn sed(&mut self) {
-        self.dec_mode_flag = true;
+        self.status.insert(Status::DECIMAL);
     }
 
     // CLI - Clear Interrupt Disable
     #[inline]
     fn cli(&mut self) {
-        self.interrupt_disable_flag = false;
+        self.status.remove(Status::INTERRUPT_DISABLE);
     }
 
     // SEI - Set Interrupt Disable
     #[inline]
     fn sei(&mut self) {
-        self.interrupt_disable_flag = true;
+        self.status.insert(Status::INTERRUPT_DISABLE);
     }
 
     // CLV - Clear Overflow Flag
     #[inline]
     fn clv(&mut self) {
-        self.overflow_flag = false;
+        self.status.remove(Status::OVERFLOW);
     }
 
     #[inline]
     fn cmp_vals(&mut self, a: u8, b: u8) {
-        self.carry_flag = a >= b;
+        self.status.set(Status::CARRY, a >= b);
         let res = a.wrapping_sub(b);
         self.toggle_nz(res);
     }
@@ -1336,7 +1371,7 @@ impl CPU {
     #[inline]
     fn php(&mut self) {
         // set the break flags
-        let status_flags = self.flags_to_u8() | 0b110000;
+        let status_flags = self.status.bits() | Status::BREAK1.bits() | Status::BREAK2.bits();
         self.push(status_flags);
     }
 
@@ -1345,24 +1380,7 @@ impl CPU {
         let mut flags = self.pull();
         flags &= 0b11101111;
         flags |= 0b00100000;
-        self.set_flags_from_u8(flags);
-    }
-
-    // BRK - Force Interrupt
-    #[inline]
-    fn brk(&mut self) {
-        let pc_high = (self.pc >> 8) as u8;
-        let pc_low = (self.pc & 0xff) as u8;
-
-        // push the program counter and status flags to the stack
-        self.push(pc_high);
-        self.push(pc_low);
-        self.php();
-
-        // load the IRQ interrupt vector into the PC
-        let addr = self.bus.read_word(0xfffe);
-        let addr = self.bus.read_word(addr);
-        self.pc = addr;
+        self.status.update(flags);
     }
 
     // JSR - Jump to Subroutine
@@ -1391,9 +1409,9 @@ impl CPU {
     #[inline]
     fn bit(&mut self, val: u8) {
         let res = self.a & val;
-        self.zero_flag = res == 0;
-        self.overflow_flag = val & 0x40 != 0;
-        self.negative_flag = val & 0x80 != 0;
+        self.status.set(Status::ZERO, res == 0);
+        self.status.set(Status::OVERFLOW, val & 0x40 != 0);
+        self.status.set(Status::NEGATIVE, val & 0x80 != 0);
     }
 
     #[inline]
@@ -1414,8 +1432,12 @@ impl CPU {
         let mut val = self.bus.read_byte(addr);
         let next_carry = (val >> 7) == 1;
         val <<= 1;
-        val |= if self.carry_flag { 1 } else { 0 };
-        self.carry_flag = next_carry;
+        val |= if self.status.contains(Status::CARRY) {
+            1
+        } else {
+            0
+        };
+        self.status.set(Status::CARRY, next_carry);
         self.bus.write_byte(addr, val);
         self.toggle_nz(val);
     }
@@ -1425,8 +1447,12 @@ impl CPU {
         let mut a = self.a;
         let next_carry = a >> 7 == 1;
         a <<= 1;
-        a |= if self.carry_flag { 1 } else { 0 };
-        self.carry_flag = next_carry;
+        a |= if self.status.contains(Status::CARRY) {
+            1
+        } else {
+            0
+        };
+        self.status.set(Status::CARRY, next_carry);
         self.a = a;
         self.toggle_nz(a);
     }
@@ -1459,8 +1485,8 @@ impl CPU {
     #[inline]
     fn ror(&mut self, addr: u16) {
         let mut val = self.bus.read_byte(addr);
-        let old_carry = self.carry_flag;
-        self.carry_flag = val & 1 == 1;
+        let old_carry = self.status.contains(Status::CARRY);
+        self.status.set(Status::CARRY, val & 1 == 1);
 
         val >>= 1;
 
@@ -1475,8 +1501,8 @@ impl CPU {
     #[inline]
     fn ror_acc(&mut self) {
         let mut a = self.a;
-        let old_carry = self.carry_flag;
-        self.carry_flag = a & 1 == 1;
+        let old_carry = self.status.contains(Status::CARRY);
+        self.status.set(Status::CARRY, a & 1 == 1);
 
         a >>= 1;
 

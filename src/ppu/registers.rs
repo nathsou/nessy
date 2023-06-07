@@ -52,14 +52,14 @@ impl Registers {
 bitflags! {
     #[derive(Clone, Copy)]
     pub struct PPU_CTRL: u8 {
-        const NAMETABLE1              = 0b00000001;
-        const NAMETABLE2              = 0b00000010;
-        const VRAM_ADD_INCREMENT      = 0b00000100;
-        const SPRITE_PATTERN_ADDR     = 0b00001000;
-        const BACKROUND_PATTERN_ADDR  = 0b00010000;
-        const SPRITE_SIZE             = 0b00100000;
-        const MASTER_SLAVE_SELECT     = 0b01000000;
-        const GENERATE_NMI            = 0b10000000;
+        const NAMETABLE1              = 0b0000_0001;
+        const NAMETABLE2              = 0b0000_0010;
+        const VRAM_ADD_INCREMENT      = 0b0000_0100;
+        const SPRITE_PATTERN_ADDR     = 0b0000_1000;
+        const BACKROUND_PATTERN_ADDR  = 0b0001_0000;
+        const SPRITE_SIZE             = 0b0010_0000;
+        const MASTER_SLAVE_SELECT     = 0b0100_0000;
+        const GENERATE_NMI            = 0b1000_0000;
     }
 }
 

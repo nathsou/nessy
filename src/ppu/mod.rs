@@ -3,7 +3,7 @@ mod screen;
 use crate::cpu::rom::{Mirroring, ROM};
 use std::rc::Rc;
 
-use self::registers::{Registers, PPU_STATUS};
+use self::registers::{Registers, PPU_CTRL, PPU_STATUS};
 use self::screen::Screen;
 
 #[allow(clippy::upper_case_acronyms)]
@@ -15,8 +15,9 @@ pub struct PPU {
     attributes: [u8; 64 * 4],
     screen: Screen,
     cycle: usize,
-    scanline: usize,
+    scanline: u16,
     data_buffer: u8,
+    nmi_triggered: bool,
 }
 
 impl PPU {
@@ -31,7 +32,36 @@ impl PPU {
             cycle: 0,
             scanline: 0,
             data_buffer: 0,
+            nmi_triggered: false,
         }
+    }
+
+    pub fn step(&mut self) {
+        self.cycle += 1;
+
+        if self.cycle == 341 {
+            self.cycle = 0;
+            self.scanline += 1;
+
+            // VBlank
+            if self.scanline == 241 {
+                if self.regs.ctrl.contains(PPU_CTRL::GENERATE_NMI) {
+                    self.regs.status.set(PPU_STATUS::VBLANK_STARTED, true);
+                    self.nmi_triggered = true;
+                }
+            }
+
+            if self.scanline == 262 {
+                self.scanline = 0;
+                self.regs.status.set(PPU_STATUS::VBLANK_STARTED, false);
+            }
+        }
+    }
+
+    pub fn pull_nmi_status(&mut self) -> bool {
+        let triggered = self.nmi_triggered;
+        self.nmi_triggered = false;
+        triggered
     }
 
     fn increment_vram_addr(&mut self) {
@@ -57,6 +87,18 @@ impl PPU {
                 _ => unreachable!(),
             },
             Mirroring::FourScreen => addr - 0x2000,
+        }
+    }
+
+    pub fn write_ctrl_reg(&mut self, data: u8) {
+        // the PPU immediately triggers a NMI when the VBlank flag transitions from 0 to 1 during VBlank
+        let prev_nmi_status = self.regs.ctrl.contains(PPU_CTRL::GENERATE_NMI);
+        self.regs.ctrl.update(data);
+        let new_nmi_status = self.regs.ctrl.contains(PPU_CTRL::GENERATE_NMI);
+        let in_vblank = self.regs.status.contains(PPU_STATUS::VBLANK_STARTED);
+
+        if in_vblank && !prev_nmi_status && new_nmi_status {
+            self.nmi_triggered = true;
         }
     }
 

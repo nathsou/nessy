@@ -24,6 +24,12 @@ impl Memory for RAM {
     }
 }
 
+pub enum Interrupt {
+    None,
+    NMI,
+    IRQ,
+}
+
 pub struct Bus {
     pub ram: RAM,
     pub rom: Rc<ROM>,
@@ -40,6 +46,21 @@ impl Bus {
             ppu: PPU::new(rc.clone()),
             mapper: ROM::get_mapper(rc.clone()).unwrap(),
             rom: rc,
+        }
+    }
+
+    pub fn pull_interrupt_status(&mut self) -> Interrupt {
+        if self.ppu.pull_nmi_status() {
+            Interrupt::NMI
+        } else {
+            Interrupt::None
+        }
+    }
+
+    pub fn advance_ppu(&mut self, cpu_cycles: usize) {
+        let ppu_cycles = cpu_cycles * 3;
+        for _ in 0..ppu_cycles {
+            self.ppu.step();
         }
     }
 }
@@ -71,7 +92,7 @@ impl Memory for Bus {
     fn write_byte(&mut self, addr: u16, val: u8) {
         match addr {
             0x0000..=0x1fff => self.ram.write_byte(addr, val),
-            0x2000 => self.ppu.regs.ctrl.update(val),
+            0x2000 => self.ppu.write_ctrl_reg(val),
             0x2001 => self.ppu.regs.mask.val = val,
             0x2002 => panic!("PPU status register is read-only"),
             0x2003 => self.ppu.regs.oam_addr = val,

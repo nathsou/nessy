@@ -30,6 +30,8 @@ fn test_nestest_dump() {
             break;
         }
 
+        println!("{log_line}");
+
         let expected_pc = &log_line[0..4];
         let actual_pc = format!("{:04X}", cpu.pc);
         assert_eq!(expected_pc, actual_pc, "PC mismatch");
