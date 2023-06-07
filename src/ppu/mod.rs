@@ -1,83 +1,18 @@
 mod registers;
 mod screen;
+use crate::cpu::rom::{Mirroring, ROM};
+use std::rc::Rc;
 
-use self::registers::PPU_Registers;
+use self::registers::{Registers, PPU_STATUS};
 use self::screen::Screen;
-use super::cpu::memory::{MappedMemory, Memory};
-
-#[allow(clippy::upper_case_acronyms)]
-struct VRAM {
-    nametables: [u8; 2 * 1024],
-    palette: [u8; 32],
-}
-
-impl VRAM {
-    pub fn new() -> Self {
-        VRAM {
-            nametables: [0; 2 * 1024],
-            palette: [0; 32],
-        }
-    }
-}
-
-impl MappedMemory for VRAM {
-    fn read_byte(&self, addr: u16, rom: &mut Box<dyn Memory>) -> u8 {
-        if addr < 0x2000 {
-            // pattern table
-            rom.read_byte(addr)
-        } else if addr < 0x3f00 {
-            self.nametables[(addr & 2047) as usize]
-        // TODO: nametable mirroring
-        } else if addr < 0x4000 {
-            self.palette[(addr & 31) as usize]
-        } else {
-            panic!("incorred VRAM read address: {addr}")
-        }
-    }
-
-    fn write_byte(&mut self, addr: u16, val: u8, rom: &mut Box<dyn Memory>) {
-        if addr < 0x2000 {
-            // pattern table
-            rom.write_byte(addr, val);
-        } else if addr < 0x3f00 {
-            self.nametables[(addr & 2047) as usize] = val;
-        // TODO: nametable mirroring
-        } else if addr < 0x4000 {
-            self.palette[(addr & 31) as usize] = val;
-        } else {
-            panic!("incorred VRAM write address: {}", addr);
-        }
-    }
-}
-
-// https://wiki.nesdev.com/w/index.php/PPU_OAM
-struct OAM {
-    attributes: [u8; 64 * 4],
-}
-
-impl OAM {
-    pub fn new() -> Self {
-        OAM {
-            attributes: [0; 64 * 4],
-        }
-    }
-}
-
-impl Memory for OAM {
-    fn read_byte(&self, addr: u16) -> u8 {
-        self.attributes[addr as usize]
-    }
-
-    fn write_byte(&mut self, addr: u16, val: u8) {
-        self.attributes[addr as usize] = val;
-    }
-}
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
-    regs: PPU_Registers,
-    vram: VRAM,
-    oam: OAM,
+    rom: Rc<ROM>,
+    pub regs: Registers,
+    vram: [u8; 2 * 1024],
+    palette: [u8; 32],
+    attributes: [u8; 64 * 4],
     screen: Screen,
     cycle: usize,
     scanline: usize,
@@ -85,11 +20,13 @@ pub struct PPU {
 }
 
 impl PPU {
-    pub fn new() -> Self {
+    pub fn new(rom: Rc<ROM>) -> Self {
         PPU {
-            regs: PPU_Registers::new(),
-            vram: VRAM::new(),
-            oam: OAM::new(),
+            rom,
+            regs: Registers::new(),
+            vram: [0; 2 * 1024],
+            palette: [0; 32],
+            attributes: [0; 64 * 4],
             screen: Screen::new(),
             cycle: 0,
             scanline: 0,
@@ -97,89 +34,101 @@ impl PPU {
         }
     }
 
-    #[inline]
-    fn mirrored_addr(addr: u16) -> u16 {
-        addr & 0b0010_0000_0000_0111
+    fn increment_vram_addr(&mut self) {
+        self.regs
+            .addr
+            .increment(self.regs.ctrl.vram_addr_increment())
     }
 
-    pub fn read_byte(&mut self, addr: u16, rom: &mut Box<dyn Memory>) -> u8 {
-        match PPU::mirrored_addr(addr) {
-            0 => self.regs.ctrl.val,
-            1 => self.regs.mask.val,
-            2 => self.regs.status.val,
-            3 => self.oam.read_byte(self.regs.oam_addr as u16),
-            4 => unimplemented!("OAM read"),
-            5 => 0, // PPUSCROLL is write-only
-            6 => 0, // PPUADDR is write-only
-            7 => self.read_ppu_data(rom),
-            _ => unreachable!(),
+    fn vram_mirrored_addr(&self, addr: u16) -> u16 {
+        match self.rom.mirroring {
+            Mirroring::Horizontal => match addr {
+                0x2000..=0x23ff => addr - 0x2000,        // A
+                0x2400..=0x27ff => addr - 0x2400,        // A
+                0x2800..=0x2bff => 1024 + addr - 0x2800, // B
+                0x2c00..=0x2fff => 1024 + addr - 0x2c00, // B
+                _ => unreachable!(),
+            },
+            Mirroring::Vertical => match addr {
+                0x2000..=0x23ff => addr - 0x2000,        // A
+                0x2400..=0x27ff => 1024 + addr - 0x2400, // B
+                0x2800..=0x2bff => addr - 0x2800,        // A
+                0x2c00..=0x2fff => 1024 + addr - 0x2c00, // B
+                _ => unreachable!(),
+            },
+            Mirroring::FourScreen => addr - 0x2000,
         }
     }
 
-    pub fn write_byte(&mut self, addr: u16, val: u8, rom: &mut Box<dyn Memory>) {
-        match PPU::mirrored_addr(addr) {
-            0 => self.regs.ctrl.val = val,
-            1 => self.regs.mask.val = val,
-            2 => {} // read-only,
-            3 => self.regs.oam_addr = val,
-            4 => self.write_oam_data(val),
-            5 => self.write_ppu_scroll(val),
-            6 => self.write_ppu_addr(val),
-            7 => self.write_ppu_data(val, rom),
-            _ => unreachable!(),
-        };
-    }
-
-    fn read_ppu_data(&mut self, rom: &mut Box<dyn Memory>) -> u8 {
+    pub fn read_data_reg(&mut self) -> u8 {
         let addr = self.regs.addr.addr;
-        let val = self.vram.read_byte(addr, rom);
-        // increment vram address
-        self.regs.addr.addr += self.regs.ctrl.vram_addr_increment();
+        self.increment_vram_addr();
 
-        if addr < 0x3f00 {
-            // https://wiki.nesdev.com/w/index.php/PPU_registers#PPUDATA
-            let tmp = self.data_buffer;
-            self.data_buffer = val;
-            tmp
-        } else {
-            val
+        match addr {
+            0x0000..=0x1fff => {
+                let res = self.data_buffer;
+                self.data_buffer = self.rom.read_chr(addr);
+                res
+            }
+            0x2000..=0x2fff => {
+                let res = self.data_buffer;
+                self.data_buffer = self.vram[self.vram_mirrored_addr(addr) as usize];
+                res
+            }
+            0x3000..=0x3eff => unreachable!(),
+            0x3f00..=0x3fff => self.palette[addr as usize - 0x3f00],
+            _ => unreachable!(),
         }
     }
 
-    fn write_oam_data(&mut self, val: u8) {
-        self.oam.write_byte(self.regs.oam_addr as u16, val);
+    pub fn write_data_reg(&mut self, data: u8) {
+        let addr = self.regs.addr.addr;
+
+        match addr {
+            0x0000..=0x1fff => panic!("cannot write to CHR ROM"),
+            0x2000..=0x2fff => {
+                self.vram[self.vram_mirrored_addr(addr) as usize] = data;
+            }
+            0x3000..=0x3eff => unreachable!(),
+            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => {
+                self.palette[addr as usize - 0x3f10] = data;
+            }
+            0x3f00..=0x3fff => {
+                self.palette[addr as usize - 0x3f00] = data;
+            }
+            _ => {
+                println!("ignoring write to {addr:04X}");
+            }
+        }
+
+        self.increment_vram_addr();
+    }
+
+    pub fn read_oam_data_reg(&mut self) -> u8 {
+        self.regs.oam_data[self.regs.oam_addr as usize]
+    }
+
+    pub fn write_oam_data_reg(&mut self, data: u8) {
+        self.regs.oam_data[self.regs.oam_addr as usize] = data;
         self.regs.oam_addr = self.regs.oam_addr.wrapping_add(1);
     }
 
-    fn write_ppu_addr(&mut self, val: u8) {
-        match self.regs.addr.is_high {
-            true => {
-                self.regs.addr.addr = (self.regs.addr.addr & 0x00ff) | ((val as u16) << 8);
-            }
-            false => {
-                self.regs.addr.addr = (self.regs.addr.addr & 0xff00) | (val as u16);
-            }
-        };
-
-        self.regs.addr.is_high = !self.regs.addr.is_high;
+    pub fn read_status_reg(&mut self) -> u8 {
+        let res = self.regs.status.bits();
+        self.regs.status.remove(PPU_STATUS::VBLANK_STARTED);
+        // clear the address latch used by PPUSCROLL and PPUADDR
+        self.regs.scroll.is_x = true;
+        self.regs.addr.is_high = true;
+        res
     }
 
-    fn write_ppu_data(&mut self, val: u8, rom: &mut Box<dyn Memory>) {
-        let addr = self.regs.addr.addr;
-        self.vram.write_byte(addr, val, rom);
-        self.regs.addr.addr += self.regs.ctrl.vram_addr_increment();
+    #[inline]
+    pub fn write_scroll_reg(&mut self, data: u8) {
+        self.regs.scroll.write(data);
     }
 
-    fn write_ppu_scroll(&mut self, val: u8) {
-        match self.regs.scroll.is_x {
-            true => {
-                self.regs.scroll.x = val;
-            }
-            false => {
-                self.regs.scroll.y = val;
-            }
-        };
-
-        self.regs.scroll.is_x = !self.regs.scroll.is_x;
+    #[inline]
+    pub fn write_addr_reg(&mut self, data: u8) {
+        self.regs.addr.write(data);
     }
 }

@@ -1,9 +1,12 @@
-use super::mappers::basic::Basic;
 use super::mappers::nrom::NROM;
 use super::memory::Memory;
 use std::fs::File;
 use std::io;
 use std::io::prelude::Read;
+use std::rc::Rc;
+
+const PRG_ROM_PAGE_SIZE: usize = 16384;
+const CHR_ROM_PAGE_SIZE: usize = 8192;
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct ROM {
@@ -14,6 +17,8 @@ pub struct ROM {
     pub mapper: u8,
     pub battery: bool,
     pub trainer: bool,
+    pub prg_rom_start: usize,
+    pub chr_rom_start: usize,
 }
 
 #[derive(Debug)]
@@ -50,14 +55,25 @@ impl ROM {
             (false, false) => Mirroring::Horizontal,
         };
 
+        let battery = bytes[6] & 0b10 != 0;
+        let trainer = bytes[6] & 0b100 != 0;
+        let mapper = (bytes[7] & 0b1111_0000) | (bytes[6] >> 4);
+        let prg_rom_size = bytes[4];
+        let chr_rom_size = bytes[5];
+
+        let prg_rom_start = 16 + if trainer { 512 } else { 0 };
+        let chr_rom_start = prg_rom_start + (prg_rom_size as usize) * PRG_ROM_PAGE_SIZE;
+
         Ok(ROM {
-            prg_rom_size: bytes[4],
-            chr_rom_size: bytes[5],
+            prg_rom_size,
+            chr_rom_size,
             mirroring,
-            mapper: (bytes[7] & 0b1111_0000) | (bytes[6] >> 4),
-            battery: bytes[6] & 0b10 != 0,
-            trainer: bytes[6] & 0b100 != 0,
+            mapper,
+            battery,
+            trainer,
             bytes,
+            prg_rom_start,
+            chr_rom_start,
         })
     }
 
@@ -68,29 +84,15 @@ impl ROM {
         }
     }
 
-    pub fn from_program(prog: &[u8], start_addr: u16) -> ROM {
-        let mut bytes = vec![0; 0x10000];
-        bytes[(start_addr as usize)..((start_addr as usize) + prog.len())].copy_from_slice(prog);
-        bytes[0xfffc] = (start_addr & 0xff) as u8;
-        bytes[0xfffd] = ((start_addr >> 8) & 0xff) as u8;
-
-        ROM {
-            bytes,
-            prg_rom_size: 1,
-            chr_rom_size: 0,
-            mirroring: Mirroring::Horizontal,
-            mapper: 100,
-            battery: false,
-            trainer: false,
+    pub fn get_mapper(rom: Rc<ROM>) -> Result<Box<dyn Memory>, RomError> {
+        match rom.mapper {
+            0 => Ok(Box::new(NROM::new(rom))),
+            _ => Err(RomError::UnsupportedMapper(rom.mapper)),
         }
     }
 
-    pub fn get_mapper(self) -> Result<Box<dyn Memory>, RomError> {
-        match self.mapper {
-            0 => Ok(Box::new(NROM::new(self))),
-            100 => Ok(Box::new(Basic { rom: self })),
-            _ => Err(RomError::UnsupportedMapper(self.mapper)),
-        }
+    pub fn read_chr(&self, addr: u16) -> u8 {
+        self.bytes[0x10 + addr as usize]
     }
 }
 

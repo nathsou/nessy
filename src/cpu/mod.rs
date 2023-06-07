@@ -12,7 +12,7 @@ use std::fmt;
 
 const RESET_VECTOR: u16 = 0xfffc;
 const STACK_START: u16 = 0x100;
-const STACK_TOP: u8 = 0xff;
+const STACK_TOP: u8 = 0xfd;
 
 // Represents the state of a MOS 6502 CPU
 #[allow(clippy::upper_case_acronyms)]
@@ -35,7 +35,7 @@ pub struct CPU {
 }
 
 impl CPU {
-    pub fn new(bus: Bus) -> CPU {
+    pub fn new(mut bus: Bus) -> CPU {
         CPU {
             a: 0,
             x: 0,
@@ -322,13 +322,13 @@ impl CPU {
     }
 
     fn stack_to_str(&self) -> String {
-        let stack_len = (0xff - self.sp) as usize;
+        let stack_len = (STACK_TOP - self.sp) as u16;
 
         (0..stack_len)
             .map(|idx| {
                 format!(
                     "{:02X} ",
-                    self.bus.ram.ram[(0xffu8).wrapping_sub(idx as u8) as usize]
+                    self.bus.ram.ram[(STACK_START + STACK_TOP as u16).wrapping_sub(idx) as usize]
                 )
             })
             .collect::<String>()

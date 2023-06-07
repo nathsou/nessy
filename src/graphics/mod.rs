@@ -22,7 +22,7 @@ fn color_mapping(byte: u8) -> Color {
 
 fn render(
     canvas: &mut WindowCanvas,
-    cpu: &CPU,
+    cpu: &mut CPU,
     buf: &mut [u8; 32 * 32 * 3],
     texture: &mut Texture,
 ) {
