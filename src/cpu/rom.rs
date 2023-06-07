@@ -92,7 +92,7 @@ impl ROM {
     }
 
     pub fn read_chr(&self, addr: u16) -> u8 {
-        self.bytes[0x10 + addr as usize]
+        self.bytes[self.chr_rom_start + addr as usize]
     }
 }
 

@@ -1,21 +1,21 @@
-const WIDTH: u16 = 256;
-const HEIGHT: u16 = 240;
+const WIDTH: usize = 256;
+const HEIGHT: usize = 240;
 
 pub struct Screen {
-    pub pixels: [u8; WIDTH as usize * HEIGHT as usize * 3],
+    pub pixels: [u8; WIDTH * HEIGHT * 3],
 }
 
 impl Screen {
     pub fn new() -> Self {
         Screen {
-            pixels: [0; WIDTH as usize * HEIGHT as usize * 3],
+            pixels: [0; WIDTH * HEIGHT * 3],
         }
     }
 
-    pub fn set(&mut self, x: u16, y: u16, r: u8, g: u8, b: u8) {
-        let addr = (y * WIDTH + x) as usize;
-        self.pixels[addr] = r;
-        self.pixels[addr + 1] = g;
-        self.pixels[addr + 2] = b;
+    pub fn set(&mut self, x: usize, y: usize, color: (u8, u8, u8)) {
+        let addr = (y * WIDTH + x) * 3;
+        self.pixels[addr] = color.0;
+        self.pixels[addr + 1] = color.1;
+        self.pixels[addr + 2] = color.2;
     }
 }

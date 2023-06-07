@@ -5,6 +5,11 @@ mod ppu;
 use bus::Bus;
 use cpu::rom::ROM;
 use cpu::CPU;
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::pixels::PixelFormatEnum;
+
+const SCALE_FACTOR: usize = 2;
 
 fn main() {
     // let args = env::args().take(2).collect::<Vec<_>>();
@@ -14,6 +19,69 @@ fn main() {
     // } else {
     // let rom_path = &args[1];
     // let rom = ROM::from(rom_path).unwrap();
+
+    let rom = ROM::load("roms/PacMan.nes").unwrap();
+    let mut bus = Bus::new(rom);
+    bus.ppu.show_tile_bank(0);
+
+    // for x in 0..256 {
+    //     for y in 0..240 {
+    //         bus.ppu.screen.set(x, y, (255, 0, 0));
+    //     }
+    // }
+
+    let sdl_context = sdl2::init().unwrap();
+    let video_subsystem = sdl_context.video().unwrap();
+
+    let window = video_subsystem
+        .window(
+            "nessy",
+            (256 * SCALE_FACTOR) as u32,
+            (240 * SCALE_FACTOR) as u32,
+        )
+        .position_centered()
+        .build()
+        .expect("could not initialize video subsystem");
+
+    let mut canvas = window
+        .into_canvas()
+        .present_vsync()
+        .build()
+        .expect("could not make a canvas");
+
+    canvas
+        .set_scale(SCALE_FACTOR as f32, SCALE_FACTOR as f32)
+        .unwrap();
+
+    let creator = canvas.texture_creator();
+    let mut texture = creator
+        .create_texture_target(PixelFormatEnum::RGB24, 256, 240)
+        .unwrap();
+
+    let mut event_pump = sdl_context.event_pump().unwrap();
+
+    texture
+        .update(None, &bus.ppu.screen.pixels, 256 * 3)
+        .unwrap();
+
+    canvas.copy(&texture, None, None).unwrap();
+    canvas.present();
+
+    'running: loop {
+        // Handle events
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => {
+                    break 'running;
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 #[test]
