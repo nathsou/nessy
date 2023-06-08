@@ -6,6 +6,9 @@ use std::rc::Rc;
 use self::registers::{Registers, PPU_CTRL, PPU_STATUS};
 use self::screen::Screen;
 
+const PIXELS_PER_TILE: usize = 8;
+const TILES_PER_NAMETABLE_BYTE: usize = 4;
+
 #[rustfmt::skip]
 pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
    (0x80, 0x80, 0x80), (0x00, 0x3D, 0xA6), (0x00, 0x12, 0xB0), (0x44, 0x00, 0x96), (0xA1, 0x00, 0x5E),
@@ -58,68 +61,83 @@ impl PPU {
         self.regs.status.contains(PPU_STATUS::VBLANK_STARTED)
     }
 
-    pub fn render_tile(&mut self, bank: usize, nth: usize, x_offset: usize, y_offset: usize) {
+    pub fn render_tile(&mut self, bank: usize, nth: usize, tile_col: usize, tile_row: usize) {
         let bank_offset = bank * 0x1000;
         let tile_offset = nth * 16;
         let tile_start = self.rom.chr_rom_start + bank_offset + tile_offset;
         let tile_end = tile_start + 15;
         let tile = &self.rom.bytes[tile_start..=tile_end];
 
-        for y in 0..8 {
+        for y in 0..PIXELS_PER_TILE {
             let mut plane1 = tile[y];
             let mut plane2 = tile[y + 8];
 
-            for x in (0..8).rev() {
+            for x in (0..PIXELS_PER_TILE).rev() {
                 let bit0 = plane1 & 1;
                 let bit1 = plane2 & 1;
-                let color = (bit0 << 1) | bit1;
+                let color_idx = (bit1 << 1) | bit0;
 
                 plane1 >>= 1;
                 plane2 >>= 1;
 
-                let rgb = match color {
-                    0 => COLOR_PALETTE[0x01],
-                    1 => COLOR_PALETTE[0x23],
-                    2 => COLOR_PALETTE[0x27],
-                    3 => COLOR_PALETTE[0x30],
-                    _ => unreachable!(),
-                };
-
-                self.screen.set(x_offset + x, y_offset + y, rgb);
+                let rgb = self.background_color_at(tile_col, tile_row, color_idx as usize);
+                self.screen.set(
+                    tile_col * PIXELS_PER_TILE + x,
+                    tile_row * PIXELS_PER_TILE + y,
+                    rgb,
+                );
             }
         }
     }
 
-    pub fn show_tile_bank(&mut self, bank: usize) {
-        for x in 0..16 {
-            for y in 0..16 {
-                let nth = x + y * 16;
-                self.render_tile(bank, nth, x * 8, y * 8);
-            }
-        }
+    fn background_color_at(&self, tile_x: usize, tile_y: usize, idx: usize) -> (u8, u8, u8) {
+        let x = tile_x / TILES_PER_NAMETABLE_BYTE; // 4x4 tiles
+        let y = tile_y / TILES_PER_NAMETABLE_BYTE;
+        let nametable_idx = y * 8 + x; // 1 byte for color info of 4x4 tiles
+        let color_byte = self.vram[0x03c0 + nametable_idx];
+
+        let block_x = (tile_x % TILES_PER_NAMETABLE_BYTE) / 2;
+        let block_y = (tile_y % TILES_PER_NAMETABLE_BYTE) / 2;
+
+        let palette_offset = 1 + 4 * match (block_x, block_y) {
+            (0, 0) => color_byte & 0b11,
+            (1, 0) => (color_byte >> 2) & 0b11,
+            (0, 1) => (color_byte >> 4) & 0b11,
+            (1, 1) => (color_byte >> 6) & 0b11,
+            _ => unreachable!(),
+        } as usize;
+
+        COLOR_PALETTE[match idx {
+            0 => self.palette[0],
+            1 => self.palette[palette_offset],
+            2 => self.palette[palette_offset + 1],
+            3 => self.palette[palette_offset + 2],
+            _ => unreachable!(),
+        } as usize]
     }
 
     pub fn render_frame(&mut self) {
         let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
-        let chr_bank = if self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
-            1usize
-        } else {
+        let chr_bank: usize = if !self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
             0
+        } else {
+            1
         };
 
         for i in 0..0x03c0 {
             let tile_idx = self.vram[i] as usize;
-            let tile_x = i % 32;
-            let tile_y = i / 32;
-            self.render_tile(chr_bank, tile_idx, tile_x * 8, tile_y * 8);
+            let tile_col = i % 32;
+            let tile_row = i / 32;
+            self.render_tile(chr_bank, tile_idx, tile_col, tile_row);
         }
     }
 
-    pub fn step(&mut self) {
-        self.cycle += 1;
+    pub fn step(&mut self, cycles: usize) {
+        // catch up with the CPU
+        self.cycle += cycles;
 
-        if self.cycle == 341 {
-            self.cycle = 0;
+        if self.cycle >= 341 {
+            self.cycle -= 341;
             self.scanline += 1;
 
             // VBlank

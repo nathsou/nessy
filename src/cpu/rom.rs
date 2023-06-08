@@ -6,7 +6,6 @@ use std::io::prelude::Read;
 use std::rc::Rc;
 
 const PRG_ROM_PAGE_SIZE: usize = 16384;
-const CHR_ROM_PAGE_SIZE: usize = 8192;
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct ROM {
