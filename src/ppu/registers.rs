@@ -63,6 +63,18 @@ bitflags! {
     }
 }
 
+impl PPU_CTRL {
+    pub fn base_nametable_addr(&self) -> u16 {
+        match self.bits() & 0b11 {
+            0 => 0x2000,
+            1 => 0x2400,
+            2 => 0x2800,
+            3 => 0x2c00,
+            _ => unreachable!(),
+        }
+    }
+}
+
 pub enum SpriteSize {
     Sprite8x8,
     Sprite8x16,

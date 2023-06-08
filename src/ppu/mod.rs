@@ -7,7 +7,6 @@ use self::registers::{Registers, PPU_CTRL, PPU_STATUS};
 use self::screen::Screen;
 
 #[rustfmt::skip]
-
 pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
    (0x80, 0x80, 0x80), (0x00, 0x3D, 0xA6), (0x00, 0x12, 0xB0), (0x44, 0x00, 0x96), (0xA1, 0x00, 0x5E),
    (0xC7, 0x00, 0x28), (0xBA, 0x06, 0x00), (0x8C, 0x17, 0x00), (0x5C, 0x2F, 0x00), (0x10, 0x45, 0x00),
@@ -21,7 +20,7 @@ pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
    (0x5E, 0x5E, 0x5E), (0x0D, 0x0D, 0x0D), (0x0D, 0x0D, 0x0D), (0xFF, 0xFF, 0xFF), (0xA6, 0xFC, 0xFF),
    (0xB3, 0xEC, 0xFF), (0xDA, 0xAB, 0xEB), (0xFF, 0xA8, 0xF9), (0xFF, 0xAB, 0xB3), (0xFF, 0xD2, 0xB0),
    (0xFF, 0xEF, 0xA6), (0xFF, 0xF7, 0x9C), (0xD7, 0xE8, 0x95), (0xA6, 0xED, 0xAF), (0xA2, 0xF2, 0xDA),
-   (0x99, 0xFF, 0xFC), (0xDD, 0xDD, 0xDD), (0x11, 0x11, 0x11), (0x11, 0x11, 0x11)
+   (0x99, 0xFF, 0xFC), (0xDD, 0xDD, 0xDD), (0x11, 0x11, 0x11), (0x11, 0x11, 0x11),
 ];
 
 #[allow(clippy::upper_case_acronyms)]
@@ -32,8 +31,8 @@ pub struct PPU {
     palette: [u8; 32],
     attributes: [u8; 64 * 4],
     pub screen: Screen,
-    cycle: usize,
-    scanline: u16,
+    pub cycle: usize,
+    pub scanline: u16,
     data_buffer: u8,
     nmi_triggered: bool,
 }
@@ -54,7 +53,12 @@ impl PPU {
         }
     }
 
-    pub fn show_tile(&mut self, bank: usize, nth: usize, x_offset: usize, y_offset: usize) {
+    #[inline]
+    pub fn is_vblank(&self) -> bool {
+        self.regs.status.contains(PPU_STATUS::VBLANK_STARTED)
+    }
+
+    pub fn render_tile(&mut self, bank: usize, nth: usize, x_offset: usize, y_offset: usize) {
         let bank_offset = bank * 0x1000;
         let tile_offset = nth * 16;
         let tile_start = self.rom.chr_rom_start + bank_offset + tile_offset;
@@ -90,8 +94,24 @@ impl PPU {
         for x in 0..16 {
             for y in 0..16 {
                 let nth = x + y * 16;
-                self.show_tile(bank, nth, x * 8, y * 8);
+                self.render_tile(bank, nth, x * 8, y * 8);
             }
+        }
+    }
+
+    pub fn render_frame(&mut self) {
+        let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
+        let chr_bank = if self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
+            1usize
+        } else {
+            0
+        };
+
+        for i in 0..0x03c0 {
+            let tile_idx = self.vram[i] as usize;
+            let tile_x = i % 32;
+            let tile_y = i / 32;
+            self.render_tile(chr_bank, tile_idx, tile_x * 8, tile_y * 8);
         }
     }
 
@@ -104,8 +124,9 @@ impl PPU {
 
             // VBlank
             if self.scanline == 241 {
+                self.regs.status.set(PPU_STATUS::VBLANK_STARTED, true);
+                self.regs.status.set(PPU_STATUS::SPRITE_ZERO_HIT, false);
                 if self.regs.ctrl.contains(PPU_CTRL::GENERATE_NMI) {
-                    self.regs.status.set(PPU_STATUS::VBLANK_STARTED, true);
                     self.nmi_triggered = true;
                 }
             }
@@ -113,6 +134,7 @@ impl PPU {
             if self.scanline == 262 {
                 self.scanline = 0;
                 self.regs.status.set(PPU_STATUS::VBLANK_STARTED, false);
+                self.regs.status.set(PPU_STATUS::SPRITE_ZERO_HIT, false);
             }
         }
     }
@@ -154,9 +176,8 @@ impl PPU {
         let prev_nmi_status = self.regs.ctrl.contains(PPU_CTRL::GENERATE_NMI);
         self.regs.ctrl.update(data);
         let new_nmi_status = self.regs.ctrl.contains(PPU_CTRL::GENERATE_NMI);
-        let in_vblank = self.regs.status.contains(PPU_STATUS::VBLANK_STARTED);
 
-        if in_vblank && !prev_nmi_status && new_nmi_status {
+        if self.is_vblank() && !prev_nmi_status && new_nmi_status {
             self.nmi_triggered = true;
         }
     }

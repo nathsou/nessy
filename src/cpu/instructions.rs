@@ -8,15 +8,9 @@ const NMI_VECTOR: u16 = 0xfffa;
 const IRQ_VECTOR: u16 = 0xfffe;
 
 impl CPU {
-    pub fn step(&mut self) -> u16 {
+    pub fn step(&mut self) -> usize {
         self.cycles = 0;
         let op_code = self.next_byte();
-
-        match self.bus.pull_interrupt_status() {
-            Interrupt::None => {}
-            Interrupt::IRQ => self.irq(),
-            Interrupt::NMI => self.nmi(),
-        }
 
         match op_code {
             0x00 => self.brk(),
@@ -205,11 +199,17 @@ impl CPU {
             }
         }
 
+        match self.bus.pull_interrupt_status() {
+            Interrupt::None => {}
+            Interrupt::IRQ => self.irq(),
+            Interrupt::NMI => self.nmi(),
+        }
+
         self.cycles + INST_CYCLES[op_code as usize]
     }
 
     #[allow(dead_code)]
-    pub fn trace_step(&mut self) -> u16 {
+    pub fn trace_step(&mut self) -> usize {
         println!("{self:?}");
         {
             let op_code = self.bus.read_byte(self.pc) as usize;
@@ -233,10 +233,10 @@ impl CPU {
     }
 
     #[allow(dead_code)]
-    pub fn trace_step_nestest(&mut self) -> u16 {
+    pub fn trace_step_nestest(&mut self) -> usize {
         {
             let op_code = self.bus.read_byte(self.pc) as usize;
-            let inst_name = INST_NAMES[op_code].unwrap();
+            let inst_name = INST_NAMES[op_code].unwrap_or("???");
             let addr_mode = AddressingMode::from(INST_ADDR_MODES[op_code]);
             let mut args: Vec<String> = vec![];
 

@@ -14,7 +14,7 @@ use std::fmt;
 
 const RESET_VECTOR: u16 = 0xfffc;
 const STACK_START: u16 = 0x100;
-const STACK_TOP: u8 = 0xfd;
+const STACK_TOP: u8 = 0xff;
 const DEFAULT_STATUS_STATE: u8 = 0b0010_0100;
 
 // 7  bit  0
@@ -62,7 +62,7 @@ pub struct CPU {
     y: u8,
     pub pc: u16,
     sp: u8,
-    cycles: u16,
+    cycles: usize,
     status: Status,
     pub bus: Bus,
 }

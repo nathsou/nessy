@@ -20,15 +20,10 @@ fn main() {
     // let rom_path = &args[1];
     // let rom = ROM::from(rom_path).unwrap();
 
-    let rom = ROM::load("roms/PacMan.nes").unwrap();
-    let mut bus = Bus::new(rom);
-    bus.ppu.show_tile_bank(0);
-
-    // for x in 0..256 {
-    //     for y in 0..240 {
-    //         bus.ppu.screen.set(x, y, (255, 0, 0));
-    //     }
-    // }
+    let rom = ROM::load("roms/SMB.nes").unwrap();
+    let bus = Bus::new(rom);
+    // bus.ppu.show_tile_bank(0);
+    let mut cpu = CPU::new(bus);
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -60,15 +55,8 @@ fn main() {
 
     let mut event_pump = sdl_context.event_pump().unwrap();
 
-    texture
-        .update(None, &bus.ppu.screen.pixels, 256 * 3)
-        .unwrap();
-
-    canvas.copy(&texture, None, None).unwrap();
-    canvas.present();
-
     'running: loop {
-        // Handle events
+        // handle events
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -81,6 +69,23 @@ fn main() {
                 _ => {}
             }
         }
+
+        // update
+        let vblank_before = cpu.bus.ppu.is_vblank();
+        let cpu_cycles = cpu.step();
+        cpu.bus.advance_ppu(cpu_cycles);
+        let vblank_after = cpu.bus.ppu.is_vblank();
+
+        if !vblank_before && vblank_after {
+            cpu.bus.ppu.render_frame();
+            texture
+                .update(None, &cpu.bus.ppu.screen.pixels, 256 * 3)
+                .unwrap();
+            canvas.copy(&texture, None, None).unwrap();
+            canvas.present();
+        }
+
+        // ::std::thread::sleep(std::time::Duration::new(0, 100_000_000));
     }
 }
 
