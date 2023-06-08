@@ -13,9 +13,11 @@ impl Screen {
     }
 
     pub fn set(&mut self, x: usize, y: usize, color: (u8, u8, u8)) {
-        let addr = (y * WIDTH + x) * 3;
-        self.pixels[addr] = color.0;
-        self.pixels[addr + 1] = color.1;
-        self.pixels[addr + 2] = color.2;
+        if (0..WIDTH).contains(&x) && (0..HEIGHT).contains(&y) {
+            let addr = (y * WIDTH + x) * 3;
+            self.pixels[addr] = color.0;
+            self.pixels[addr + 1] = color.1;
+            self.pixels[addr + 2] = color.2;
+        }
     }
 }

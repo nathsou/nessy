@@ -8,6 +8,8 @@ use self::screen::Screen;
 
 const PIXELS_PER_TILE: usize = 8;
 const TILES_PER_NAMETABLE_BYTE: usize = 4;
+const BYTES_PER_PALLETE: usize = 4;
+const SPRITE_PALETTES_OFFSET: usize = 0x11;
 
 #[rustfmt::skip]
 pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
@@ -61,12 +63,22 @@ impl PPU {
         self.regs.status.contains(PPU_STATUS::VBLANK_STARTED)
     }
 
-    pub fn render_tile(&mut self, bank: usize, nth: usize, tile_col: usize, tile_row: usize) {
-        let bank_offset = bank * 0x1000;
+    fn get_tile(&self, chr_bank_offset: usize, nth: usize) -> &[u8] {
         let tile_offset = nth * 16;
-        let tile_start = self.rom.chr_rom_start + bank_offset + tile_offset;
+        let tile_start = self.rom.chr_rom_start + chr_bank_offset + tile_offset;
         let tile_end = tile_start + 15;
-        let tile = &self.rom.bytes[tile_start..=tile_end];
+        &self.rom.bytes[tile_start..=tile_end]
+    }
+
+    #[inline]
+    fn render_background_tile(
+        &mut self,
+        chr_bank_offset: usize,
+        nth: usize,
+        tile_col: usize,
+        tile_row: usize,
+    ) {
+        let tile = self.rom.get_tile(chr_bank_offset, nth);
 
         for y in 0..PIXELS_PER_TILE {
             let mut plane1 = tile[y];
@@ -90,7 +102,47 @@ impl PPU {
         }
     }
 
-    fn background_color_at(&self, tile_x: usize, tile_y: usize, idx: usize) -> (u8, u8, u8) {
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    fn render_sprite_tile(
+        &mut self,
+        chr_bank_offset: usize,
+        nth: usize,
+        tile_x: usize,
+        tile_y: usize,
+        flip_horizontally: bool,
+        flip_vertically: bool,
+        palette: [Option<(u8, u8, u8)>; 4],
+    ) {
+        let tile = self.rom.get_tile(chr_bank_offset, nth);
+
+        for y in 0..PIXELS_PER_TILE {
+            let mut plane1 = tile[y];
+            let mut plane2 = tile[y + 8];
+
+            for x in (0..PIXELS_PER_TILE).rev() {
+                let bit0 = plane1 & 1;
+                let bit1 = plane2 & 1;
+                let color_idx = (bit1 << 1) | bit0;
+
+                plane1 >>= 1;
+                plane2 >>= 1;
+
+                if let Some(rgb) = palette[color_idx as usize] {
+                    let (x, y) = match (flip_horizontally, flip_vertically) {
+                        (false, false) => (x, y),
+                        (true, false) => (7 - x, y),
+                        (false, true) => (x, 7 - y),
+                        (true, true) => (7 - x, 7 - y),
+                    };
+
+                    self.screen.set(tile_x + x, tile_y + y, rgb);
+                }
+            }
+        }
+    }
+
+    fn background_color_at(&self, tile_x: usize, tile_y: usize, color_idx: usize) -> (u8, u8, u8) {
         let x = tile_x / TILES_PER_NAMETABLE_BYTE; // 4x4 tiles
         let y = tile_y / TILES_PER_NAMETABLE_BYTE;
         let nametable_idx = y * 8 + x; // 1 byte for color info of 4x4 tiles
@@ -107,7 +159,7 @@ impl PPU {
             _ => unreachable!(),
         } as usize;
 
-        COLOR_PALETTE[match idx {
+        COLOR_PALETTE[match color_idx {
             0 => self.palette[0],
             1 => self.palette[palette_offset],
             2 => self.palette[palette_offset + 1],
@@ -116,20 +168,69 @@ impl PPU {
         } as usize]
     }
 
-    pub fn render_frame(&mut self) {
-        let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
-        let chr_bank: usize = if !self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
+    // https://www.nesdev.org/wiki/PPU_palettes
+    fn sprite_palette(&self, palette_idx: u8) -> [Option<(u8, u8, u8)>; 4] {
+        let palette_offset = SPRITE_PALETTES_OFFSET + palette_idx as usize * BYTES_PER_PALLETE;
+
+        [
+            None, // transparent
+            Some(COLOR_PALETTE[self.palette[palette_offset] as usize]),
+            Some(COLOR_PALETTE[self.palette[palette_offset + 1] as usize]),
+            Some(COLOR_PALETTE[self.palette[palette_offset + 2] as usize]),
+        ]
+    }
+
+    fn render_background(&mut self) {
+        let bank_offset: usize = if !self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
             0
         } else {
-            1
+            0x1000
         };
 
         for i in 0..0x03c0 {
             let tile_idx = self.vram[i] as usize;
             let tile_col = i % 32;
             let tile_row = i / 32;
-            self.render_tile(chr_bank, tile_idx, tile_col, tile_row);
+            self.render_background_tile(bank_offset, tile_idx, tile_col, tile_row);
         }
+    }
+
+    fn render_sprites(&mut self) {
+        let chr_bank_offset: usize = if !self.regs.ctrl.contains(PPU_CTRL::SPRITE_PATTERN_ADDR) {
+            0
+        } else {
+            0x1000
+        };
+
+        for i in (0..256).step_by(4).rev() {
+            let sprite_y = self.attributes[i] as usize + 1;
+            let sprite_tile_idx = self.attributes[i + 1] as usize;
+            let sprite_attr = self.attributes[i + 2];
+            let sprite_x = self.attributes[i + 3] as usize;
+
+            let palette_idx = sprite_attr & 0b11;
+            // let priority = sprite_attr & 0b0010_0000 != 0;
+            let flip_horizontally = sprite_attr & 0b0100_0000 != 0;
+            let flip_vertically = sprite_attr & 0b1000_0000 != 0;
+            let palette = self.sprite_palette(palette_idx);
+
+            self.render_sprite_tile(
+                chr_bank_offset,
+                sprite_tile_idx,
+                sprite_x,
+                sprite_y,
+                flip_horizontally,
+                flip_vertically,
+                palette,
+            );
+        }
+    }
+
+    pub fn render_frame(&mut self) {
+        let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
+
+        self.render_background();
+        self.render_sprites();
     }
 
     pub fn step(&mut self, cycles: usize) {
@@ -245,11 +346,11 @@ impl PPU {
     }
 
     pub fn read_oam_data_reg(&mut self) -> u8 {
-        self.regs.oam_data[self.regs.oam_addr as usize]
+        self.attributes[self.regs.oam_addr as usize]
     }
 
     pub fn write_oam_data_reg(&mut self, data: u8) {
-        self.regs.oam_data[self.regs.oam_addr as usize] = data;
+        self.attributes[self.regs.oam_addr as usize] = data;
         self.regs.oam_addr = self.regs.oam_addr.wrapping_add(1);
     }
 
@@ -270,5 +371,15 @@ impl PPU {
     #[inline]
     pub fn write_addr_reg(&mut self, data: u8) {
         self.regs.addr.write(data);
+    }
+
+    pub fn write_oam_dma_reg(&mut self, page: [u8; 256]) {
+        if self.regs.oam_addr == 0 {
+            self.attributes.copy_from_slice(&page);
+        } else {
+            for byte in page.iter() {
+                self.write_oam_data_reg(*byte);
+            }
+        }
     }
 }

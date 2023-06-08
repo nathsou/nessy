@@ -99,6 +99,16 @@ impl Memory for Bus {
             0x2006 => self.ppu.write_addr_reg(val),
             0x2007 => self.ppu.write_data_reg(val),
             0x2008..=0x3fff => self.write_byte(addr & 0b0010_0000_0000_0111, val),
+            0x4014 => {
+                let mut page = [0u8; 256];
+                let high_byte = (val as u16) << 8;
+
+                for low_byte in 0..256u16 {
+                    page[low_byte as usize] = self.read_byte(high_byte | low_byte);
+                }
+
+                self.ppu.write_oam_dma_reg(page);
+            }
             0x4000..=0x4017 => (), // APU
             0x4020..=0xffff => self.mapper.write_byte(addr, val),
             _ => println!("ignoring write at address {addr:x}"),

@@ -20,7 +20,7 @@ fn main() {
     // let rom_path = &args[1];
     // let rom = ROM::from(rom_path).unwrap();
 
-    let rom = ROM::load("roms/SMB.nes").unwrap();
+    let rom = ROM::load("roms/DK.nes").unwrap();
     let bus = Bus::new(rom);
     // bus.ppu.show_tile_bank(0);
     let mut cpu = CPU::new(bus);

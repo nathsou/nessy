@@ -93,6 +93,13 @@ impl ROM {
     pub fn read_chr(&self, addr: u16) -> u8 {
         self.bytes[self.chr_rom_start + addr as usize]
     }
+
+    pub fn get_tile(&self, chr_bank_offset: usize, nth: usize) -> &[u8] {
+        let tile_offset = nth * 16;
+        let tile_start = self.chr_rom_start + chr_bank_offset + tile_offset;
+        let tile_end = tile_start + 15;
+        &self.bytes[tile_start..=tile_end]
+    }
 }
 
 fn read_file(path: &str) -> io::Result<Vec<u8>> {

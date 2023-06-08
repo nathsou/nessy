@@ -6,7 +6,6 @@ pub struct Registers {
     pub mask: PPU_MASK,
     pub status: PPU_STATUS,
     pub oam_addr: u8,
-    pub oam_data: [u8; 64 * 4], // 64 sprites, 4 bytes each
     pub scroll: PPU_SCROLL,
     pub addr: PPU_ADDR,
 }
@@ -18,7 +17,6 @@ impl Registers {
             mask: PPU_MASK { val: 0 },
             status: PPU_STATUS::empty(),
             oam_addr: 0,
-            oam_data: [0; 64 * 4],
             scroll: PPU_SCROLL {
                 x: 0,
                 y: 0,
