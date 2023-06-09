@@ -8,3 +8,6 @@ edition = "2021"
 rand = "0.8.5"
 sdl2 = "0.35.2"
 bitflags = "2.3.1"
+
+[profile.release]
+opt-level = 3

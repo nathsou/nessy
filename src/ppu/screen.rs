@@ -6,6 +6,9 @@ pub struct Screen {
 }
 
 impl Screen {
+    pub const WIDTH: usize = WIDTH;
+    pub const HEIGHT: usize = HEIGHT;
+
     pub fn new() -> Self {
         Screen {
             pixels: [0; WIDTH * HEIGHT * 3],

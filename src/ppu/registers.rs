@@ -14,7 +14,7 @@ impl Registers {
     pub fn new() -> Self {
         Registers {
             ctrl: PPU_CTRL::empty(),
-            mask: PPU_MASK { val: 0 },
+            mask: PPU_MASK::empty(),
             status: PPU_STATUS::empty(),
             oam_addr: 0,
             scroll: PPU_SCROLL {
@@ -93,18 +93,35 @@ impl PPU_CTRL {
     }
 }
 
-pub struct PPU_MASK {
-    pub val: u8,
+// 7  bit  0
+// ---- ----
+// BGRs bMmG
+// |||| ||||
+// |||| |||+- Greyscale (0: normal color, 1: produce a greyscale display)
+// |||| ||+-- 1: Show background in leftmost 8 pixels of screen, 0: Hide
+// |||| |+--- 1: Show sprites in leftmost 8 pixels of screen, 0: Hide
+// |||| +---- 1: Show background
+// |||+------ 1: Show sprites
+// ||+------- Emphasize red (green on PAL/Dendy)
+// |+-------- Emphasize green (red on PAL/Dendy)
+// +--------- Emphasize blue
+bitflags! {
+    pub struct PPU_MASK: u8 {
+        const GREYSCALE             = 0b0000_0001;
+        const SHOW_BACKGROUND_LEFT  = 0b0000_0010;
+        const SHOW_SPRITES_LEFT     = 0b0000_0100;
+        const SHOW_BACKGROUND       = 0b0000_1000;
+        const SHOW_SPRITES          = 0b0001_0000;
+        const EMPHASIZE_RED         = 0b0010_0000;
+        const EMPHASIZE_GREEN       = 0b0100_0000;
+        const EMPHASIZE_BLUE        = 0b1000_0000;
+    }
 }
 
 // TODO: support greyscale etc..
 impl PPU_MASK {
-    pub fn show_background(self) -> bool {
-        self.val & 0b1000 != 0
-    }
-
-    pub fn show_sprites(self) -> bool {
-        self.val & 0b10000 != 0
+    pub fn update(&mut self, data: u8) {
+        *self.0.bits_mut() = data;
     }
 }
 

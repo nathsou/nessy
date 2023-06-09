@@ -1,9 +1,9 @@
 mod registers;
-mod screen;
+pub mod screen;
 use crate::cpu::rom::{Mirroring, ROM};
 use std::rc::Rc;
 
-use self::registers::{Registers, PPU_CTRL, PPU_STATUS};
+use self::registers::{Registers, PPU_CTRL, PPU_MASK, PPU_STATUS};
 use self::screen::Screen;
 
 const PIXELS_PER_TILE: usize = 8;
@@ -61,13 +61,6 @@ impl PPU {
     #[inline]
     pub fn is_vblank(&self) -> bool {
         self.regs.status.contains(PPU_STATUS::VBLANK_STARTED)
-    }
-
-    fn get_tile(&self, chr_bank_offset: usize, nth: usize) -> &[u8] {
-        let tile_offset = nth * 16;
-        let tile_start = self.rom.chr_rom_start + chr_bank_offset + tile_offset;
-        let tile_end = tile_start + 15;
-        &self.rom.bytes[tile_start..=tile_end]
     }
 
     #[inline]
@@ -229,8 +222,13 @@ impl PPU {
     pub fn render_frame(&mut self) {
         let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
 
-        self.render_background();
-        self.render_sprites();
+        if self.regs.mask.contains(PPU_MASK::SHOW_BACKGROUND) {
+            self.render_background();
+        }
+
+        if self.regs.mask.contains(PPU_MASK::SHOW_SPRITES) {
+            self.render_sprites();
+        }
     }
 
     pub fn step(&mut self, cycles: usize) {

@@ -1,6 +1,8 @@
+use self::controller::Joypad;
 use super::ppu::PPU;
 use crate::cpu::{memory::Memory, rom::ROM};
 use std::rc::Rc;
+pub mod controller;
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct RAM {
@@ -35,6 +37,7 @@ pub struct Bus {
     pub rom: Rc<ROM>,
     pub mapper: Box<dyn Memory>,
     pub ppu: PPU,
+    pub controller: Joypad,
 }
 
 impl Bus {
@@ -46,6 +49,7 @@ impl Bus {
             ppu: PPU::new(rc.clone()),
             mapper: ROM::get_mapper(rc.clone()).unwrap(),
             rom: rc,
+            controller: Joypad::new(),
         }
     }
 
@@ -75,6 +79,7 @@ impl Memory for Bus {
             0x2004 => self.ppu.read_oam_data_reg(),
             0x2007 => self.ppu.read_data_reg(),
             0x2008..=0x3fff => self.read_byte(addr & 0b0010_0000_0000_0111),
+            0x4016 => self.controller.read(),
             0x4000..=0x4017 => {
                 // APU
                 0
@@ -91,7 +96,7 @@ impl Memory for Bus {
         match addr {
             0x0000..=0x1fff => self.ram.write_byte(addr, val),
             0x2000 => self.ppu.write_ctrl_reg(val),
-            0x2001 => self.ppu.regs.mask.val = val,
+            0x2001 => self.ppu.regs.mask.update(val),
             0x2002 => panic!("PPU status register is read-only"),
             0x2003 => self.ppu.regs.oam_addr = val,
             0x2004 => self.ppu.write_oam_data_reg(val),
@@ -108,7 +113,9 @@ impl Memory for Bus {
                 }
 
                 self.ppu.write_oam_dma_reg(page);
+                // TODO: should take 513 or 514 cycles
             }
+            0x4016 => self.controller.write(val),
             0x4000..=0x4017 => (), // APU
             0x4020..=0xffff => self.mapper.write_byte(addr, val),
             _ => println!("ignoring write at address {addr:x}"),
