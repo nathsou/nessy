@@ -1,18 +1,22 @@
 mod bus;
+mod console;
 mod cpu;
-mod graphics;
 mod ppu;
-use bus::controller::JoypadStatus;
+use bus::controller::{Joypad, JoypadStatus};
 use bus::Bus;
+use console::Console;
 use cpu::rom::ROM;
 use cpu::CPU;
 use ppu::screen::Screen;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::PixelFormatEnum;
+use sdl2::pixels::{Color, PixelFormatEnum};
+use sdl2::EventPump;
 use std::collections::hash_map::HashMap;
+use std::time::{Duration, Instant};
 
-const SCALE_FACTOR: usize = 2;
+const SCALE_FACTOR: usize = 3;
+const TARGET_FPS: f64 = 60.0;
 
 fn get_controller_map() -> HashMap<Keycode, JoypadStatus> {
     let mut controller_map = HashMap::new();
@@ -20,11 +24,44 @@ fn get_controller_map() -> HashMap<Keycode, JoypadStatus> {
     controller_map.insert(Keycode::S, JoypadStatus::DOWN);
     controller_map.insert(Keycode::A, JoypadStatus::LEFT);
     controller_map.insert(Keycode::D, JoypadStatus::RIGHT);
-    controller_map.insert(Keycode::K, JoypadStatus::A);
-    controller_map.insert(Keycode::L, JoypadStatus::B);
+    controller_map.insert(Keycode::L, JoypadStatus::A);
+    controller_map.insert(Keycode::K, JoypadStatus::B);
     controller_map.insert(Keycode::Return, JoypadStatus::START);
     controller_map.insert(Keycode::Space, JoypadStatus::SELECT);
     controller_map
+}
+
+fn handle_events(
+    event_pump: &mut EventPump,
+    controller: &mut Joypad,
+    controller_map: &HashMap<Keycode, JoypadStatus>,
+) {
+    for event in event_pump.poll_iter() {
+        match event {
+            Event::Quit { .. }
+            | Event::KeyDown {
+                keycode: Some(Keycode::Escape),
+                ..
+            } => {
+                std::process::exit(0);
+            }
+            Event::KeyDown { keycode, .. } => {
+                if let Some(keycode) = keycode {
+                    if let Some(button) = controller_map.get(&keycode) {
+                        controller.update_button_state(*button, true);
+                    }
+                }
+            }
+            Event::KeyUp { keycode, .. } => {
+                if let Some(keycode) = keycode {
+                    if let Some(button) = controller_map.get(&keycode) {
+                        controller.update_button_state(*button, false);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn main() {
@@ -35,8 +72,7 @@ fn main() {
     } else {
         let rom_path = &args[1];
         let rom = ROM::load(rom_path).unwrap();
-        let bus = Bus::new(rom);
-        let mut cpu = CPU::new(bus);
+        let mut console = Console::new(rom);
 
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
@@ -69,64 +105,31 @@ fn main() {
                 Screen::HEIGHT as u32,
             )
             .unwrap();
+
         let mut event_pump = sdl_context.event_pump().unwrap();
         let controller_map = get_controller_map();
-        let mut last_frame_timestamp = std::time::Instant::now();
-        let target_frame_duration = std::time::Duration::from_millis(1000 / 60);
+        let target_frame_duration = Duration::from_secs_f64(1.0 / TARGET_FPS);
+        let mut last_frame = Instant::now();
 
-        'running: loop {
-            // handle events
-            for event in event_pump.poll_iter() {
-                match event {
-                    Event::Quit { .. }
-                    | Event::KeyDown {
-                        keycode: Some(Keycode::Escape),
-                        ..
-                    } => {
-                        break 'running;
-                    }
-                    Event::KeyDown { keycode, .. } => {
-                        if let Some(keycode) = keycode {
-                            if let Some(button) = controller_map.get(&keycode) {
-                                cpu.bus.controller.update_button_state(*button, true);
-                            }
-                        }
-                    }
-                    Event::KeyUp { keycode, .. } => {
-                        if let Some(keycode) = keycode {
-                            if let Some(button) = controller_map.get(&keycode) {
-                                cpu.bus.controller.update_button_state(*button, false);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
+        loop {
+            let (frame, controller) = console.next_frame();
+
+            handle_events(&mut event_pump, controller, &controller_map);
+
+            texture.update(None, frame, Screen::WIDTH * 3).unwrap();
+            canvas.copy(&texture, None, None).unwrap();
+            canvas.present();
+
+            let now = Instant::now();
+            let frame_duration = now - last_frame;
+            last_frame = now;
+
+            if frame_duration < target_frame_duration {
+                std::thread::sleep(target_frame_duration - frame_duration);
             }
 
-            // update
-            let vblank_before = cpu.bus.ppu.is_vblank();
-            let cpu_cycles = cpu.step();
-            cpu.bus.advance_ppu(cpu_cycles);
-            let vblank_after = cpu.bus.ppu.is_vblank();
-
-            if !vblank_before && vblank_after {
-                cpu.bus.ppu.render_frame();
-                texture
-                    .update(None, &cpu.bus.ppu.screen.pixels, 256 * 3)
-                    .unwrap();
-                canvas.copy(&texture, None, None).unwrap();
-                canvas.present();
-
-                let now = std::time::Instant::now();
-                let frame_duration = now - last_frame_timestamp;
-                if frame_duration < target_frame_duration {
-                    std::thread::sleep(target_frame_duration - frame_duration);
-                }
-
-                let fps = 1.0 / frame_duration.as_secs_f64();
-                last_frame_timestamp = now;
-                println!("FPS: {fps}");
-            }
+            // let fps = 1.0 / frame_duration.as_secs_f64();
+            // println!("FPS: {fps:.2}");
         }
     }
 }

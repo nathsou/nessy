@@ -37,9 +37,10 @@ pub struct PPU {
     attributes: [u8; 64 * 4],
     pub screen: Screen,
     pub cycle: usize,
-    pub scanline: u16,
+    pub scanline: usize,
     data_buffer: u8,
     nmi_triggered: bool,
+    sprite_zero_hit_this_frame: bool,
 }
 
 impl PPU {
@@ -55,6 +56,7 @@ impl PPU {
             scanline: 0,
             data_buffer: 0,
             nmi_triggered: false,
+            sprite_zero_hit_this_frame: false,
         }
     }
 
@@ -63,13 +65,16 @@ impl PPU {
         self.regs.status.contains(PPU_STATUS::VBLANK_STARTED)
     }
 
-    #[inline]
+    #[allow(clippy::too_many_arguments)]
     fn render_background_tile(
         &mut self,
         chr_bank_offset: usize,
         nth: usize,
         tile_col: usize,
         tile_row: usize,
+        viewport: BoundingBox,
+        shift_x: isize,
+        shift_y: isize,
     ) {
         let tile = self.rom.get_tile(chr_bank_offset, nth);
 
@@ -86,16 +91,24 @@ impl PPU {
                 plane2 >>= 1;
 
                 let rgb = self.background_color_at(tile_col, tile_row, color_idx as usize);
-                self.screen.set(
-                    tile_col * PIXELS_PER_TILE + x,
-                    tile_row * PIXELS_PER_TILE + y,
-                    rgb,
-                );
+                let pixel_x = tile_col * PIXELS_PER_TILE + x;
+                let pixel_y = tile_row * PIXELS_PER_TILE + y;
+
+                if pixel_x >= viewport.x_min
+                    && pixel_x < viewport.x_max
+                    && pixel_y >= viewport.y_min
+                    && pixel_y < viewport.y_max
+                {
+                    self.screen.set(
+                        (pixel_x as isize + shift_x) as usize,
+                        (pixel_y as isize + shift_y) as usize,
+                        rgb,
+                    );
+                }
             }
         }
     }
 
-    #[inline]
     #[allow(clippy::too_many_arguments)]
     fn render_sprite_tile(
         &mut self,
@@ -173,7 +186,13 @@ impl PPU {
         ]
     }
 
-    fn render_background(&mut self) {
+    fn render_background(
+        &mut self,
+        nametable_offset: usize,
+        viewport: BoundingBox,
+        shift_x: isize,
+        shift_y: isize,
+    ) {
         let bank_offset: usize = if !self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
             0
         } else {
@@ -181,10 +200,19 @@ impl PPU {
         };
 
         for i in 0..0x03c0 {
-            let tile_idx = self.vram[i] as usize;
+            let tile_idx = self.vram[nametable_offset + i] as usize;
             let tile_col = i % 32;
             let tile_row = i / 32;
-            self.render_background_tile(bank_offset, tile_idx, tile_col, tile_row);
+
+            self.render_background_tile(
+                bank_offset,
+                tile_idx,
+                tile_col,
+                tile_row,
+                viewport,
+                shift_x,
+                shift_y,
+            );
         }
     }
 
@@ -221,9 +249,42 @@ impl PPU {
 
     pub fn render_frame(&mut self) {
         let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
+        let scroll_x = self.regs.scroll.x as usize;
+        let scroll_y = self.regs.scroll.y as usize;
 
         if self.regs.mask.contains(PPU_MASK::SHOW_BACKGROUND) {
-            self.render_background();
+            let (nametable1, nametable2): (usize, usize) = match self.rom.mirroring {
+                Mirroring::Vertical => match base_nametable_addr {
+                    0x2000 | 0x2800 => (0, 0x400),
+                    0x2400 | 0x2c00 => (0x400, 0),
+                    _ => unreachable!(),
+                },
+                _ => (0, 0),
+            };
+
+            self.render_background(
+                nametable1,
+                BoundingBox {
+                    x_min: scroll_x,
+                    x_max: Screen::WIDTH,
+                    y_min: scroll_y,
+                    y_max: Screen::HEIGHT,
+                },
+                -(scroll_x as isize),
+                -(scroll_y as isize),
+            );
+
+            self.render_background(
+                nametable2,
+                BoundingBox {
+                    x_min: 0,
+                    x_max: scroll_x,
+                    y_min: 0,
+                    y_max: Screen::HEIGHT,
+                },
+                (256 - scroll_x) as isize,
+                0,
+            );
         }
 
         if self.regs.mask.contains(PPU_MASK::SHOW_SPRITES) {
@@ -236,6 +297,10 @@ impl PPU {
         self.cycle += cycles;
 
         if self.cycle >= 341 {
+            if self.is_sprite_zero_hit() {
+                self.regs.status.set(PPU_STATUS::SPRITE_ZERO_HIT, true);
+            }
+
             self.cycle -= 341;
             self.scanline += 1;
 
@@ -250,10 +315,40 @@ impl PPU {
 
             if self.scanline == 262 {
                 self.scanline = 0;
+                self.sprite_zero_hit_this_frame = false;
                 self.regs.status.set(PPU_STATUS::VBLANK_STARTED, false);
                 self.regs.status.set(PPU_STATUS::SPRITE_ZERO_HIT, false);
             }
         }
+    }
+
+    #[inline]
+    fn is_sprite_zero_hit(&mut self) -> bool {
+        // TODO: Improve accuracy
+        // https://www.nesdev.org/wiki/PPU_OAM#Sprite_zero_hits
+        // if self.sprite_zero_hit_this_frame
+        //     || !self.regs.mask.contains(PPU_MASK::SHOW_SPRITES)
+        //     || !self.regs.mask.contains(PPU_MASK::SHOW_BACKGROUND)
+        // {
+        //     return false;
+        // }
+
+        let y = self.attributes[0] as usize;
+        let x = self.attributes[3] as usize;
+
+        // let hit = self.scanline == y
+        //     && self.cycle >= x
+        //     && self.regs.mask.contains(PPU_MASK::SHOW_SPRITES)
+        //     && self.regs.mask.contains(PPU_MASK::SHOW_BACKGROUND)
+        //     && !self.sprite_zero_hit_this_frame;
+
+        // if hit {
+        //     self.sprite_zero_hit_this_frame = true;
+        // }
+
+        // hit
+
+        y == self.scanline && x <= self.cycle && self.regs.mask.contains(PPU_MASK::SHOW_SPRITES)
     }
 
     pub fn pull_nmi_status(&mut self) -> bool {
@@ -380,4 +475,12 @@ impl PPU {
             }
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct BoundingBox {
+    x_min: usize,
+    x_max: usize,
+    y_min: usize,
+    y_max: usize,
 }

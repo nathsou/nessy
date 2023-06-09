@@ -14,7 +14,7 @@ use std::fmt;
 
 const RESET_VECTOR: u16 = 0xfffc;
 const STACK_START: u16 = 0x100;
-const STACK_TOP: u8 = 0xff;
+const STACK_TOP: u8 = 0xfd;
 const DEFAULT_STATUS_STATE: u8 = 0b0010_0100;
 
 // 7  bit  0
@@ -281,36 +281,6 @@ impl CPU {
     fn toggle_nz(&mut self, val: u8) {
         self.toggle_neg_flag(val);
         self.toggle_zero_flag(val);
-    }
-
-    fn flags_to_str(&self) -> String {
-        let flags = self.status.bits();
-        let mut flags_str = ['N', 'V', '_', 'B', 'D', 'I', 'Z', 'C'];
-        let mut curr_flag = 1u8;
-
-        for i in 0..8 {
-            if flags & curr_flag == 0 {
-                flags_str[7 - i] = '_';
-            }
-            curr_flag <<= 1;
-        }
-
-        flags_str.iter().collect()
-    }
-
-    fn stack_to_str(&self) -> String {
-        let stack_len = (STACK_TOP - self.sp) as u16;
-
-        (0..stack_len)
-            .map(|idx| {
-                format!(
-                    "{:02X} ",
-                    self.bus.ram.ram[(STACK_START + STACK_TOP as u16).wrapping_sub(idx) as usize]
-                )
-            })
-            .collect::<String>()
-            .trim()
-            .to_owned()
     }
 }
 
