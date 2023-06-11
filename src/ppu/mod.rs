@@ -1,7 +1,6 @@
 mod registers;
 pub mod screen;
 use crate::cpu::rom::{Mirroring, ROM};
-use std::rc::Rc;
 
 use self::registers::{Registers, PPU_CTRL, PPU_MASK, PPU_STATUS};
 use self::screen::Screen;
@@ -30,7 +29,7 @@ pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
-    rom: Rc<ROM>,
+    pub rom: ROM,
     pub regs: Registers,
     vram: [u8; 2 * 1024],
     palette: [u8; 32],
@@ -44,7 +43,7 @@ pub struct PPU {
 }
 
 impl PPU {
-    pub fn new(rom: Rc<ROM>) -> Self {
+    pub fn new(rom: ROM) -> Self {
         PPU {
             rom,
             regs: Registers::new(),
@@ -425,10 +424,20 @@ impl PPU {
             }
             0x3000..=0x3eff => unreachable!(),
             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => {
-                self.palette[addr as usize - 0x3f10] = data;
+                let mut addr = addr as usize - 0x3f10;
+                if addr >= 32 {
+                    addr %= 32;
+                }
+
+                self.palette[addr] = data;
             }
             0x3f00..=0x3fff => {
-                self.palette[addr as usize - 0x3f00] = data;
+                let mut addr = addr as usize - 0x3f00;
+                if addr >= 32 {
+                    addr %= 32;
+                }
+
+                self.palette[addr] = data;
             }
             _ => {
                 println!("ignoring write to {addr:04X}");

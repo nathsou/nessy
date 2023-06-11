@@ -1,9 +1,8 @@
 use super::mappers::nrom::NROM;
-use super::memory::Memory;
+use super::mappers::Mapper;
 use std::fs::File;
 use std::io;
 use std::io::prelude::Read;
-use std::rc::Rc;
 
 const PRG_ROM_PAGE_SIZE: usize = 16384;
 
@@ -83,9 +82,9 @@ impl ROM {
         }
     }
 
-    pub fn get_mapper(rom: Rc<ROM>) -> Result<Box<dyn Memory>, RomError> {
+    pub fn get_mapper(rom: &mut ROM) -> Result<Box<dyn Mapper>, RomError> {
         match rom.mapper {
-            0 => Ok(Box::new(NROM::new(rom))),
+            0 => Ok(Box::new(NROM::new())),
             _ => Err(RomError::UnsupportedMapper(rom.mapper)),
         }
     }

@@ -1,6 +1,6 @@
 pub mod assembler;
 mod instructions;
-mod mappers;
+pub mod mappers;
 pub mod memory;
 mod opcodes;
 pub mod rom;

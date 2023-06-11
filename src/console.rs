@@ -36,9 +36,4 @@ impl Console {
             &mut self.cpu.bus.controller,
         )
     }
-
-    #[inline]
-    pub fn controller1(&mut self) -> &mut Joypad {
-        &mut self.cpu.bus.controller
-    }
 }

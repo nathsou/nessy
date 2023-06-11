@@ -1,7 +1,7 @@
 use self::controller::Joypad;
+use super::cpu::mappers::Mapper;
 use super::ppu::PPU;
 use crate::cpu::{memory::Memory, rom::ROM};
-use std::rc::Rc;
 pub mod controller;
 
 #[allow(clippy::upper_case_acronyms)]
@@ -34,21 +34,17 @@ pub enum Interrupt {
 
 pub struct Bus {
     pub ram: RAM,
-    pub rom: Rc<ROM>,
-    pub mapper: Box<dyn Memory>,
+    pub mapper: Box<dyn Mapper>,
     pub ppu: PPU,
     pub controller: Joypad,
 }
 
 impl Bus {
-    pub fn new(rom: ROM) -> Bus {
-        let rc = Rc::new(rom);
-
+    pub fn new(mut rom: ROM) -> Bus {
         Bus {
             ram: RAM { ram: [0; 0x800] },
-            ppu: PPU::new(rc.clone()),
-            mapper: ROM::get_mapper(rc.clone()).unwrap(),
-            rom: rc,
+            mapper: ROM::get_mapper(&mut rom).unwrap(),
+            ppu: PPU::new(rom),
             controller: Joypad::new(),
         }
     }
@@ -84,7 +80,7 @@ impl Memory for Bus {
                 // APU
                 0
             }
-            0x4020..=0xffff => self.mapper.read_byte(addr),
+            0x4020..=0xffff => self.mapper.read_byte(&mut self.ppu.rom, addr),
             _ => {
                 println!("ignoring read at address {addr:x}");
                 0
@@ -117,7 +113,7 @@ impl Memory for Bus {
             }
             0x4016 => self.controller.write(val),
             0x4000..=0x4017 => (), // APU
-            0x4020..=0xffff => self.mapper.write_byte(addr, val),
+            0x4020..=0xffff => self.mapper.write_byte(&mut self.ppu.rom, addr, val),
             _ => println!("ignoring write at address {addr:x}"),
         }
     }
