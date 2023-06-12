@@ -1091,11 +1091,11 @@ impl CPU {
     fn branch_rel(&mut self) {
         let rel: i8 = self.next_byte() as i8;
         let jump_addr = self.pc.wrapping_add(rel as u16);
-        let prev_page = self.pc & 0xff00;
+        let prev_pc = self.pc;
         self.pc = jump_addr;
         self.cycles += 1;
 
-        if prev_page != jump_addr & 0xff00 {
+        if self.page_crossed(prev_pc, jump_addr) {
             self.cycles += 1;
         }
     }

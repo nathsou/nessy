@@ -3,10 +3,8 @@ mod console;
 mod cpu;
 mod ppu;
 use bus::controller::{Joypad, JoypadStatus};
-use bus::Bus;
 use console::Console;
 use cpu::rom::ROM;
-use cpu::CPU;
 use ppu::screen::Screen;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -134,37 +132,11 @@ fn main() {
     }
 }
 
-#[test]
-fn test_nestest_dump() {
-    let rom = ROM::load("src/tests/nestest.nes").expect("nestest.nes not found");
-    let logs = include_str!("tests/nestest.log").lines();
-    let bus = Bus::new(rom);
-    let mut cpu = CPU::new(bus);
-    cpu.pc = 0xc000;
-
-    for log_line in logs {
-        if cpu.pc == 0xc6bd {
-            // illegal opcodes after this point
-            break;
-        }
-
-        println!("{log_line}");
-
-        let expected_pc = &log_line[0..4];
-        let actual_pc = format!("{:04X}", cpu.pc);
-        assert_eq!(expected_pc, actual_pc, "PC mismatch");
-
-        let expected_regs = &log_line[48..73];
-        let actual_regs = format!("{cpu:?}");
-        assert_eq!(expected_regs, actual_regs, "Registers mismatch");
-
-        cpu.step();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bus::Bus;
+    use crate::cpu::CPU;
 
     #[test]
     fn test_nestest_dump() {
