@@ -10,6 +10,13 @@ const IRQ_VECTOR: u16 = 0xfffe;
 impl CPU {
     pub fn step(&mut self) -> usize {
         self.cycles = 0;
+
+        match self.bus.pull_interrupt_status() {
+            Interrupt::None => {}
+            Interrupt::IRQ => self.irq(),
+            Interrupt::NMI => self.nmi(),
+        }
+
         let op_code = self.next_byte();
 
         match op_code {
@@ -199,92 +206,60 @@ impl CPU {
             }
         }
 
-        match self.bus.pull_interrupt_status() {
-            Interrupt::None => {}
-            Interrupt::IRQ => self.irq(),
-            Interrupt::NMI => self.nmi(),
-        }
-
         self.cycles + INST_CYCLES[op_code as usize]
     }
 
     #[allow(dead_code)]
-    pub fn trace_step(&mut self) -> usize {
-        println!("{self:?}");
+    pub fn trace_step(&mut self) -> (usize, String) {
+        let op_code = self.bus.read_byte(self.pc) as usize;
+        let inst_name = INST_NAMES[op_code].unwrap_or("???");
+        let addr_mode = AddressingMode::from(INST_ADDR_MODES[op_code]);
+        let mut args: Vec<String> = vec![];
+
+        for pc in
+            (self.pc + 1)..(self.pc + (INST_LENGTHS[self.bus.read_byte(self.pc) as usize]) as u16)
         {
-            let op_code = self.bus.read_byte(self.pc) as usize;
-            let inst_name = INST_NAMES[op_code].unwrap();
-            let addr_mode = format!("{}", INST_ADDR_MODES[op_code]);
-            let mut opcodes = String::new();
-
-            for pc in (self.pc + 1)
-                ..(self.pc + (INST_LENGTHS[self.bus.read_byte(self.pc) as usize]) as u16)
-            {
-                opcodes.push_str(&format!("{:02X} ", self.bus.read_byte(pc))[..]);
-            }
-
-            println!(
-                "[{:04X}]: {} ({}) {}",
-                self.pc, inst_name, addr_mode, opcodes
-            );
+            args.push(format!("{:02X}", self.bus.read_byte(pc)));
         }
 
-        self.step()
-    }
+        let formatted_args = args.join(" ");
 
-    #[allow(dead_code)]
-    pub fn trace_step_nestest(&mut self) -> usize {
-        {
-            let op_code = self.bus.read_byte(self.pc) as usize;
-            let inst_name = INST_NAMES[op_code].unwrap_or("???");
-            let addr_mode = AddressingMode::from(INST_ADDR_MODES[op_code]);
-            let mut args: Vec<String> = vec![];
-
-            for pc in (self.pc + 1)
-                ..(self.pc + (INST_LENGTHS[self.bus.read_byte(self.pc) as usize]) as u16)
-            {
-                args.push(format!("{:02X}", self.bus.read_byte(pc)));
+        let args = {
+            use AddressingMode::*;
+            match addr_mode {
+                Immediate => format!("#${}", args[0]),
+                ZeroPage => format!("${}", args[0]),
+                ZeroPageX => format!("${},X", args[0]),
+                ZeroPageY => format!("${},Y", args[0]),
+                Absolute => format!("${}{}", args[1], args[0]),
+                AbsoluteX => format!("${}{},X", args[1], args[0]),
+                AbsoluteY => format!("${}{},Y", args[1], args[0]),
+                Indirect => format!("(${})", args[0]),
+                IndirectX => format!("(${},X)", args[0]),
+                IndirectY => format!("(${}),Y", args[0]),
+                Implied => "".to_string(),
+                Relative => format!("${}", args[0]),
             }
+        };
 
-            let formatted_args = args.join(" ");
+        let raw_inst = format!("{op_code:02X} {formatted_args}");
+        let disasm_inst = format!("{inst_name} {args}",);
 
-            let args = {
-                use AddressingMode::*;
-                match addr_mode {
-                    Immediate => format!("#${}", args[0]),
-                    ZeroPage => format!("${}", args[0]),
-                    ZeroPageX => format!("${},X", args[0]),
-                    ZeroPageY => format!("${},Y", args[0]),
-                    Absolute => format!("${}{}", args[1], args[0]),
-                    AbsoluteX => format!("${}{},X", args[1], args[0]),
-                    AbsoluteY => format!("${}{},Y", args[1], args[0]),
-                    Indirect => format!("(${})", args[0]),
-                    IndirectX => format!("(${},X)", args[0]),
-                    IndirectY => format!("(${}),Y", args[0]),
-                    Implied => "".to_string(),
-                    Relative => format!("${}", args[0]),
-                }
-            };
+        let regs = format!(
+            "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
+            self.a,
+            self.x,
+            self.y,
+            self.status.bits(),
+            self.sp
+        );
 
-            let raw_inst = format!("{op_code:02X} {formatted_args}");
-            let disasm_inst = format!("{inst_name} {args}",);
+        let trace = format!(
+            "{:04X}  {raw_inst: <8}  {disasm_inst: <12}  {regs}",
+            self.pc
+        );
 
-            let regs = format!(
-                "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
-                self.a,
-                self.x,
-                self.y,
-                self.status.bits(),
-                self.sp
-            );
-
-            println!(
-                "{:04X}  {raw_inst: <8}  {disasm_inst: <12}  {regs}",
-                self.pc
-            );
-        }
-
-        self.step()
+        (self.step(), trace)
     }
 
     // interrupts
@@ -300,12 +275,12 @@ impl CPU {
         self.php();
         self.sei();
         self.pc = self.bus.read_word(NMI_VECTOR);
-        self.cycles += 7;
+        // self.cycles += 7;
     }
 
     fn irq(&mut self) {
         self.brk();
-        self.cycles += 7;
+        // self.cycles += 7;
     }
 
     // NOP: No Operation
@@ -540,17 +515,22 @@ impl CPU {
     // ADC
     #[inline]
     fn adc(&mut self, val: u8) {
-        let val_carry = if self.status.contains(Status::CARRY) {
-            val.wrapping_add(1)
-        } else {
-            val
-        };
+        let sum = (self.a as u16).wrapping_add(val as u16).wrapping_add(
+            if self.status.contains(Status::CARRY) {
+                1
+            } else {
+                0
+            },
+        );
 
-        let (sum, carry) = self.a.overflowing_add(val_carry);
+        let carry = sum > 0xff;
         self.status.set(Status::CARRY, carry);
+
+        let sum = sum as u8;
         // http://www.6502.org/tutorials/vflag.html
-        self.status
-            .set(Status::OVERFLOW, (val ^ sum) & (sum ^ self.a) & 0x80 != 0);
+        let overflow = (val ^ sum) & (sum ^ self.a) & 0x80 != 0;
+        self.status.set(Status::OVERFLOW, overflow);
+
         self.a = sum;
         self.toggle_nz(sum);
     }
@@ -1110,11 +1090,12 @@ impl CPU {
     #[inline]
     fn branch_rel(&mut self) {
         let rel: i8 = self.next_byte() as i8;
-        let (jump_addr, boundary_crossed) = self.pc.overflowing_add(rel as u16);
+        let jump_addr = self.pc.wrapping_add(rel as u16);
+        let prev_page = self.pc & 0xff00;
         self.pc = jump_addr;
         self.cycles += 1;
 
-        if boundary_crossed {
+        if prev_page != jump_addr & 0xff00 {
             self.cycles += 1;
         }
     }

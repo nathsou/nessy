@@ -7,6 +7,8 @@ pub mod rom;
 
 use bitflags::bitflags;
 
+use crate::cpu::opcodes::INST_NAMES;
+
 use self::memory::Memory;
 use self::rom::ROM;
 use super::bus::Bus;
@@ -188,10 +190,10 @@ impl CPU {
     fn absolute_x(&mut self, add_on_boundary_crossed: bool) -> u16 {
         let addr = self.next_word();
         let x = self.x as u16;
-        let (res, crossed) = addr.overflowing_add(x);
+        let res = addr.wrapping_add(x);
 
         // if page boundary crossed
-        if add_on_boundary_crossed && crossed {
+        if add_on_boundary_crossed && self.page_crossed(addr, res) {
             self.cycles += 1;
         }
 
@@ -205,13 +207,18 @@ impl CPU {
     }
 
     #[inline]
+    fn page_crossed(&self, prev: u16, next: u16) -> bool {
+        prev & 0xff00 != next & 0xff00
+    }
+
+    #[inline]
     fn absolute_y(&mut self, add_on_boundary_crossed: bool) -> u16 {
         let addr = self.next_word();
         let y = self.y as u16;
-        let (res, crossed) = addr.overflowing_add(y);
+        let res = addr.wrapping_add(y);
 
         // if page boundary crossed
-        if add_on_boundary_crossed && crossed {
+        if add_on_boundary_crossed && self.page_crossed(addr, res) {
             self.cycles += 1;
         }
 
@@ -233,13 +240,13 @@ impl CPU {
         let val1 = self.bus.read_byte(addr1 as u16);
         let val2 = self.bus.read_byte(addr2 as u16);
         let addr = (val1 as u16) + (val2 as u16) * 256;
-        let (addr, crossed) = addr.overflowing_add(self.y as u16);
+        let final_addr = addr.wrapping_add(self.y as u16);
 
-        if add_on_boundary_crossed && crossed {
+        if add_on_boundary_crossed && self.page_crossed(addr, final_addr) {
             self.cycles += 1;
         }
 
-        addr
+        final_addr
     }
 
     #[inline]
@@ -281,6 +288,23 @@ impl CPU {
     fn toggle_nz(&mut self, val: u8) {
         self.toggle_neg_flag(val);
         self.toggle_zero_flag(val);
+    }
+
+    pub fn state_fmt(&mut self) -> String {
+        let opcode = self.bus.read_byte(self.pc);
+        let mnemonic = INST_NAMES[opcode as usize].unwrap();
+
+        format!(
+            "{:04X} {:02X} {} A {:02X} X {:02X} Y {:02X} P {:02X} SP {:02X}",
+            self.pc,
+            opcode,
+            mnemonic,
+            self.a,
+            self.x,
+            self.y,
+            self.status.bits(),
+            self.sp
+        )
     }
 }
 

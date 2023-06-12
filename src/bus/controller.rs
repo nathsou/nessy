@@ -58,4 +58,8 @@ impl Joypad {
     pub fn update_button_state(&mut self, button: JoypadStatus, pressed: bool) {
         self.status.set(button, pressed);
     }
+
+    pub fn update(&mut self, val: u8) {
+        *self.status.0.bits_mut() = val;
+    }
 }
