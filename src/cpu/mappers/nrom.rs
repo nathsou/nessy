@@ -31,21 +31,20 @@ impl Mapper for NROM {
                 let addr = NROM::mirrored_addr(rom, addr);
                 rom.bytes[addr]
             }
-            _ => panic!("Invalid NROM address: {:04X}", addr),
+            _ => panic!("Invalid NROM read address: {:04X}", addr),
         }
     }
 
     fn write_byte(&mut self, rom: &mut ROM, addr: u16, val: u8) {
         match addr {
             0x6000..=0x7FFF => {
-                println!("write to SRAM: {:04X} = {:02X}", addr, val);
                 rom.bytes[addr as usize] = val;
             }
             0x8000..=0xFFFF => {
                 let addr = NROM::mirrored_addr(rom, addr);
                 rom.bytes[addr] = val;
             }
-            _ => panic!("Invalid NROM address: {:04X}", addr),
+            _ => panic!("Invalid NROM write address: {:04X}", addr),
         }
     }
 }

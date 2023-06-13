@@ -68,6 +68,7 @@ impl PPU {
     fn render_background_tile(
         &mut self,
         chr_bank_offset: usize,
+        nametable_offset: usize,
         nth: usize,
         tile_col: usize,
         tile_row: usize,
@@ -89,7 +90,12 @@ impl PPU {
                 plane1 >>= 1;
                 plane2 >>= 1;
 
-                let rgb = self.background_color_at(tile_col, tile_row, color_idx as usize);
+                let rgb = self.background_color_at(
+                    nametable_offset,
+                    tile_col,
+                    tile_row,
+                    color_idx as usize,
+                );
                 let pixel_x = tile_col * PIXELS_PER_TILE + x;
                 let pixel_y = tile_row * PIXELS_PER_TILE + y;
 
@@ -147,11 +153,17 @@ impl PPU {
         }
     }
 
-    fn background_color_at(&self, tile_x: usize, tile_y: usize, color_idx: usize) -> (u8, u8, u8) {
+    fn background_color_at(
+        &self,
+        nametable_offset: usize,
+        tile_x: usize,
+        tile_y: usize,
+        color_idx: usize,
+    ) -> (u8, u8, u8) {
         let x = tile_x / TILES_PER_NAMETABLE_BYTE; // 4x4 tiles
         let y = tile_y / TILES_PER_NAMETABLE_BYTE;
         let nametable_idx = y * 8 + x; // 1 byte for color info of 4x4 tiles
-        let color_byte = self.vram[0x03c0 + nametable_idx];
+        let color_byte = self.vram[nametable_offset + 0x3c0 + nametable_idx];
 
         let block_x = (tile_x % TILES_PER_NAMETABLE_BYTE) / 2;
         let block_y = (tile_y % TILES_PER_NAMETABLE_BYTE) / 2;
@@ -205,6 +217,7 @@ impl PPU {
 
             self.render_background_tile(
                 bank_offset,
+                nametable_offset,
                 tile_idx,
                 tile_col,
                 tile_row,

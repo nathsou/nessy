@@ -19,7 +19,7 @@ impl Console {
         self.cpu.bus.advance_ppu(cpu_cycles);
     }
 
-    pub fn next_frame(&mut self) -> (&[u8], &mut Joypad) {
+    pub fn next_frame(&mut self) -> &[u8] {
         loop {
             let vblank_before = self.cpu.bus.ppu.is_vblank();
             self.step();
@@ -31,9 +31,10 @@ impl Console {
         }
 
         self.cpu.bus.ppu.render_frame();
-        (
-            &self.cpu.bus.ppu.screen.pixels,
-            &mut self.cpu.bus.controller,
-        )
+        &self.cpu.bus.ppu.screen.pixels
+    }
+
+    pub fn controller(&mut self) -> &mut Joypad {
+        &mut self.cpu.bus.controller
     }
 }

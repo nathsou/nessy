@@ -11,12 +11,11 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::EventPump;
 use std::collections::hash_map::HashMap;
-use std::time::{Duration, Instant};
 
-const SCALE_FACTOR: usize = 3;
+const SCALE_FACTOR: usize = 2;
 const TARGET_FPS: f64 = 60.0;
 
-fn get_controller_map() -> HashMap<Keycode, JoypadStatus> {
+fn build_controller_map() -> HashMap<Keycode, JoypadStatus> {
     let mut controller_map = HashMap::new();
     controller_map.insert(Keycode::W, JoypadStatus::UP);
     controller_map.insert(Keycode::S, JoypadStatus::DOWN);
@@ -105,29 +104,15 @@ fn main() {
             .unwrap();
 
         let mut event_pump = sdl_context.event_pump().unwrap();
-        let controller_map = get_controller_map();
-        let target_frame_duration = Duration::from_secs_f64(1.0 / TARGET_FPS);
-        let mut last_frame = Instant::now();
+        let controller_map = build_controller_map();
 
         loop {
-            let (frame, controller) = console.next_frame();
-
-            handle_events(&mut event_pump, controller, &controller_map);
+            handle_events(&mut event_pump, console.controller(), &controller_map);
+            let frame = console.next_frame();
 
             texture.update(None, frame, Screen::WIDTH * 3).unwrap();
             canvas.copy(&texture, None, None).unwrap();
             canvas.present();
-
-            let now = Instant::now();
-            let frame_duration = now - last_frame;
-            last_frame = now;
-
-            if frame_duration < target_frame_duration {
-                std::thread::sleep(target_frame_duration - frame_duration);
-            }
-
-            // let fps = 1.0 / frame_duration.as_secs_f64();
-            // println!("FPS: {fps:.2}");
         }
     }
 }
