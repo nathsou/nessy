@@ -3,8 +3,16 @@ import init, { Console, createConsole, nextFrame, updateJoypad1 } from '../publi
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
 
+const roms = {
+    BalloonFight: 'Balloon Fight',
+    PacMan: 'Pac-Man',
+    SuperMarioBros: 'Super Mario Bros',
+    IceClimber: 'Ice Climber',
+    DonkeyKongJr: 'Donkey Kong Jr',
+    Pinball: 'Pinball',
+};
+
 document.addEventListener('DOMContentLoaded', () => {
-    const gameURL = new URL('../roms/Super Mario Bros.nes', import.meta.url).href;
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
@@ -66,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     (async () => {
         await init();
-        const rom = await fetch(gameURL);
+        const rom = await fetch(`roms/${roms.IceClimber}.nes`);
         const bytes = await rom.arrayBuffer();
         const nes = createConsole(new Uint8Array(bytes));
         const frame = new Uint8Array(imageData.data);

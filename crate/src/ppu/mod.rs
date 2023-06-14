@@ -9,6 +9,7 @@ const BYTES_PER_PALLETE: usize = 4;
 const SPRITE_PALETTES_OFFSET: usize = 0x11;
 const WIDTH: usize = 256;
 const HEIGHT: usize = 240;
+const DEBUG_SCROLL: bool = false;
 
 #[rustfmt::skip]
 pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
@@ -282,7 +283,12 @@ impl PPU {
                     0x2400 | 0x2c00 => (0x400, 0),
                     _ => unreachable!(),
                 },
-                _ => (0, 0),
+                Mirroring::Horizontal => match base_nametable_addr {
+                    0x2000 | 0x2400 => (0, 0x400),
+                    0x2800 | 0x2c00 => (0x400, 0),
+                    _ => unreachable!(),
+                },
+                _ => todo!("mirroring mode not implemented"),
             };
 
             self.render_background(
@@ -298,18 +304,46 @@ impl PPU {
                 -(scroll_y as isize),
             );
 
-            self.render_background(
-                frame,
-                nametable2,
-                BoundingBox {
-                    x_min: 0,
-                    x_max: scroll_x,
-                    y_min: 0,
-                    y_max: HEIGHT,
-                },
-                (WIDTH - scroll_x) as isize,
-                0,
-            );
+            if scroll_x > 0 {
+                self.render_background(
+                    frame,
+                    nametable2,
+                    BoundingBox {
+                        x_min: 0,
+                        x_max: scroll_x,
+                        y_min: 0,
+                        y_max: HEIGHT,
+                    },
+                    (WIDTH - scroll_x) as isize,
+                    0,
+                );
+            } else if scroll_y > 0 {
+                self.render_background(
+                    frame,
+                    nametable2,
+                    BoundingBox {
+                        x_min: 0,
+                        x_max: WIDTH,
+                        y_min: 0,
+                        y_max: scroll_y,
+                    },
+                    0,
+                    (HEIGHT - scroll_y) as isize,
+                );
+            }
+
+            if DEBUG_SCROLL {
+                let sv = WIDTH - scroll_x;
+                let sh = HEIGHT - scroll_y;
+
+                for x in 0..WIDTH {
+                    PPU::set_pixel(frame, x, sh, (255, 0, 0));
+                }
+
+                for y in 0..HEIGHT {
+                    PPU::set_pixel(frame, sv, y, (0, 255, 0))
+                }
+            }
         }
 
         if self.regs.mask.contains(PPU_MASK::SHOW_SPRITES) {

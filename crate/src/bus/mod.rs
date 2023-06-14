@@ -68,9 +68,9 @@ impl Memory for Bus {
     fn read_byte(&mut self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x1fff => self.ram.read_byte(addr),
-            0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 | 0x4014 => {
-                panic!("PPU address {addr:x} is write-only");
-            }
+            // 0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 | 0x4014 => {
+            //     panic!("PPU address {addr:x} is write-only");
+            // }
             0x2002 => self.ppu.read_status_reg(),
             0x2004 => self.ppu.read_oam_data_reg(),
             0x2007 => self.ppu.read_data_reg(),
