@@ -36,7 +36,8 @@ impl Console {
         self.cpu.bus.ppu.render_frame(frame);
     }
 
-    pub fn controller(&mut self) -> &mut Joypad {
-        &mut self.cpu.bus.controller
+    #[inline]
+    pub fn joypad1(&mut self) -> &mut Joypad {
+        &mut self.cpu.bus.joypad1
     }
 }

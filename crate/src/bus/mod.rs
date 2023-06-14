@@ -36,7 +36,7 @@ pub struct Bus {
     pub ram: RAM,
     pub mapper: Box<dyn Mapper>,
     pub ppu: PPU,
-    pub controller: Joypad,
+    pub joypad1: Joypad,
 }
 
 impl Bus {
@@ -45,7 +45,7 @@ impl Bus {
             ram: RAM { ram: [0; 0x800] },
             mapper: ROM::get_mapper(&mut rom).unwrap(),
             ppu: PPU::new(rom),
-            controller: Joypad::new(),
+            joypad1: Joypad::new(),
         }
     }
 
@@ -75,7 +75,7 @@ impl Memory for Bus {
             0x2004 => self.ppu.read_oam_data_reg(),
             0x2007 => self.ppu.read_data_reg(),
             0x2008..=0x3fff => self.read_byte(addr & 0b0010_0000_0000_0111),
-            0x4016 => self.controller.read(),
+            0x4016 => self.joypad1.read(),
             0x4000..=0x4017 => {
                 // APU
                 0
@@ -111,7 +111,7 @@ impl Memory for Bus {
                 self.ppu.write_oam_dma_reg(page);
                 // TODO: should take 513 or 514 cycles
             }
-            0x4016 => self.controller.write(val),
+            0x4016 => self.joypad1.write(val),
             0x4000..=0x4017 => (), // APU
             0x4020..=0xffff => self.mapper.write_byte(&mut self.ppu.rom, addr, val),
             _ => println!("ignoring write at address {addr:x}"),

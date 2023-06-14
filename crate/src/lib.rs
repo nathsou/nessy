@@ -2,6 +2,7 @@ mod bus;
 mod console;
 mod cpu;
 mod ppu;
+use bus::controller::JoypadStatus;
 use cfg_if::cfg_if;
 use console::Console;
 use cpu::rom::ROM;
@@ -25,6 +26,12 @@ pub fn create_console(rom: Vec<u8>) -> Console {
 #[wasm_bindgen(js_name = nextFrame)]
 pub fn next_frame(console: &mut Console, buffer: &mut [u8]) {
     console.next_frame(buffer);
+}
+
+#[wasm_bindgen(js_name = updateJoypad1)]
+pub fn update_joypad1(console: &mut Console, button: u8, pressed: bool) {
+    let btn = JoypadStatus::from_bits(button).unwrap();
+    console.joypad1().update_button_state(btn, pressed);
 }
 
 #[cfg(test)]
@@ -81,7 +88,7 @@ mod tests {
 
             if line.starts_with('!') {
                 let joypad1 = u8::from_str_radix(&line[1..], 2).unwrap();
-                cpu.bus.controller.update(joypad1);
+                cpu.bus.joypad1.update(joypad1);
                 i += 1;
             } else {
                 let actual = cpu.state_fmt();

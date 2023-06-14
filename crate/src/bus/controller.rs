@@ -1,5 +1,4 @@
 use bitflags::bitflags;
-use wasm_bindgen::prelude::wasm_bindgen;
 
 bitflags! {
     #[derive(Copy, Clone)]
@@ -15,7 +14,6 @@ bitflags! {
     }
 }
 
-#[wasm_bindgen]
 pub struct Joypad {
     strobe: bool,
     index: u8,
