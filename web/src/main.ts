@@ -4,7 +4,7 @@ const WIDTH = 256; // px
 const HEIGHT = 240; // px
 
 document.addEventListener('DOMContentLoaded', () => {
-    const gameURL = new URL('../roms/SMB.nes', import.meta.url).href;
+    const gameURL = new URL('../roms/Balloon_Fight.nes', import.meta.url).href;
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
