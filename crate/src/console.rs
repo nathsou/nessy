@@ -1,8 +1,11 @@
+use wasm_bindgen::prelude::wasm_bindgen;
+
 use crate::{
     bus::{controller::Joypad, Bus},
     cpu::{rom::ROM, CPU},
 };
 
+#[wasm_bindgen]
 pub struct Console {
     cpu: CPU,
 }

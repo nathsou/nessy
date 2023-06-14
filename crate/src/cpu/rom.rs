@@ -1,8 +1,6 @@
 use super::mappers::nrom::NROM;
 use super::mappers::Mapper;
-use std::fs::File;
 use std::io;
-use std::io::prelude::Read;
 
 const PRG_ROM_PAGE_SIZE: usize = 16384;
 
@@ -75,13 +73,6 @@ impl ROM {
         })
     }
 
-    pub fn load(path: &str) -> Result<ROM, RomError> {
-        match read_file(path) {
-            Ok(bytes) => ROM::new(bytes),
-            Err(io_err) => Err(RomError::IOError(io_err)),
-        }
-    }
-
     pub fn get_mapper(rom: &mut ROM) -> Result<Box<dyn Mapper>, RomError> {
         match rom.mapper {
             0 => Ok(Box::new(NROM::new())),
@@ -99,11 +90,4 @@ impl ROM {
         let tile_end = tile_start + 15;
         &self.bytes[tile_start..=tile_end]
     }
-}
-
-fn read_file(path: &str) -> io::Result<Vec<u8>> {
-    let mut bytes = Vec::with_capacity(32768);
-    let mut file = File::open(path)?;
-    file.read_to_end(&mut bytes)?;
-    Ok(bytes)
 }

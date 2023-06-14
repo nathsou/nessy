@@ -1,0 +1,24 @@
+{
+  "name": "nessy",
+  "collaborators": [
+    "nathsou <nathsou@users.noreply.github.com>"
+  ],
+  "version": "0.1.0",
+  "files": [
+    "nessy_bg.wasm",
+    "nessy.js",
+    "nessy.d.ts"
+  ],
+  "scripts": {
+    "wasm": "wasm-pack build ../crate --target web",
+    "copy": "rm -rf ./public/pkg && cp -rf ../crate/pkg ./public/pkg",
+    "dev": "npm run wasm && npm run copy && vite",
+    "build": "vite build"
+  },
+  "module": "nessy.js",
+  "types": "nessy.d.ts",
+  "sideEffects": false,
+  "devDependencies": {
+    "vite": "^4.3.9"
+  }
+}
