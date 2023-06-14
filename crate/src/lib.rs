@@ -23,8 +23,8 @@ pub fn create_console(rom: Vec<u8>) -> Console {
 }
 
 #[wasm_bindgen(js_name = nextFrame)]
-pub fn next_frame(console: &mut Console) -> Vec<u8> {
-    console.next_frame().to_vec()
+pub fn next_frame(console: &mut Console, buffer: &mut [u8]) {
+    console.next_frame(buffer);
 }
 
 #[cfg(test)]

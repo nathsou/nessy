@@ -1,14 +1,14 @@
 mod registers;
-pub mod screen;
 use crate::cpu::rom::{Mirroring, ROM};
 
 use self::registers::{Registers, PPU_CTRL, PPU_MASK, PPU_STATUS};
-use self::screen::Screen;
 
 const PIXELS_PER_TILE: usize = 8;
 const TILES_PER_NAMETABLE_BYTE: usize = 4;
 const BYTES_PER_PALLETE: usize = 4;
 const SPRITE_PALETTES_OFFSET: usize = 0x11;
+const WIDTH: usize = 256;
+const HEIGHT: usize = 240;
 
 #[rustfmt::skip]
 pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
@@ -34,7 +34,6 @@ pub struct PPU {
     vram: [u8; 2 * 1024],
     palette: [u8; 32],
     attributes: [u8; 64 * 4],
-    pub screen: Screen,
     pub cycle: usize,
     pub scanline: usize,
     data_buffer: u8,
@@ -50,7 +49,6 @@ impl PPU {
             vram: [0; 2 * 1024],
             palette: [0; 32],
             attributes: [0; 64 * 4],
-            screen: Screen::new(),
             cycle: 0,
             scanline: 0,
             data_buffer: 0,
@@ -64,9 +62,20 @@ impl PPU {
         self.regs.status.contains(PPU_STATUS::VBLANK_STARTED)
     }
 
+    pub fn set_pixel(frame: &mut [u8], x: usize, y: usize, rgb: (u8, u8, u8)) {
+        if (0..WIDTH).contains(&x) && (0..HEIGHT).contains(&y) {
+            let offset = (y * WIDTH + x) * 4;
+            frame[offset] = rgb.0;
+            frame[offset + 1] = rgb.1;
+            frame[offset + 2] = rgb.2;
+            frame[offset + 3] = 255;
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn render_background_tile(
-        &mut self,
+        &self,
+        frame: &mut [u8],
         chr_bank_offset: usize,
         nametable_offset: usize,
         nth: usize,
@@ -104,11 +113,9 @@ impl PPU {
                     && pixel_y >= viewport.y_min
                     && pixel_y < viewport.y_max
                 {
-                    self.screen.set(
-                        (pixel_x as isize + shift_x) as usize,
-                        (pixel_y as isize + shift_y) as usize,
-                        rgb,
-                    );
+                    let x = (pixel_x as isize + shift_x) as usize;
+                    let y = (pixel_y as isize + shift_y) as usize;
+                    PPU::set_pixel(frame, x, y, rgb);
                 }
             }
         }
@@ -116,7 +123,8 @@ impl PPU {
 
     #[allow(clippy::too_many_arguments)]
     fn render_sprite_tile(
-        &mut self,
+        &self,
+        frame: &mut [u8],
         chr_bank_offset: usize,
         nth: usize,
         tile_x: usize,
@@ -147,7 +155,7 @@ impl PPU {
                         (true, true) => (7 - x, 7 - y),
                     };
 
-                    self.screen.set(tile_x + x, tile_y + y, rgb);
+                    PPU::set_pixel(frame, tile_x + x, tile_y + y, rgb);
                 }
             }
         }
@@ -198,7 +206,8 @@ impl PPU {
     }
 
     fn render_background(
-        &mut self,
+        &self,
+        frame: &mut [u8],
         nametable_offset: usize,
         viewport: BoundingBox,
         shift_x: isize,
@@ -216,6 +225,7 @@ impl PPU {
             let tile_row = i / 32;
 
             self.render_background_tile(
+                frame,
                 bank_offset,
                 nametable_offset,
                 tile_idx,
@@ -228,14 +238,14 @@ impl PPU {
         }
     }
 
-    fn render_sprites(&mut self) {
+    fn render_sprites(&self, frame: &mut [u8]) {
         let chr_bank_offset: usize = if !self.regs.ctrl.contains(PPU_CTRL::SPRITE_PATTERN_ADDR) {
             0
         } else {
             0x1000
         };
 
-        for i in (0..256).step_by(4).rev() {
+        for i in (0..WIDTH).step_by(4).rev() {
             let sprite_y = self.attributes[i] as usize + 1;
             let sprite_tile_idx = self.attributes[i + 1] as usize;
             let sprite_attr = self.attributes[i + 2];
@@ -248,6 +258,7 @@ impl PPU {
             let palette = self.sprite_palette(palette_idx);
 
             self.render_sprite_tile(
+                frame,
                 chr_bank_offset,
                 sprite_tile_idx,
                 sprite_x,
@@ -259,7 +270,7 @@ impl PPU {
         }
     }
 
-    pub fn render_frame(&mut self) {
+    pub fn render_frame(&self, frame: &mut [u8]) {
         let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
         let scroll_x = self.regs.scroll.x as usize;
         let scroll_y = self.regs.scroll.y as usize;
@@ -275,32 +286,34 @@ impl PPU {
             };
 
             self.render_background(
+                frame,
                 nametable1,
                 BoundingBox {
                     x_min: scroll_x,
-                    x_max: Screen::WIDTH,
+                    x_max: WIDTH,
                     y_min: scroll_y,
-                    y_max: Screen::HEIGHT,
+                    y_max: HEIGHT,
                 },
                 -(scroll_x as isize),
                 -(scroll_y as isize),
             );
 
             self.render_background(
+                frame,
                 nametable2,
                 BoundingBox {
                     x_min: 0,
                     x_max: scroll_x,
                     y_min: 0,
-                    y_max: Screen::HEIGHT,
+                    y_max: HEIGHT,
                 },
-                (256 - scroll_x) as isize,
+                (WIDTH - scroll_x) as isize,
                 0,
             );
         }
 
         if self.regs.mask.contains(PPU_MASK::SHOW_SPRITES) {
-            self.render_sprites();
+            self.render_sprites(frame);
         }
     }
 

@@ -4,7 +4,7 @@ const WIDTH = 256; // px
 const HEIGHT = 240; // px
 
 document.addEventListener('DOMContentLoaded', () => {
-    const gameURL = new URL('../roms/Balloon_Fight.nes', import.meta.url).href;
+    const gameURL = new URL('../roms/Balloon Fight.nes', import.meta.url).href;
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
@@ -24,33 +24,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.createImageData(WIDTH, HEIGHT);
 
-    function render(frame: Uint8Array): void {
-        const data = imageData.data;
-        let dataIdx = 0;
-        let frameIdx = 0;
-
-        for (let i = 0; i < WIDTH * HEIGHT; i++) {
-            data[dataIdx] = frame[frameIdx];
-            data[dataIdx + 1] = frame[frameIdx + 1];
-            data[dataIdx + 2] = frame[frameIdx + 2];
-            data[dataIdx + 3] = 255;
-
-            dataIdx += 4;
-            frameIdx += 3;
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-    }
-
     (async () => {
         await init();
         const rom = await fetch(gameURL);
         const bytes = await rom.arrayBuffer();
         const nes = createConsole(new Uint8Array(bytes));
+        const frame = new Uint8Array(imageData.data);
 
         function run(): void {
-            const frame = nextFrame(nes);
-            render(frame);
+            nextFrame(nes, frame);
+            imageData.data.set(frame);
+            ctx.putImageData(imageData, 0, 0);
             requestAnimationFrame(run);
         }
 
