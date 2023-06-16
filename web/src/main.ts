@@ -46,8 +46,10 @@ document.addEventListener('DOMContentLoaded', () => {
         RIGHT = 0b1000_0000,
     };
 
-    function handleInput(nes: Console, key: KeyboardEvent['key'], pressed: boolean): void {
-        switch (key) {
+    function handleInput(nes: Console, event: KeyboardEvent, pressed: boolean): void {
+        event.preventDefault();
+
+        switch (event.key) {
             case 'w':
                 updateJoypad1(nes, JoypadStatus.UP, pressed);
                 break;
@@ -69,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'Enter':
                 updateJoypad1(nes, JoypadStatus.START, pressed);
                 break;
-            case 'Space':
+            case ' ':
                 updateJoypad1(nes, JoypadStatus.SELECT, pressed);
                 break;
         }
@@ -82,8 +84,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const nes = createConsole(new Uint8Array(bytes));
         const frame = new Uint8Array(imageData.data);
 
-        window.addEventListener('keydown', (e) => handleInput(nes, e.key, true));
-        window.addEventListener('keyup', (e) => handleInput(nes, e.key, false));
+        window.addEventListener('keydown', (e) => handleInput(nes, e, true));
+        window.addEventListener('keyup', (e) => handleInput(nes, e, false));
 
         function run(): void {
             requestAnimationFrame(run);
