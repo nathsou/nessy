@@ -10,6 +10,9 @@ const roms = {
     IceClimber: 'Ice Climber',
     DonkeyKongJr: 'Donkey Kong Jr',
     Pinball: 'Pinball',
+    Tennis: 'Tennis',
+    Tetris: 'Tetris',
+    Spelunker: 'Spelunker',
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -74,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     (async () => {
         await init();
-        const rom = await fetch(`roms/${roms.IceClimber}.nes`);
+        const rom = await fetch(`roms/${roms.SuperMarioBros}.nes`);
         const bytes = await rom.arrayBuffer();
         const nes = createConsole(new Uint8Array(bytes));
         const frame = new Uint8Array(imageData.data);
@@ -83,10 +86,10 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('keyup', (e) => handleInput(nes, e.key, false));
 
         function run(): void {
+            requestAnimationFrame(run);
             nextFrame(nes, frame);
             imageData.data.set(frame);
             ctx.putImageData(imageData, 0, 0);
-            requestAnimationFrame(run);
         }
 
         run();

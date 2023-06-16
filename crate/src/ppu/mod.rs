@@ -10,6 +10,7 @@ const SPRITE_PALETTES_OFFSET: usize = 0x11;
 const WIDTH: usize = 256;
 const HEIGHT: usize = 240;
 const DEBUG_SCROLL: bool = false;
+const SHOW_OPAQUE_MAP: bool = false;
 
 #[rustfmt::skip]
 pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
@@ -40,6 +41,7 @@ pub struct PPU {
     data_buffer: u8,
     nmi_triggered: bool,
     sprite_zero_hit_this_frame: bool,
+    opaque_map: [bool; WIDTH * HEIGHT],
 }
 
 impl PPU {
@@ -55,6 +57,7 @@ impl PPU {
             data_buffer: 0,
             nmi_triggered: false,
             sprite_zero_hit_this_frame: false,
+            opaque_map: [false; WIDTH * HEIGHT],
         }
     }
 
@@ -75,7 +78,7 @@ impl PPU {
 
     #[allow(clippy::too_many_arguments)]
     fn render_background_tile(
-        &self,
+        &mut self,
         frame: &mut [u8],
         chr_bank_offset: usize,
         nametable_offset: usize,
@@ -106,6 +109,7 @@ impl PPU {
                     tile_row,
                     color_idx as usize,
                 );
+
                 let pixel_x = tile_col * PIXELS_PER_TILE + x;
                 let pixel_y = tile_row * PIXELS_PER_TILE + y;
 
@@ -116,7 +120,20 @@ impl PPU {
                 {
                     let x = (pixel_x as isize + shift_x) as usize;
                     let y = (pixel_y as isize + shift_y) as usize;
-                    PPU::set_pixel(frame, x, y, rgb);
+                    let idx = y * WIDTH + x;
+
+                    let color = if SHOW_OPAQUE_MAP {
+                        if color_idx == 0 {
+                            (0, 0, 0)
+                        } else {
+                            (255, 255, 255)
+                        }
+                    } else {
+                        rgb
+                    };
+
+                    PPU::set_pixel(frame, x, y, color);
+                    self.opaque_map[idx] = color_idx != 0;
                 }
             }
         }
@@ -124,12 +141,13 @@ impl PPU {
 
     #[allow(clippy::too_many_arguments)]
     fn render_sprite_tile(
-        &self,
+        &mut self,
         frame: &mut [u8],
         chr_bank_offset: usize,
         nth: usize,
         tile_x: usize,
         tile_y: usize,
+        behind_background: bool,
         flip_horizontally: bool,
         flip_vertically: bool,
         palette: [Option<(u8, u8, u8)>; 4],
@@ -156,7 +174,15 @@ impl PPU {
                         (true, true) => (7 - x, 7 - y),
                     };
 
-                    PPU::set_pixel(frame, tile_x + x, tile_y + y, rgb);
+                    let pixel_x = tile_x + x;
+                    let pixel_y = tile_y + y;
+                    let pixel_idx = pixel_y * WIDTH + pixel_x;
+                    if pixel_idx < self.opaque_map.len() {
+                        let is_bg_opaque = self.opaque_map[pixel_idx];
+                        if !behind_background || !is_bg_opaque {
+                            PPU::set_pixel(frame, pixel_x, pixel_y, rgb);
+                        }
+                    }
                 }
             }
         }
@@ -207,7 +233,7 @@ impl PPU {
     }
 
     fn render_background(
-        &self,
+        &mut self,
         frame: &mut [u8],
         nametable_offset: usize,
         viewport: BoundingBox,
@@ -239,13 +265,14 @@ impl PPU {
         }
     }
 
-    fn render_sprites(&self, frame: &mut [u8]) {
+    fn render_sprites(&mut self, frame: &mut [u8]) {
         let chr_bank_offset: usize = if !self.regs.ctrl.contains(PPU_CTRL::SPRITE_PATTERN_ADDR) {
             0
         } else {
             0x1000
         };
 
+        // Sprites with lower OAM indices are drawn in front
         for i in (0..WIDTH).step_by(4).rev() {
             let sprite_y = self.attributes[i] as usize + 1;
             let sprite_tile_idx = self.attributes[i + 1] as usize;
@@ -253,7 +280,7 @@ impl PPU {
             let sprite_x = self.attributes[i + 3] as usize;
 
             let palette_idx = sprite_attr & 0b11;
-            // let priority = sprite_attr & 0b0010_0000 != 0;
+            let behind_background = sprite_attr & 0b0010_0000 != 0;
             let flip_horizontally = sprite_attr & 0b0100_0000 != 0;
             let flip_vertically = sprite_attr & 0b1000_0000 != 0;
             let palette = self.sprite_palette(palette_idx);
@@ -264,6 +291,7 @@ impl PPU {
                 sprite_tile_idx,
                 sprite_x,
                 sprite_y,
+                behind_background,
                 flip_horizontally,
                 flip_vertically,
                 palette,
@@ -271,7 +299,7 @@ impl PPU {
         }
     }
 
-    pub fn render_frame(&self, frame: &mut [u8]) {
+    pub fn render_frame(&mut self, frame: &mut [u8]) {
         let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
         let scroll_x = self.regs.scroll.x as usize;
         let scroll_y = self.regs.scroll.y as usize;

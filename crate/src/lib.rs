@@ -1,6 +1,7 @@
 mod bus;
 mod console;
 mod cpu;
+mod js;
 mod ppu;
 use bus::controller::JoypadStatus;
 use cfg_if::cfg_if;
