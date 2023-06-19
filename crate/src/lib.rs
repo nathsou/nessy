@@ -5,7 +5,7 @@ mod js;
 mod ppu;
 use bus::controller::JoypadStatus;
 use cfg_if::cfg_if;
-use console::Console;
+use console::Nes;
 use cpu::rom::ROM;
 extern crate console_error_panic_hook;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -18,19 +18,19 @@ cfg_if! {
 }
 
 #[wasm_bindgen(js_name = createConsole)]
-pub fn create_console(rom: Vec<u8>) -> Console {
+pub fn create_console(rom: Vec<u8>) -> Nes {
     console_error_panic_hook::set_once();
     let rom = ROM::new(rom).unwrap();
-    Console::new(rom)
+    Nes::new(rom)
 }
 
 #[wasm_bindgen(js_name = nextFrame)]
-pub fn next_frame(console: &mut Console, buffer: &mut [u8]) {
+pub fn next_frame(console: &mut Nes, buffer: &mut [u8]) {
     console.next_frame(buffer);
 }
 
 #[wasm_bindgen(js_name = updateJoypad1)]
-pub fn update_joypad1(console: &mut Console, button: u8, pressed: bool) {
+pub fn update_joypad1(console: &mut Nes, button: u8, pressed: bool) {
     let btn = JoypadStatus::from_bits(button).unwrap();
     console.joypad1().update_button_state(btn, pressed);
 }

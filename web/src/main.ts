@@ -1,18 +1,24 @@
-import init, { Console, createConsole, nextFrame, updateJoypad1 } from '../public/pkg/nessy';
+import init, { Nes, createConsole, nextFrame, updateJoypad1 } from '../public/pkg/nessy';
 
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
 
 const roms = {
+    Metroid: 'Metroid',
     BalloonFight: 'Balloon Fight',
-    PacMan: 'Pac-Man',
     SuperMarioBros: 'Super Mario Bros',
-    IceClimber: 'Ice Climber',
+    PacMan: 'Pac-Man',
     DonkeyKongJr: 'Donkey Kong Jr',
-    Pinball: 'Pinball',
-    Tennis: 'Tennis',
     Tetris: 'Tetris',
+    DrMario: 'Dr. Mario',
+    IceClimber: 'Ice Climber',
+    Pinball: 'Pinball',
+    Bomberman: 'Bomberman',
+    Tennis: 'Tennis',
     Spelunker: 'Spelunker',
+    UrbanChampion: 'Urban Champion',
+    Excitebike: 'Excitebike',
+    Zelda: 'Zelda',
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -46,9 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
         RIGHT = 0b1000_0000,
     };
 
-    function handleInput(nes: Console, event: KeyboardEvent, pressed: boolean): void {
-        event.preventDefault();
-
+    function handleInput(nes: Nes, event: KeyboardEvent, pressed: boolean): void {
         switch (event.key) {
             case 'w':
                 updateJoypad1(nes, JoypadStatus.UP, pressed);
@@ -69,9 +73,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateJoypad1(nes, JoypadStatus.A, pressed);
                 break;
             case 'Enter':
+                event.preventDefault();
                 updateJoypad1(nes, JoypadStatus.START, pressed);
                 break;
             case ' ':
+                event.preventDefault();
                 updateJoypad1(nes, JoypadStatus.SELECT, pressed);
                 break;
         }
@@ -79,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     (async () => {
         await init();
-        const rom = await fetch(`roms/${roms.SuperMarioBros}.nes`);
+        const rom = await fetch(`roms/${roms.Zelda}.nes`);
         const bytes = await rom.arrayBuffer();
         const nes = createConsole(new Uint8Array(bytes));
         const frame = new Uint8Array(imageData.data);

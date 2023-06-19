@@ -1,20 +1,26 @@
+use super::mappers::mmc1::MMC1;
 use super::mappers::nrom::NROM;
 use super::mappers::Mapper;
 use std::io;
 
 const PRG_ROM_PAGE_SIZE: usize = 16384;
 
-#[allow(clippy::upper_case_acronyms)]
-pub struct ROM {
+pub struct Cart {
     pub bytes: Vec<u8>,
     pub prg_rom_size: u8, // 16kb units
     pub chr_rom_size: u8, // 8kb units
     pub mirroring: Mirroring,
-    pub mapper: u8,
+    pub mapper_id: u8,
     pub battery: bool,
     pub trainer: bool,
     pub prg_rom_start: usize,
     pub chr_rom_start: usize,
+}
+
+#[allow(clippy::upper_case_acronyms)]
+pub struct ROM {
+    pub cart: Cart,
+    pub mapper: Box<dyn Mapper>,
 }
 
 #[derive(Debug)]
@@ -28,6 +34,8 @@ pub enum RomError {
 pub enum Mirroring {
     Horizontal,
     Vertical,
+    OneScreenLowerBank,
+    OneScreenUpperBank,
     FourScreen,
 }
 
@@ -53,7 +61,7 @@ impl ROM {
 
         let battery = bytes[6] & 0b10 != 0;
         let trainer = bytes[6] & 0b100 != 0;
-        let mapper = (bytes[7] & 0b1111_0000) | (bytes[6] >> 4);
+        let mapper_id = (bytes[7] & 0b1111_0000) | (bytes[6] >> 4);
         let prg_rom_size = bytes[4];
         let chr_rom_size = bytes[5];
 
@@ -61,33 +69,26 @@ impl ROM {
         let chr_rom_start = prg_rom_start + (prg_rom_size as usize) * PRG_ROM_PAGE_SIZE;
 
         Ok(ROM {
-            prg_rom_size,
-            chr_rom_size,
-            mirroring,
-            mapper,
-            battery,
-            trainer,
-            bytes,
-            prg_rom_start,
-            chr_rom_start,
+            cart: Cart {
+                prg_rom_size,
+                chr_rom_size,
+                mirroring,
+                mapper_id,
+                battery,
+                trainer,
+                bytes,
+                prg_rom_start,
+                chr_rom_start,
+            },
+            mapper: ROM::get_mapper(mapper_id)?,
         })
     }
 
-    pub fn get_mapper(rom: &mut ROM) -> Result<Box<dyn Mapper>, RomError> {
-        match rom.mapper {
+    fn get_mapper(mapper_id: u8) -> Result<Box<dyn Mapper>, RomError> {
+        match mapper_id {
             0 => Ok(Box::new(NROM::new())),
-            _ => Err(RomError::UnsupportedMapper(rom.mapper)),
+            1 => Ok(Box::new(MMC1::new())),
+            _ => Err(RomError::UnsupportedMapper(mapper_id)),
         }
-    }
-
-    pub fn read_chr(&self, addr: u16) -> u8 {
-        self.bytes[self.chr_rom_start + addr as usize]
-    }
-
-    pub fn get_tile(&self, chr_bank_offset: usize, nth: usize) -> &[u8] {
-        let tile_offset = nth * 16;
-        let tile_start = self.chr_rom_start + chr_bank_offset + tile_offset;
-        let tile_end = tile_start + 15;
-        &self.bytes[tile_start..=tile_end]
     }
 }

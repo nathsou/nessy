@@ -6,14 +6,14 @@ use crate::{
 };
 
 #[wasm_bindgen]
-pub struct Console {
+pub struct Nes {
     cpu: CPU,
 }
 
-impl Console {
+impl Nes {
     pub fn new(rom: ROM) -> Self {
         let bus = Bus::new(rom);
-        Console { cpu: CPU::new(bus) }
+        Nes { cpu: CPU::new(bus) }
     }
 
     #[inline]

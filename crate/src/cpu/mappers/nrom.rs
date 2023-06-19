@@ -1,4 +1,5 @@
-use super::super::ROM;
+use crate::cpu::rom::Cart;
+
 use super::Mapper;
 
 #[allow(clippy::upper_case_acronyms)]
@@ -12,41 +13,44 @@ impl NROM {
     }
 }
 
-impl NROM {
-    #[inline]
-    fn mirrored_addr(rom: &ROM, addr: u16) -> usize {
-        let mut prg_rom_addr = addr as usize - 0x8000;
+#[inline]
+fn mirrored_addr(cart: &Cart, addr: u16) -> usize {
+    let mut prg_rom_addr = addr as usize - 0x8000;
 
-        if rom.prg_rom_size == 1 && prg_rom_addr >= 0x4000 {
-            prg_rom_addr -= 0x4000;
-        }
-
-        rom.prg_rom_start + prg_rom_addr
+    if cart.prg_rom_size == 1 && prg_rom_addr >= 0x4000 {
+        prg_rom_addr -= 0x4000;
     }
+
+    cart.prg_rom_start + prg_rom_addr
 }
 
 impl Mapper for NROM {
-    fn read_byte(&mut self, rom: &mut ROM, addr: u16) -> u8 {
+    fn read_prg(&mut self, cart: &mut Cart, addr: u16) -> u8 {
         match addr {
-            0x6000..=0x7FFF => self.ram[(addr - 0x6000) as usize],
+            0x6000..=0x7FFF => self.ram[((addr - 0x6000) & 0x7FF) as usize],
             0x8000..=0xFFFF => {
-                let addr = NROM::mirrored_addr(rom, addr);
-                rom.bytes[addr]
+                let addr = mirrored_addr(cart, addr);
+                cart.bytes[addr]
             }
             _ => 0, // _ => panic!("Invalid NROM read address: {:04X}", addr),
         }
     }
 
-    fn write_byte(&mut self, rom: &mut ROM, addr: u16, val: u8) {
+    fn write_prg(&mut self, _: &mut Cart, addr: u16, val: u8) {
         match addr {
             0x6000..=0x7FFF => {
                 self.ram[(addr - 0x6000) as usize] = val;
             }
-            0x8000..=0xFFFF => {
-                let addr = NROM::mirrored_addr(rom, addr);
-                rom.bytes[addr] = val;
-            }
             _ => panic!("Invalid NROM write address: {:04X}", addr),
         }
+    }
+
+    fn read_chr(&self, cart: &Cart, addr: u16) -> u8 {
+        let addr = cart.chr_rom_start + addr as usize;
+        cart.bytes[addr]
+    }
+
+    fn write_chr(&mut self, _: &mut Cart, _: u16, _: u8) {
+        panic!("Attempted to write to CHR ROM on NROM mapper");
     }
 }

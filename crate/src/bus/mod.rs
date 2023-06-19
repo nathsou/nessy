@@ -1,5 +1,4 @@
 use self::controller::Joypad;
-use super::cpu::mappers::Mapper;
 use super::ppu::PPU;
 use crate::cpu::{memory::Memory, rom::ROM};
 pub mod controller;
@@ -34,16 +33,14 @@ pub enum Interrupt {
 
 pub struct Bus {
     pub ram: RAM,
-    pub mapper: Box<dyn Mapper>,
     pub ppu: PPU,
     pub joypad1: Joypad,
 }
 
 impl Bus {
-    pub fn new(mut rom: ROM) -> Bus {
+    pub fn new(rom: ROM) -> Bus {
         Bus {
             ram: RAM { ram: [0; 0x800] },
-            mapper: ROM::get_mapper(&mut rom).unwrap(),
             ppu: PPU::new(rom),
             joypad1: Joypad::new(),
         }
@@ -80,7 +77,7 @@ impl Memory for Bus {
                 // APU
                 0
             }
-            0x4020..=0xffff => self.mapper.read_byte(&mut self.ppu.rom, addr),
+            0x4020..=0xffff => self.ppu.rom.mapper.read_prg(&mut self.ppu.rom.cart, addr),
             _ => {
                 println!("ignoring read at address {addr:x}");
                 0
@@ -113,7 +110,11 @@ impl Memory for Bus {
             }
             0x4016 => self.joypad1.write(val),
             0x4000..=0x4017 => (), // APU
-            0x4020..=0xffff => self.mapper.write_byte(&mut self.ppu.rom, addr, val),
+            0x4020..=0xffff => self
+                .ppu
+                .rom
+                .mapper
+                .write_prg(&mut self.ppu.rom.cart, addr, val),
             _ => println!("ignoring write at address {addr:x}"),
         }
     }

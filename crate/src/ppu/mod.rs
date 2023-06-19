@@ -80,7 +80,7 @@ impl PPU {
     fn render_background_tile(
         &mut self,
         frame: &mut [u8],
-        chr_bank_offset: usize,
+        chr_bank_offset: u16,
         nametable_offset: usize,
         nth: usize,
         tile_col: usize,
@@ -89,7 +89,10 @@ impl PPU {
         shift_x: isize,
         shift_y: isize,
     ) {
-        let tile = self.rom.get_tile(chr_bank_offset, nth);
+        let mut tile = [0u8; 16];
+        self.rom
+            .mapper
+            .get_tile(&self.rom.cart, chr_bank_offset, nth, &mut tile);
 
         for y in 0..PIXELS_PER_TILE {
             let mut plane1 = tile[y];
@@ -143,7 +146,7 @@ impl PPU {
     fn render_sprite_tile(
         &mut self,
         frame: &mut [u8],
-        chr_bank_offset: usize,
+        chr_bank_offset: u16,
         nth: usize,
         tile_x: usize,
         tile_y: usize,
@@ -152,7 +155,10 @@ impl PPU {
         flip_vertically: bool,
         palette: [Option<(u8, u8, u8)>; 4],
     ) {
-        let tile = self.rom.get_tile(chr_bank_offset, nth);
+        let mut tile = [0u8; 16];
+        self.rom
+            .mapper
+            .get_tile(&self.rom.cart, chr_bank_offset, nth, &mut tile);
 
         for y in 0..PIXELS_PER_TILE {
             let mut plane1 = tile[y];
@@ -213,10 +219,7 @@ impl PPU {
 
         COLOR_PALETTE[match color_idx {
             0 => self.palette[0],
-            1 => self.palette[palette_offset],
-            2 => self.palette[palette_offset + 1],
-            3 => self.palette[palette_offset + 2],
-            _ => unreachable!(),
+            _ => self.palette[palette_offset + color_idx - 1],
         } as usize]
     }
 
@@ -240,7 +243,7 @@ impl PPU {
         shift_x: isize,
         shift_y: isize,
     ) {
-        let bank_offset: usize = if !self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
+        let bank_offset: u16 = if !self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
             0
         } else {
             0x1000
@@ -266,7 +269,7 @@ impl PPU {
     }
 
     fn render_sprites(&mut self, frame: &mut [u8]) {
-        let chr_bank_offset: usize = if !self.regs.ctrl.contains(PPU_CTRL::SPRITE_PATTERN_ADDR) {
+        let chr_bank_offset: u16 = if !self.regs.ctrl.contains(PPU_CTRL::SPRITE_PATTERN_ADDR) {
             0
         } else {
             0x1000
@@ -305,7 +308,7 @@ impl PPU {
         let scroll_y = self.regs.scroll.y as usize;
 
         if self.regs.mask.contains(PPU_MASK::SHOW_BACKGROUND) {
-            let (nametable1, nametable2): (usize, usize) = match self.rom.mirroring {
+            let (nametable1, nametable2): (usize, usize) = match self.rom.cart.mirroring {
                 Mirroring::Vertical => match base_nametable_addr {
                     0x2000 | 0x2800 => (0, 0x400),
                     0x2400 | 0x2c00 => (0x400, 0),
@@ -316,7 +319,15 @@ impl PPU {
                     0x2800 | 0x2c00 => (0x400, 0),
                     _ => unreachable!(),
                 },
-                _ => todo!("mirroring mode not implemented"),
+                Mirroring::OneScreenLowerBank => (0, 0),
+                Mirroring::OneScreenUpperBank => (0x400, 0x400),
+                Mirroring::FourScreen => match base_nametable_addr {
+                    0x2000 => (0x000, 0x400),
+                    0x2400 => (0x400, 0x800),
+                    0x2800 => (0x800, 0xc00),
+                    0x2c00 => (0xc00, 0x800),
+                    _ => unreachable!(),
+                },
             };
 
             self.render_background(
@@ -451,19 +462,33 @@ impl PPU {
     }
 
     fn vram_mirrored_addr(&self, addr: u16) -> u16 {
-        match self.rom.mirroring {
+        match self.rom.cart.mirroring {
             Mirroring::Horizontal => match addr {
                 0x2000..=0x23ff => addr - 0x2000,        // A
                 0x2400..=0x27ff => addr - 0x2400,        // A
-                0x2800..=0x2bff => 1024 + addr - 0x2800, // B
-                0x2c00..=0x2fff => 1024 + addr - 0x2c00, // B
+                0x2800..=0x2bff => addr - 0x2800 + 1024, // B
+                0x2c00..=0x2fff => addr - 0x2c00 + 1024, // B
                 _ => unreachable!(),
             },
             Mirroring::Vertical => match addr {
                 0x2000..=0x23ff => addr - 0x2000,        // A
-                0x2400..=0x27ff => 1024 + addr - 0x2400, // B
+                0x2400..=0x27ff => addr - 0x2400 + 1024, // B
                 0x2800..=0x2bff => addr - 0x2800,        // A
-                0x2c00..=0x2fff => 1024 + addr - 0x2c00, // B
+                0x2c00..=0x2fff => addr - 0x2c00 + 1024, // B
+                _ => unreachable!(),
+            },
+            Mirroring::OneScreenLowerBank => match addr {
+                0x2000..=0x23ff => addr - 0x2000, // A
+                0x2400..=0x27ff => addr - 0x2400, // A
+                0x2800..=0x2bff => addr - 0x2800, // A
+                0x2c00..=0x2fff => addr - 0x2c00, // A
+                _ => unreachable!(),
+            },
+            Mirroring::OneScreenUpperBank => match addr {
+                0x2000..=0x23ff => addr - 0x2000 + 1024, // B
+                0x2400..=0x27ff => addr - 0x2400 + 1024, // B
+                0x2800..=0x2bff => addr - 0x2800 + 1024, // B
+                0x2c00..=0x2fff => addr - 0x2c00 + 1024, // B
                 _ => unreachable!(),
             },
             Mirroring::FourScreen => addr - 0x2000,
@@ -488,7 +513,7 @@ impl PPU {
         match addr {
             0x0000..=0x1fff => {
                 let res = self.data_buffer;
-                self.data_buffer = self.rom.read_chr(addr);
+                self.data_buffer = self.rom.mapper.read_chr(&self.rom.cart, addr);
                 res
             }
             0x2000..=0x2fff => {
@@ -506,7 +531,7 @@ impl PPU {
         let addr = self.regs.addr.addr;
 
         match addr {
-            0x0000..=0x1fff => panic!("cannot write to CHR ROM"),
+            0x0000..=0x1fff => self.rom.mapper.write_chr(&mut self.rom.cart, addr, data),
             0x2000..=0x2fff => {
                 self.vram[self.vram_mirrored_addr(addr) as usize] = data;
             }
