@@ -46,7 +46,7 @@ impl Mapper for NROM {
     }
 
     fn read_chr(&self, cart: &Cart, addr: u16) -> u8 {
-        let addr = cart.chr_rom_start + addr as usize;
+        let addr = cart.chr_rom_start + (addr & 0x1fff) as usize;
         cart.bytes[addr]
     }
 

@@ -28,7 +28,7 @@ const roms = {
     NinjaTurtles: 'Teenage Mutant Ninja Turtles',
 };
 
-const game = roms.MegaMan2;
+const game = roms.Zelda2;
 
 document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;

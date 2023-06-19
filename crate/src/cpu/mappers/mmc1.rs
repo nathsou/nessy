@@ -43,7 +43,7 @@ impl Mapper for MMC1 {
                     _ => unreachable!(),
                 };
 
-                let offset = (addr as usize - 0x8000) & 0x3fff;
+                let offset = addr as usize - 0x8000;
                 let addr = cart.prg_rom_start + (bank as usize * 0x4000) + offset;
                 cart.bytes[addr]
             }
@@ -59,7 +59,7 @@ impl Mapper for MMC1 {
                 let addr = cart.prg_rom_start + (bank as usize * 0x4000) + offset;
                 cart.bytes[addr]
             }
-            _ => 0, // _ => panic!("Invalid NROM read address: {:04X}", addr),
+            _ => panic!("Invalid MMC1 read address: {:04X}", addr),
         }
     }
 
@@ -106,8 +106,8 @@ impl Mapper for MMC1 {
         if cart.chr_rom_size == 0 {
             self.chr_ram[addr as usize]
         } else {
-            let bank_offset = self.chr_rom_offset(cart, addr);
-            cart.bytes[cart.chr_rom_start + bank_offset + (addr & 0xfff) as usize]
+            let offset = self.chr_rom_offset(cart, addr);
+            cart.bytes[cart.chr_rom_start + offset]
         }
     }
 
@@ -115,24 +115,25 @@ impl Mapper for MMC1 {
         if cart.chr_rom_size == 0 {
             self.chr_ram[addr as usize] = val;
         } else {
-            let bank_offset = self.chr_rom_offset(cart, addr);
-            cart.bytes[cart.chr_rom_start + bank_offset + (addr & 0xfff) as usize] = val;
+            let offset = self.chr_rom_offset(cart, addr);
+            cart.bytes[cart.chr_rom_start + offset] = val;
         }
     }
 }
 
 impl MMC1 {
     fn chr_rom_offset(&self, _: &Cart, addr: u16) -> usize {
-        if self.control & 0b10000 == 0 {
+        if self.chr_mode == 0 {
             // switch 8 KB at a time
-            (self.chr_bank0 & 0xFE) as usize * 0x2000
+            self.chr_bank0 as usize * 0x2000 + (addr as usize & 0x1FFF)
         } else {
             // switch two separate 4 KB banks
-            match addr {
-                0x0000..=0x0FFF => (self.chr_bank0 as usize) * 0x1000,
-                0x1000..=0x1FFF => (self.chr_bank1 as usize) * 0x1000,
-                _ => unreachable!(),
-            }
+            (addr as usize & 0xFFF)
+                + match addr {
+                    0x0000..=0x0FFF => (self.chr_bank0 as usize) * 0x1000,
+                    0x1000..=0x1FFF => (self.chr_bank1 as usize) * 0x1000,
+                    _ => unreachable!(),
+                }
         }
     }
 

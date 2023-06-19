@@ -409,15 +409,12 @@ impl PPU {
             }
 
             if DEBUG_SCROLL {
-                let sv = WIDTH - scroll_x;
-                let sh = HEIGHT - scroll_y;
-
                 for x in 0..WIDTH {
-                    PPU::set_pixel(frame, x, sh, (255, 0, 0));
+                    PPU::set_pixel(frame, x, HEIGHT - scroll_y, (255, 0, 255));
                 }
 
                 for y in 0..HEIGHT {
-                    PPU::set_pixel(frame, sv, y, (0, 255, 0))
+                    PPU::set_pixel(frame, WIDTH - scroll_x, y, (0, 255, 0));
                 }
             }
         }
@@ -459,29 +456,8 @@ impl PPU {
 
     #[inline]
     fn is_sprite_zero_hit(&mut self) -> bool {
-        // TODO: Improve accuracy
-        // https://www.nesdev.org/wiki/PPU_OAM#Sprite_zero_hits
-        // if self.sprite_zero_hit_this_frame
-        //     || !self.regs.mask.contains(PPU_MASK::SHOW_SPRITES)
-        //     || !self.regs.mask.contains(PPU_MASK::SHOW_BACKGROUND)
-        // {
-        //     return false;
-        // }
-
         let y = self.attributes[0] as usize;
         let x = self.attributes[3] as usize;
-
-        // let hit = self.scanline == y
-        //     && self.cycle >= x
-        //     && self.regs.mask.contains(PPU_MASK::SHOW_SPRITES)
-        //     && self.regs.mask.contains(PPU_MASK::SHOW_BACKGROUND)
-        //     && !self.sprite_zero_hit_this_frame;
-
-        // if hit {
-        //     self.sprite_zero_hit_this_frame = true;
-        // }
-
-        // hit
 
         y == self.scanline && x <= self.cycle && self.regs.mask.contains(PPU_MASK::SHOW_SPRITES)
     }

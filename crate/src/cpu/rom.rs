@@ -64,7 +64,6 @@ impl ROM {
         let mapper_id = (bytes[7] & 0b1111_0000) | (bytes[6] >> 4);
         let prg_rom_size = bytes[4];
         let chr_rom_size = bytes[5];
-
         let prg_rom_start = 16 + if trainer { 512 } else { 0 };
         let chr_rom_start = prg_rom_start + (prg_rom_size as usize) * PRG_ROM_PAGE_SIZE;
 
