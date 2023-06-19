@@ -1,7 +1,7 @@
 mod registers;
 use crate::cpu::rom::{Mirroring, ROM};
 
-use self::registers::{Registers, PPU_CTRL, PPU_MASK, PPU_STATUS};
+use self::registers::{Registers, SpriteSize, PPU_CTRL, PPU_MASK, PPU_STATUS};
 
 const PIXELS_PER_TILE: usize = 8;
 const TILES_PER_NAMETABLE_BYTE: usize = 4;
@@ -121,22 +121,27 @@ impl PPU {
                     && pixel_y >= viewport.y_min
                     && pixel_y < viewport.y_max
                 {
-                    let x = (pixel_x as isize + shift_x) as usize;
-                    let y = (pixel_y as isize + shift_y) as usize;
-                    let idx = y * WIDTH + x;
+                    let x = pixel_x as isize + shift_x;
+                    let y = pixel_y as isize + shift_y;
 
-                    let color = if SHOW_OPAQUE_MAP {
-                        if color_idx == 0 {
-                            (0, 0, 0)
+                    if x >= 0 && y >= 0 {
+                        let x = x as usize;
+                        let y = y as usize;
+                        let idx = y * WIDTH + x;
+
+                        let color = if SHOW_OPAQUE_MAP {
+                            if color_idx == 0 {
+                                (0, 0, 0)
+                            } else {
+                                (255, 255, 255)
+                            }
                         } else {
-                            (255, 255, 255)
-                        }
-                    } else {
-                        rgb
-                    };
+                            rgb
+                        };
 
-                    PPU::set_pixel(frame, x, y, color);
-                    self.opaque_map[idx] = color_idx != 0;
+                        PPU::set_pixel(frame, x, y, color);
+                        self.opaque_map[idx] = color_idx != 0;
+                    }
                 }
             }
         }
@@ -269,16 +274,15 @@ impl PPU {
     }
 
     fn render_sprites(&mut self, frame: &mut [u8]) {
-        let chr_bank_offset: u16 = if !self.regs.ctrl.contains(PPU_CTRL::SPRITE_PATTERN_ADDR) {
-            0
-        } else {
-            0x1000
-        };
+        let sprite_size = self.regs.ctrl.sprite_size();
 
         // Sprites with lower OAM indices are drawn in front
         for i in (0..WIDTH).step_by(4).rev() {
             let sprite_y = self.attributes[i] as usize + 1;
-            let sprite_tile_idx = self.attributes[i + 1] as usize;
+            let sprite_tile_idx = match sprite_size {
+                SpriteSize::Sprite8x8 => self.attributes[i + 1] as usize,
+                SpriteSize::Sprite8x16 => (self.attributes[i + 1]) as usize,
+            };
             let sprite_attr = self.attributes[i + 2];
             let sprite_x = self.attributes[i + 3] as usize;
 
@@ -287,11 +291,30 @@ impl PPU {
             let flip_horizontally = sprite_attr & 0b0100_0000 != 0;
             let flip_vertically = sprite_attr & 0b1000_0000 != 0;
             let palette = self.sprite_palette(palette_idx);
+            let chr_bank_offset: u16 = match sprite_size {
+                SpriteSize::Sprite8x8 => {
+                    if !self.regs.ctrl.contains(PPU_CTRL::SPRITE_PATTERN_ADDR) {
+                        0
+                    } else {
+                        0x1000
+                    }
+                }
+                SpriteSize::Sprite8x16 => (sprite_tile_idx as u16 & 1) * 0x1000,
+            };
+
+            let (top_tile_idx, bot_tile_idx) = {
+                use SpriteSize::*;
+                match (sprite_size, flip_vertically) {
+                    (Sprite8x8, _) => (sprite_tile_idx, None),
+                    (Sprite8x16, false) => (sprite_tile_idx, Some(sprite_tile_idx + 1)),
+                    (Sprite8x16, true) => (sprite_tile_idx + 1, Some(sprite_tile_idx)),
+                }
+            };
 
             self.render_sprite_tile(
                 frame,
                 chr_bank_offset,
-                sprite_tile_idx,
+                top_tile_idx,
                 sprite_x,
                 sprite_y,
                 behind_background,
@@ -299,6 +322,20 @@ impl PPU {
                 flip_vertically,
                 palette,
             );
+
+            if let Some(idx) = bot_tile_idx {
+                self.render_sprite_tile(
+                    frame,
+                    chr_bank_offset,
+                    idx,
+                    sprite_x,
+                    sprite_y + 8,
+                    behind_background,
+                    flip_horizontally,
+                    flip_vertically,
+                    palette,
+                );
+            }
         }
     }
 

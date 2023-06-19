@@ -19,10 +19,16 @@ const roms = {
     UrbanChampion: 'Urban Champion',
     Excitebike: 'Excitebike',
     Zelda: 'Zelda',
+    Zelda2: 'Zelda II',
     KidIcarus: 'Kid Icarus',
+    MegaMan2: 'Mega Man 2',
+    Castlevania: 'Castlevania',
+    Contra: 'Contra',
+    Chessmaster: 'Chessmaster',
+    NinjaTurtles: 'Teenage Mutant Ninja Turtles',
 };
 
-const game = roms.DrMario;
+const game = roms.MegaMan2;
 
 document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;

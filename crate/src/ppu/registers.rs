@@ -73,17 +73,28 @@ impl PPU_CTRL {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
 pub enum SpriteSize {
     Sprite8x8,
     Sprite8x16,
 }
 
 impl PPU_CTRL {
+    #[inline]
     pub fn vram_addr_increment(self) -> u8 {
         if self.contains(PPU_CTRL::VRAM_ADD_INCREMENT) {
             32
         } else {
             1
+        }
+    }
+
+    #[inline]
+    pub fn sprite_size(&self) -> SpriteSize {
+        if self.contains(PPU_CTRL::SPRITE_SIZE) {
+            SpriteSize::Sprite8x16
+        } else {
+            SpriteSize::Sprite8x8
         }
     }
 
