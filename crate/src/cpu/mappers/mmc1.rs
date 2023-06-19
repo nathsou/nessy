@@ -107,7 +107,7 @@ impl Mapper for MMC1 {
             self.chr_ram[addr as usize]
         } else {
             let bank_offset = self.chr_rom_offset(cart, addr);
-            cart.bytes[cart.chr_rom_start + bank_offset + (addr as usize)]
+            cart.bytes[cart.chr_rom_start + bank_offset + (addr & 0xfff) as usize]
         }
     }
 
@@ -116,7 +116,7 @@ impl Mapper for MMC1 {
             self.chr_ram[addr as usize] = val;
         } else {
             let bank_offset = self.chr_rom_offset(cart, addr);
-            cart.bytes[cart.chr_rom_start + bank_offset + (addr as usize)] = val;
+            cart.bytes[cart.chr_rom_start + bank_offset + (addr & 0xfff) as usize] = val;
         }
     }
 }

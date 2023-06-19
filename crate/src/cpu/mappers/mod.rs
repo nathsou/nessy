@@ -16,10 +16,10 @@ pub trait Mapper {
         nth: usize,
         buffer: &mut [u8; 16],
     ) {
-        let offset = (nth * 16) as u16;
+        let offset = chr_bank_offset + (nth * 16) as u16;
 
         for i in 0..16 {
-            buffer[i] = self.read_chr(cart, chr_bank_offset + offset + i as u16);
+            buffer[i] = self.read_chr(cart, offset + i as u16);
         }
     }
 }

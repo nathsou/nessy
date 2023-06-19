@@ -19,7 +19,10 @@ const roms = {
     UrbanChampion: 'Urban Champion',
     Excitebike: 'Excitebike',
     Zelda: 'Zelda',
+    KidIcarus: 'Kid Icarus',
 };
+
+const game = roms.DrMario;
 
 document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
@@ -85,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     (async () => {
         await init();
-        const rom = await fetch(`roms/${roms.Zelda}.nes`);
+        const rom = await fetch(`roms/${game}.nes`);
         const bytes = await rom.arrayBuffer();
         const nes = createConsole(new Uint8Array(bytes));
         const frame = new Uint8Array(imageData.data);

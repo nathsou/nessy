@@ -243,7 +243,7 @@ impl PPU {
         shift_x: isize,
         shift_y: isize,
     ) {
-        let bank_offset: u16 = if !self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
+        let chr_bank_offset: u16 = if !self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
             0
         } else {
             0x1000
@@ -256,7 +256,7 @@ impl PPU {
 
             self.render_background_tile(
                 frame,
-                bank_offset,
+                chr_bank_offset,
                 nametable_offset,
                 tile_idx,
                 tile_col,
