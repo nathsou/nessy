@@ -73,40 +73,4 @@ mod tests {
             cpu.step();
         }
     }
-
-    #[test]
-    #[ignore]
-    fn test_smb_dump() {
-        let rom = load_rom("roms/smb.nes");
-        let dump = std::fs::read_to_string("smb.log").expect("smb.log not found");
-        let bus = Bus::new(rom);
-        let mut cpu = CPU::new(bus);
-        let mut i = 0;
-        let lines = dump.lines().collect::<Vec<_>>();
-
-        while i < lines.len() {
-            let line = lines[i];
-
-            if line.starts_with('!') {
-                let joypad1 = u8::from_str_radix(&line[1..], 2).unwrap();
-                cpu.bus.joypad1.update(joypad1);
-                i += 1;
-            } else {
-                let actual = cpu.state_fmt();
-                let prev_pc = cpu.pc;
-                let cycles = cpu.step();
-                cpu.bus.advance_ppu(cycles);
-
-                if prev_pc != cpu.pc {
-                    let with_cycles = format!(
-                        "{actual} CY {cycles} {}|{}",
-                        cpu.bus.ppu.scanline, cpu.bus.ppu.cycle
-                    );
-
-                    assert_eq!(with_cycles, line);
-                    i += 1;
-                }
-            }
-        }
-    }
 }

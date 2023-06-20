@@ -43,11 +43,19 @@ pub struct PPU {
     sprite_zero_hit_this_frame: bool,
     opaque_map: [bool; WIDTH * HEIGHT],
     pub frame_complete: bool,
+
+    tile_data: u64,
+    tile_pattern_shift_regs: [u16; 2],
+    tile_attributes_shift_regs: [u8; 2],
+    nametable_byte: u8,
+    attribute_table_byte: u8,
+    pattern_table_low_byte: u8,
+    pattern_table_high_byte: u8,
 }
 
 impl PPU {
     pub fn new(rom: ROM) -> Self {
-        PPU {
+        let mut ppu = PPU {
             rom,
             regs: Registers::new(),
             vram: [0; 2 * 1024],
@@ -60,10 +68,21 @@ impl PPU {
             sprite_zero_hit_this_frame: false,
             opaque_map: [false; WIDTH * HEIGHT],
             frame_complete: false,
-        }
+
+            tile_data: 0,
+            tile_pattern_shift_regs: [0; 2],
+            tile_attributes_shift_regs: [0; 2],
+            nametable_byte: 0,
+            attribute_table_byte: 0,
+            pattern_table_low_byte: 0,
+            pattern_table_high_byte: 0,
+        };
+
+        ppu.reset();
+        ppu
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self, frame: &mut [u8]) {
         self.cycle += 1;
 
         let rendering_enabled = self.regs.rendering_enabled();
@@ -73,6 +92,25 @@ impl PPU {
         let pre_fetch_cycle = self.cycle >= 321 && self.cycle <= 336;
         let visible_cycle = self.cycle >= 1 && self.cycle <= 256;
         let fetch_cycle = pre_fetch_cycle || visible_cycle;
+
+        if rendering_enabled {
+            if visible_line && visible_cycle {
+                self.tile_data <<= 4;
+
+                match self.cycle & 7 {
+                    0 => self.fetch_nametable_byte(),
+                    2 => self.fetch_attribute_table_byte(),
+                    4 => self.fetch_pattern_table_low_byte(),
+                    6 => self.fetch_pattern_table_high_byte(),
+                    1 if self.cycle > 8 => self.store_tile_data(),
+                    _ => {}
+                }
+            }
+
+            if visible_line && visible_cycle {
+                self.render_pixel(frame);
+            }
+        }
 
         match self.cycle {
             256 if rendering_enabled => {
@@ -122,12 +160,107 @@ impl PPU {
         }
     }
 
+    fn fetch_nametable_byte(&mut self) {
+        // See Tile and attribute fetching
+        // https://www.nesdev.org/wiki/PPU_scrolling
+        let offset = self.regs.v & 0x0FFF;
+        self.nametable_byte = self.read_nametable(0x2000 | offset);
+    }
+
+    fn fetch_attribute_table_byte(&mut self) {
+        let v = self.regs.v;
+        let offset = (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07);
+        self.attribute_table_byte = self.read_nametable(0x23C0 | offset);
+    }
+
+    fn fetch_pattern_table_low_byte(&mut self) {
+        let table = self.regs.ctrl.background_chr_offset();
+        let tile = self.nametable_byte as u16;
+        let fine_y = self.regs.fine_y() as u16;
+        let offset = table + tile * 16 + fine_y;
+
+        self.pattern_table_low_byte = self.read_chr(offset);
+    }
+
+    fn fetch_pattern_table_high_byte(&mut self) {
+        let table = self.regs.ctrl.background_chr_offset();
+        let tile = self.nametable_byte as u16;
+        let fine_y = self.regs.fine_y() as u16;
+        let offset = table + tile * 16 + fine_y;
+
+        self.pattern_table_high_byte = self.read_chr(offset + 8);
+    }
+
     pub fn reset(&mut self) {
         self.cycle = 340;
         self.scanline = 240;
         self.regs.write_ctrl(0);
         self.regs.write_mask(0);
         self.regs.oam_addr = 0;
+    }
+
+    fn store_tile_data(&mut self) {
+        let mut data = 0u32;
+
+        for _ in 0..8 {
+            let a = self.attribute_table_byte;
+            let p1 = (self.pattern_table_low_byte & 0x80) >> 7;
+            let p2 = (self.pattern_table_high_byte & 0x80) >> 6;
+            self.pattern_table_low_byte <<= 1;
+            self.pattern_table_high_byte <<= 1;
+            data <<= 4;
+            data |= (a | p1 | p2) as u32;
+        }
+
+        self.tile_data |= data as u64;
+    }
+
+    fn shift_tile_buffer(&mut self) {
+        self.tile_pattern_shift_regs[0] = (self.pattern_table_low_byte as u16) << 8;
+        self.tile_pattern_shift_regs[1] = (self.pattern_table_high_byte as u16) << 8;
+
+        let mut attr = self.attribute_table_byte;
+
+        for _ in 0..8 {
+            self.tile_attributes_shift_regs[0] |= attr & 0b01;
+            self.tile_attributes_shift_regs[1] |= attr & 0b10;
+            self.tile_attributes_shift_regs[0] <<= 1;
+            self.tile_attributes_shift_regs[1] <<= 1;
+            attr >>= 2;
+        }
+    }
+
+    fn get_background_pixel(&mut self) -> u8 {
+        let data = (self.tile_data >> 32) >> ((7 - self.regs.x) * 4);
+        (data & 0x0F) as u8
+
+        // let attr_low = self.tile_attributes_shift_regs[0] & 1;
+        // let attr_high = self.tile_attributes_shift_regs[1] & 1;
+        // let patt_low = self.tile_pattern_shift_regs[0] & 1;
+        // let patt_high = self.tile_pattern_shift_regs[1] & 1;
+        // let attr = (attr_high << 1) | attr_low;
+        // let patt = (patt_high << 1) | patt_low;
+        // let palette_idx = (attr << 2) | (patt as u8);
+
+        // self.tile_attributes_shift_regs[0] >>= 1;
+        // self.tile_attributes_shift_regs[1] >>= 1;
+        // self.tile_pattern_shift_regs[0] >>= 1;
+        // self.tile_pattern_shift_regs[1] >>= 1;
+
+        // palette_idx
+    }
+
+    fn render_pixel(&mut self, frame: &mut [u8]) {
+        let bg = self.get_background_pixel();
+        let x = self.cycle - 1;
+        let y = self.scanline;
+
+        let color = COLOR_PALETTE[match bg {
+            0 => self.palette[0],
+            _ => self.palette[bg as usize % 64],
+        } as usize];
+
+        Self::set_pixel(frame, x, y, color);
     }
 
     #[inline]
@@ -548,18 +681,29 @@ impl PPU {
         }
     }
 
+    #[inline]
+    fn read_chr(&self, addr: u16) -> u8 {
+        self.rom.mapper.read_chr(&self.rom.cart, addr)
+    }
+
+    #[inline]
+    fn read_nametable(&self, addr: u16) -> u8 {
+        let addr = self.vram_mirrored_addr(addr);
+        self.vram[addr as usize]
+    }
+
     pub fn read_data_reg(&mut self) -> u8 {
         let addr = self.regs.v;
 
         let res = match addr {
             0x0000..=0x1fff => {
                 let res = self.data_buffer;
-                self.data_buffer = self.rom.mapper.read_chr(&self.rom.cart, addr);
+                self.data_buffer = self.read_chr(addr);
                 res
             }
             0x2000..=0x2fff => {
                 let res = self.data_buffer;
-                self.data_buffer = self.vram[self.vram_mirrored_addr(addr) as usize];
+                self.data_buffer = self.read_nametable(addr);
                 res
             }
             0x3000..=0x3eff => unreachable!(),

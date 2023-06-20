@@ -17,18 +17,18 @@ impl Nes {
     }
 
     #[inline]
-    fn step(&mut self) {
+    fn step(&mut self, frame: &mut [u8]) {
         let cpu_cycles = self.cpu.step();
-        self.cpu.bus.advance_ppu(cpu_cycles);
+        self.cpu.bus.advance_ppu(frame, cpu_cycles);
     }
 
     pub fn next_frame(&mut self, frame: &mut [u8]) {
         while !self.cpu.bus.ppu.frame_complete {
-            self.step();
+            self.step(frame);
         }
 
         self.cpu.bus.ppu.frame_complete = false;
-        self.cpu.bus.ppu.render_frame(frame);
+        // self.cpu.bus.ppu.render_frame(frame);
     }
 
     #[inline]

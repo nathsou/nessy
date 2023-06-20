@@ -35,17 +35,17 @@ impl Registers {
     }
 
     #[inline]
-    pub fn fine_y_scroll(&self) -> u8 {
+    pub fn fine_y(&self) -> u8 {
         ((self.v >> 12) & 0b111) as u8
     }
 
     #[inline]
-    pub fn coarse_x_scroll(&self) -> u8 {
+    pub fn coarse_x(&self) -> u8 {
         (self.v & 0b11111) as u8
     }
 
     #[inline]
-    pub fn coarse_y_scroll(&self) -> u8 {
+    pub fn coarse_y(&self) -> u8 {
         ((self.v >> 5) & 0b11111) as u8
     }
 
