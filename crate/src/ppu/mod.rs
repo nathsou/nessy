@@ -1,7 +1,7 @@
 mod registers;
 use crate::cpu::rom::{Mirroring, ROM};
 
-use self::registers::{Registers, SpriteSize, PPU_CTRL, PPU_MASK, PPU_STATUS};
+use self::registers::{Ctrl, Mask, Registers, SpriteSize, Status};
 
 const PIXELS_PER_TILE: usize = 8;
 const TILES_PER_NAMETABLE_BYTE: usize = 4;
@@ -42,6 +42,7 @@ pub struct PPU {
     nmi_triggered: bool,
     sprite_zero_hit_this_frame: bool,
     opaque_map: [bool; WIDTH * HEIGHT],
+    pub frame_complete: bool,
 }
 
 impl PPU {
@@ -58,12 +59,80 @@ impl PPU {
             nmi_triggered: false,
             sprite_zero_hit_this_frame: false,
             opaque_map: [false; WIDTH * HEIGHT],
+            frame_complete: false,
         }
     }
 
+    pub fn step(&mut self) {
+        self.cycle += 1;
+
+        let rendering_enabled = self.regs.rendering_enabled();
+        let pre_line = self.scanline == 261;
+        let visible_line = self.scanline < 240;
+        let render_line = pre_line || visible_line;
+        let pre_fetch_cycle = self.cycle >= 321 && self.cycle <= 336;
+        let visible_cycle = self.cycle >= 1 && self.cycle <= 256;
+        let fetch_cycle = pre_fetch_cycle || visible_cycle;
+
+        match self.cycle {
+            256 if rendering_enabled => {
+                self.regs.increment_y();
+            }
+            257 if rendering_enabled => {
+                self.regs.copy_x();
+            }
+            280..=304 if pre_line && rendering_enabled => {
+                self.regs.copy_y();
+            }
+            341 => {
+                if self.is_sprite_zero_hit() {
+                    self.regs.status.set(Status::SPRITE_ZERO_HIT, true);
+                }
+
+                self.cycle = 0;
+                self.scanline += 1;
+
+                // VBlank
+                if self.scanline == 241 {
+                    self.frame_complete = true;
+                    self.regs.status.set(Status::VBLANK_STARTED, true);
+                    self.regs.status.set(Status::SPRITE_ZERO_HIT, false);
+                    if self.regs.ctrl.contains(Ctrl::GENERATE_NMI) {
+                        self.nmi_triggered = true;
+                    }
+                }
+
+                if self.scanline == 262 {
+                    self.scanline = 0;
+                    self.sprite_zero_hit_this_frame = false;
+                    self.regs.status.set(Status::VBLANK_STARTED, false);
+                    self.regs.status.set(Status::SPRITE_ZERO_HIT, false);
+                }
+            }
+            _ => {}
+        }
+
+        if rendering_enabled
+            && self.cycle >= 1
+            && (self.cycle <= 256 || self.cycle >= 328)
+            && self.cycle & 7 == 0
+        {
+            // increment coarse x every 8 cycles
+            self.regs.increment_x();
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.cycle = 340;
+        self.scanline = 240;
+        self.regs.write_ctrl(0);
+        self.regs.write_mask(0);
+        self.regs.oam_addr = 0;
+    }
+
     #[inline]
-    pub fn is_vblank(&self) -> bool {
-        self.regs.status.contains(PPU_STATUS::VBLANK_STARTED)
+    pub fn vblank_started(&self) -> bool {
+        self.regs.status.contains(Status::VBLANK_STARTED)
     }
 
     pub fn set_pixel(frame: &mut [u8], x: usize, y: usize, rgb: (u8, u8, u8)) {
@@ -248,11 +317,7 @@ impl PPU {
         shift_x: isize,
         shift_y: isize,
     ) {
-        let chr_bank_offset: u16 = if !self.regs.ctrl.contains(PPU_CTRL::BACKROUND_PATTERN_ADDR) {
-            0
-        } else {
-            0x1000
-        };
+        let chr_bank_offset = self.regs.ctrl.background_chr_offset();
 
         for i in 0..0x03c0 {
             let tile_idx = self.vram[nametable_offset + i] as usize;
@@ -293,7 +358,7 @@ impl PPU {
             let palette = self.sprite_palette(palette_idx);
             let chr_bank_offset: u16 = match sprite_size {
                 SpriteSize::Sprite8x8 => {
-                    if !self.regs.ctrl.contains(PPU_CTRL::SPRITE_PATTERN_ADDR) {
+                    if !self.regs.ctrl.contains(Ctrl::SPRITE_PATTERN_ADDR) {
                         0
                     } else {
                         0x1000
@@ -341,10 +406,10 @@ impl PPU {
 
     pub fn render_frame(&mut self, frame: &mut [u8]) {
         let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
-        let scroll_x = self.regs.scroll.x as usize;
-        let scroll_y = self.regs.scroll.y as usize;
+        let scroll_x = self.regs.tmp_x_scroll as usize;
+        let scroll_y = self.regs.tmp_y_scroll as usize;
 
-        if self.regs.mask.contains(PPU_MASK::SHOW_BACKGROUND) {
+        if self.regs.mask.contains(Mask::SHOW_BACKGROUND) {
             let (nametable1, nametable2): (usize, usize) = match self.rom.cart.mirroring {
                 Mirroring::Vertical => match base_nametable_addr {
                     0x2000 | 0x2800 => (0, 0x400),
@@ -419,38 +484,8 @@ impl PPU {
             }
         }
 
-        if self.regs.mask.contains(PPU_MASK::SHOW_SPRITES) {
+        if self.regs.mask.contains(Mask::SHOW_SPRITES) {
             self.render_sprites(frame);
-        }
-    }
-
-    pub fn step(&mut self, cycles: usize) {
-        // catch up with the CPU
-        self.cycle += cycles;
-
-        if self.cycle >= 341 {
-            if self.is_sprite_zero_hit() {
-                self.regs.status.set(PPU_STATUS::SPRITE_ZERO_HIT, true);
-            }
-
-            self.cycle -= 341;
-            self.scanline += 1;
-
-            // VBlank
-            if self.scanline == 241 {
-                self.regs.status.set(PPU_STATUS::VBLANK_STARTED, true);
-                self.regs.status.set(PPU_STATUS::SPRITE_ZERO_HIT, false);
-                if self.regs.ctrl.contains(PPU_CTRL::GENERATE_NMI) {
-                    self.nmi_triggered = true;
-                }
-            }
-
-            if self.scanline == 262 {
-                self.scanline = 0;
-                self.sprite_zero_hit_this_frame = false;
-                self.regs.status.set(PPU_STATUS::VBLANK_STARTED, false);
-                self.regs.status.set(PPU_STATUS::SPRITE_ZERO_HIT, false);
-            }
         }
     }
 
@@ -459,19 +494,13 @@ impl PPU {
         let y = self.attributes[0] as usize;
         let x = self.attributes[3] as usize;
 
-        y == self.scanline && x <= self.cycle && self.regs.mask.contains(PPU_MASK::SHOW_SPRITES)
+        y == self.scanline && x <= self.cycle && self.regs.mask.contains(Mask::SHOW_SPRITES)
     }
 
     pub fn pull_nmi_status(&mut self) -> bool {
         let triggered = self.nmi_triggered;
         self.nmi_triggered = false;
         triggered
-    }
-
-    fn increment_vram_addr(&mut self) {
-        self.regs
-            .addr
-            .increment(self.regs.ctrl.vram_addr_increment())
     }
 
     fn vram_mirrored_addr(&self, addr: u16) -> u16 {
@@ -510,20 +539,19 @@ impl PPU {
 
     pub fn write_ctrl_reg(&mut self, data: u8) {
         // the PPU immediately triggers a NMI when the VBlank flag transitions from 0 to 1 during VBlank
-        let prev_nmi_status = self.regs.ctrl.contains(PPU_CTRL::GENERATE_NMI);
-        self.regs.ctrl.update(data);
-        let new_nmi_status = self.regs.ctrl.contains(PPU_CTRL::GENERATE_NMI);
+        let prev_nmi_status = self.regs.ctrl.contains(Ctrl::GENERATE_NMI);
+        self.regs.write_ctrl(data);
+        let new_nmi_status = self.regs.ctrl.contains(Ctrl::GENERATE_NMI);
 
-        if self.is_vblank() && !prev_nmi_status && new_nmi_status {
+        if self.vblank_started() && !prev_nmi_status && new_nmi_status {
             self.nmi_triggered = true;
         }
     }
 
     pub fn read_data_reg(&mut self) -> u8 {
-        let addr = self.regs.addr.addr;
-        self.increment_vram_addr();
+        let addr = self.regs.v;
 
-        match addr {
+        let res = match addr {
             0x0000..=0x1fff => {
                 let res = self.data_buffer;
                 self.data_buffer = self.rom.mapper.read_chr(&self.rom.cart, addr);
@@ -537,11 +565,14 @@ impl PPU {
             0x3000..=0x3eff => unreachable!(),
             0x3f00..=0x3fff => self.palette[addr as usize - 0x3f00],
             _ => unreachable!(),
-        }
+        };
+
+        self.regs.increment_vram_addr();
+        res
     }
 
     pub fn write_data_reg(&mut self, data: u8) {
-        let addr = self.regs.addr.addr;
+        let addr = self.regs.v;
 
         match addr {
             0x0000..=0x1fff => self.rom.mapper.write_chr(&mut self.rom.cart, addr, data),
@@ -570,7 +601,7 @@ impl PPU {
             }
         }
 
-        self.increment_vram_addr();
+        self.regs.increment_vram_addr();
     }
 
     pub fn read_oam_data_reg(&mut self) -> u8 {
@@ -580,25 +611,6 @@ impl PPU {
     pub fn write_oam_data_reg(&mut self, data: u8) {
         self.attributes[self.regs.oam_addr as usize] = data;
         self.regs.oam_addr = self.regs.oam_addr.wrapping_add(1);
-    }
-
-    pub fn read_status_reg(&mut self) -> u8 {
-        let res = self.regs.status.bits();
-        self.regs.status.remove(PPU_STATUS::VBLANK_STARTED);
-        // clear the address latch used by PPUSCROLL and PPUADDR
-        self.regs.scroll.is_x = true;
-        self.regs.addr.is_high = true;
-        res
-    }
-
-    #[inline]
-    pub fn write_scroll_reg(&mut self, data: u8) {
-        self.regs.scroll.write(data);
-    }
-
-    #[inline]
-    pub fn write_addr_reg(&mut self, data: u8) {
-        self.regs.addr.write(data);
     }
 
     pub fn write_oam_dma_reg(&mut self, page: [u8; 256]) {

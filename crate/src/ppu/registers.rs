@@ -2,31 +2,55 @@ use bitflags::bitflags;
 
 // https://wiki.nesdev.com/w/index.php/PPU_registers
 pub struct Registers {
-    pub ctrl: PPU_CTRL,
-    pub mask: PPU_MASK,
-    pub status: PPU_STATUS,
+    pub v: u16,  // current vram address
+    pub t: u16,  // temp vram address
+    pub x: u8,   // fine x scroll
+    pub w: bool, // write toggle
+
+    pub tmp_x_scroll: u8,
+    pub tmp_y_scroll: u8,
+
+    pub ctrl: Ctrl,
+    pub mask: Mask,
+    pub status: Status,
     pub oam_addr: u8,
-    pub scroll: PPU_SCROLL,
-    pub addr: PPU_ADDR,
 }
 
 impl Registers {
     pub fn new() -> Self {
         Registers {
-            ctrl: PPU_CTRL::empty(),
-            mask: PPU_MASK::empty(),
-            status: PPU_STATUS::empty(),
+            v: 0,
+            t: 0,
+            x: 0,
+            w: false,
+
+            tmp_x_scroll: 0,
+            tmp_y_scroll: 0,
+
+            ctrl: Ctrl::empty(),
+            mask: Mask::empty(),
+            status: Status::empty(),
             oam_addr: 0,
-            scroll: PPU_SCROLL {
-                x: 0,
-                y: 0,
-                is_x: true,
-            },
-            addr: PPU_ADDR {
-                addr: 0,
-                is_high: true,
-            },
         }
+    }
+
+    #[inline]
+    pub fn fine_y_scroll(&self) -> u8 {
+        ((self.v >> 12) & 0b111) as u8
+    }
+
+    #[inline]
+    pub fn coarse_x_scroll(&self) -> u8 {
+        (self.v & 0b11111) as u8
+    }
+
+    #[inline]
+    pub fn coarse_y_scroll(&self) -> u8 {
+        ((self.v >> 5) & 0b11111) as u8
+    }
+
+    pub fn nametable_select(&self) -> u8 {
+        ((self.v >> 10) & 0b11) as u8
     }
 }
 
@@ -49,7 +73,7 @@ impl Registers {
 
 bitflags! {
     #[derive(Clone, Copy)]
-    pub struct PPU_CTRL: u8 {
+    pub struct Ctrl: u8 {
         const NAMETABLE1              = 0b0000_0001;
         const NAMETABLE2              = 0b0000_0010;
         const VRAM_ADD_INCREMENT      = 0b0000_0100;
@@ -61,7 +85,40 @@ bitflags! {
     }
 }
 
-impl PPU_CTRL {
+#[derive(Clone, Copy, PartialEq)]
+pub enum SpriteSize {
+    Sprite8x8,
+    Sprite8x16,
+}
+
+impl Ctrl {
+    #[inline]
+    pub fn background_chr_offset(&self) -> u16 {
+        if !self.contains(Ctrl::BACKROUND_PATTERN_ADDR) {
+            0
+        } else {
+            0x1000
+        }
+    }
+
+    #[inline]
+    pub fn vram_addr_increment(self) -> u16 {
+        if self.contains(Ctrl::VRAM_ADD_INCREMENT) {
+            32
+        } else {
+            1
+        }
+    }
+
+    #[inline]
+    pub fn sprite_size(&self) -> SpriteSize {
+        if self.contains(Ctrl::SPRITE_SIZE) {
+            SpriteSize::Sprite8x16
+        } else {
+            SpriteSize::Sprite8x8
+        }
+    }
+
     pub fn base_nametable_addr(&self) -> u16 {
         match self.bits() & 0b11 {
             0 => 0x2000,
@@ -73,34 +130,11 @@ impl PPU_CTRL {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum SpriteSize {
-    Sprite8x8,
-    Sprite8x16,
-}
-
-impl PPU_CTRL {
-    #[inline]
-    pub fn vram_addr_increment(self) -> u8 {
-        if self.contains(PPU_CTRL::VRAM_ADD_INCREMENT) {
-            32
-        } else {
-            1
-        }
-    }
-
-    #[inline]
-    pub fn sprite_size(&self) -> SpriteSize {
-        if self.contains(PPU_CTRL::SPRITE_SIZE) {
-            SpriteSize::Sprite8x16
-        } else {
-            SpriteSize::Sprite8x8
-        }
-    }
-
-    #[inline]
-    pub fn update(&mut self, data: u8) {
-        *self.0.bits_mut() = data;
+impl Registers {
+    pub fn write_ctrl(&mut self, data: u8) {
+        *self.ctrl.0.bits_mut() = data;
+        // t: ...GH.. ........ <- d: ......GH
+        self.t = (self.t & 0xF3FF) | (((data as u16) & 0b11) << 10);
     }
 }
 
@@ -117,7 +151,7 @@ impl PPU_CTRL {
 // |+-------- Emphasize green (red on PAL/Dendy)
 // +--------- Emphasize blue
 bitflags! {
-    pub struct PPU_MASK: u8 {
+    pub struct Mask: u8 {
         const GREYSCALE             = 0b0000_0001;
         const SHOW_BACKGROUND_LEFT  = 0b0000_0010;
         const SHOW_SPRITES_LEFT     = 0b0000_0100;
@@ -130,9 +164,24 @@ bitflags! {
 }
 
 // TODO: support greyscale etc..
-impl PPU_MASK {
-    pub fn update(&mut self, data: u8) {
-        *self.0.bits_mut() = data;
+impl Registers {
+    pub fn write_mask(&mut self, data: u8) {
+        *self.mask.0.bits_mut() = data;
+    }
+
+    #[inline]
+    pub fn show_background(&self) -> bool {
+        self.mask.contains(Mask::SHOW_BACKGROUND)
+    }
+
+    #[inline]
+    pub fn show_sprites(&self) -> bool {
+        self.mask.contains(Mask::SHOW_SPRITES)
+    }
+
+    #[inline]
+    pub fn rendering_enabled(&self) -> bool {
+        self.show_background() || self.show_sprites()
     }
 }
 
@@ -157,7 +206,7 @@ impl PPU_MASK {
 //            pre-render line.
 
 bitflags! {
-    pub struct PPU_STATUS: u8 {
+    pub struct Status: u8 {
         const UNUSED1          = 0b00000001;
         const UNUSED2         = 0b00000010;
         const UNUSED3         = 0b00000100;
@@ -169,42 +218,104 @@ bitflags! {
     }
 }
 
-pub struct PPU_SCROLL {
-    pub x: u8,
-    pub y: u8,
-    pub is_x: bool,
-}
-
-impl PPU_SCROLL {
-    pub fn write(&mut self, data: u8) {
-        if self.is_x {
-            self.x = data;
-        } else {
-            self.y = data;
-        }
-
-        self.is_x = !self.is_x;
+impl Registers {
+    #[inline]
+    pub fn read_status(&mut self) -> u8 {
+        let res = self.status.bits();
+        self.status.remove(Status::VBLANK_STARTED);
+        self.w = false;
+        res
     }
 }
 
-pub struct PPU_ADDR {
-    pub addr: u16,
-    pub is_high: bool,
-}
+impl Registers {
+    pub fn write_scroll(&mut self, data: u8) {
+        if !self.w {
+            // t: ....... ...ABCDE <- d: ABCDE...
+            // x:              FGH <- d: .....FGH
+            // w:                  <- 1
+            self.t = (self.t & 0xFFE0) | ((data as u16) >> 3);
+            self.x = data & 0b111;
+            self.w = true;
 
-impl PPU_ADDR {
-    pub fn write(&mut self, data: u8) {
-        if self.is_high {
-            self.addr = (self.addr & 0x00ff) | ((data as u16) << 8);
+            self.tmp_x_scroll = data;
         } else {
-            self.addr = (self.addr & 0xff00) | (data as u16);
-        }
+            // t: FGH..AB CDE..... <- d: ABCDEFGH
+            // w:                  <- 0
+            self.t = (self.t & 0x8FFF) | (((data as u16) & 0b111) << 12);
+            self.t = (self.t & 0xFC1F) | (((data as u16) & 0b11111000) << 2);
+            self.w = false;
 
-        self.addr &= 0x3fff;
-        self.is_high = !self.is_high;
+            self.tmp_y_scroll = data;
+        }
     }
 
-    pub fn increment(&mut self, step: u8) {
-        self.addr = self.addr.wrapping_add(step as u16) & 0x3fff;
+    pub fn increment_x(&mut self) {
+        if self.v & 0x001F == 31 {
+            // if coarse X == 31
+            self.v &= !0x001F; // coarse X = 0
+            self.v ^= 0x0400; // switch horizontal nametable
+        } else {
+            self.v += 1; // increment coarse X
+        }
+    }
+
+    pub fn increment_y(&mut self) {
+        // if fine Y < 7
+        if self.v & 0x7000 != 0x7000 {
+            self.v += 0x1000; // increment fine Y
+        } else {
+            self.v &= !0x7000; // fine Y = 0
+            let mut y = (self.v & 0x03E0) >> 5; // let y = coarse Y
+            if y == 29 {
+                y = 0; // coarse Y = 0
+                self.v ^= 0x0800; // switch vertical nametable
+            } else if y == 31 {
+                y = 0; // coarse Y = 0, nametable not switched
+            } else {
+                y += 1; // increment coarse Y
+            }
+
+            self.v = (self.v & !0x03E0) | (y << 5); // put coarse Y back into v
+        }
+    }
+
+    #[inline]
+    pub fn copy_x(&mut self) {
+        // copy all bits related to horizontal position from t to v:
+        // v: ....A.. ...BCDEF <- t: ....A.. ...BCDEF
+        self.v = (self.v & 0xFBE0) | (self.t & 0x041F);
+    }
+
+    #[inline]
+    pub fn copy_y(&mut self) {
+        // copy the vertical bits from t to v
+        // v: GHIA.BC DEF..... <- t: GHIA.BC DEF.....
+        self.v = (self.v & 0x841F) | (self.t & 0x7BE0);
+    }
+}
+
+impl Registers {
+    pub fn write_addr(&mut self, data: u8) {
+        if !self.w {
+            // t: .CDEFGH ........ <- d: ..CDEFGH
+            // t: Z...... ........ <- 0 (bit Z is cleared)
+            // w:                  <- 1
+            self.t = (self.t & 0x80FF) | (((data as u16) & 0b111111) << 8);
+            self.t &= 0xBFFF;
+            self.w = true;
+        } else {
+            // t: ....... ABCDEFGH <- d: ABCDEFGH
+            // v: <...all bits...> <- t: <...all bits...>
+            // w:                  <- 0
+            self.t = (self.t & 0xFF00) | (data as u16);
+            self.v = self.t;
+            self.w = false;
+        }
+    }
+
+    pub fn increment_vram_addr(&mut self) {
+        let step = self.ctrl.vram_addr_increment();
+        self.v = self.v.wrapping_add(step) & 0x3fff;
     }
 }

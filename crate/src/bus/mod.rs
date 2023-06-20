@@ -56,7 +56,10 @@ impl Bus {
 
     pub fn advance_ppu(&mut self, cpu_cycles: usize) {
         let ppu_cycles = cpu_cycles * 3;
-        self.ppu.step(ppu_cycles);
+
+        for _ in 0..ppu_cycles {
+            self.ppu.step();
+        }
     }
 }
 
@@ -68,7 +71,7 @@ impl Memory for Bus {
             // 0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 | 0x4014 => {
             //     panic!("PPU address {addr:x} is write-only");
             // }
-            0x2002 => self.ppu.read_status_reg(),
+            0x2002 => self.ppu.regs.read_status(),
             0x2004 => self.ppu.read_oam_data_reg(),
             0x2007 => self.ppu.read_data_reg(),
             0x2008..=0x3fff => self.read_byte(addr & 0b0010_0000_0000_0111),
@@ -89,12 +92,12 @@ impl Memory for Bus {
         match addr {
             0x0000..=0x1fff => self.ram.write_byte(addr, val),
             0x2000 => self.ppu.write_ctrl_reg(val),
-            0x2001 => self.ppu.regs.mask.update(val),
+            0x2001 => self.ppu.regs.write_mask(val),
             0x2002 => panic!("PPU status register is read-only"),
             0x2003 => self.ppu.regs.oam_addr = val,
             0x2004 => self.ppu.write_oam_data_reg(val),
-            0x2005 => self.ppu.write_scroll_reg(val),
-            0x2006 => self.ppu.write_addr_reg(val),
+            0x2005 => self.ppu.regs.write_scroll(val),
+            0x2006 => self.ppu.regs.write_addr(val),
             0x2007 => self.ppu.write_data_reg(val),
             0x2008..=0x3fff => self.write_byte(addr & 0b0010_0000_0000_0111, val),
             0x4014 => {

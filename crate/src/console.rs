@@ -23,16 +23,11 @@ impl Nes {
     }
 
     pub fn next_frame(&mut self, frame: &mut [u8]) {
-        loop {
-            let vblank_before = self.cpu.bus.ppu.is_vblank();
+        while !self.cpu.bus.ppu.frame_complete {
             self.step();
-            let vblank_after = self.cpu.bus.ppu.is_vblank();
-
-            if !vblank_before && vblank_after {
-                break;
-            }
         }
 
+        self.cpu.bus.ppu.frame_complete = false;
         self.cpu.bus.ppu.render_frame(frame);
     }
 
