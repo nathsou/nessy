@@ -51,6 +51,6 @@ impl Mapper for NROM {
     }
 
     fn write_chr(&mut self, _: &mut Cart, _: u16, _: u8) {
-        panic!("Attempted to write to CHR ROM on NROM mapper");
+        // panic!("Attempted to write to CHR ROM on NROM mapper");
     }
 }

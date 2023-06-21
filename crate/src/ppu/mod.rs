@@ -1,16 +1,13 @@
 mod registers;
-use crate::cpu::rom::{Mirroring, ROM};
 
 use self::registers::{Ctrl, Mask, Registers, SpriteSize, Status};
+use crate::cpu::rom::{Mirroring, ROM};
 
 const PIXELS_PER_TILE: usize = 8;
-const TILES_PER_NAMETABLE_BYTE: usize = 4;
 const BYTES_PER_PALLETE: usize = 4;
 const SPRITE_PALETTES_OFFSET: usize = 0x11;
 const WIDTH: usize = 256;
 const HEIGHT: usize = 240;
-const DEBUG_SCROLL: bool = false;
-const SHOW_OPAQUE_MAP: bool = false;
 
 #[rustfmt::skip]
 pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
@@ -41,12 +38,8 @@ pub struct PPU {
     data_buffer: u8,
     nmi_triggered: bool,
     sprite_zero_hit_this_frame: bool,
-    opaque_map: [bool; WIDTH * HEIGHT],
     pub frame_complete: bool,
-
     tile_data: u64,
-    tile_pattern_shift_regs: [u16; 2],
-    tile_attributes_shift_regs: [u8; 2],
     nametable_byte: u8,
     attribute_table_byte: u8,
     pattern_table_low_byte: u8,
@@ -66,12 +59,8 @@ impl PPU {
             data_buffer: 0,
             nmi_triggered: false,
             sprite_zero_hit_this_frame: false,
-            opaque_map: [false; WIDTH * HEIGHT],
             frame_complete: false,
-
             tile_data: 0,
-            tile_pattern_shift_regs: [0; 2],
-            tile_attributes_shift_regs: [0; 2],
             nametable_byte: 0,
             attribute_table_byte: 0,
             pattern_table_low_byte: 0,
@@ -82,95 +71,114 @@ impl PPU {
         ppu
     }
 
-    pub fn step(&mut self, frame: &mut [u8]) {
+    fn tick(&mut self) {
+        // TODO: handle NMI delay
+
+        if self.regs.rendering_enabled() && self.regs.f && self.scanline == 261 && self.cycle == 339
+        {
+            // skip cycle 339 of pre-render scanline
+            self.cycle = 0;
+            self.scanline = 0;
+            self.regs.f = !self.regs.f;
+            return;
+        }
+
         self.cycle += 1;
 
+        if self.cycle > 340 {
+            if self.is_sprite_zero_hit() {
+                self.regs.status.set(Status::SPRITE_ZERO_HIT, true);
+            }
+
+            self.cycle = 0;
+            self.scanline += 1;
+
+            if self.scanline > 261 {
+                self.scanline = 0;
+                self.regs.f = !self.regs.f;
+            }
+        }
+    }
+
+    pub fn step(&mut self, frame: &mut [u8]) {
+        self.tick();
+
         let rendering_enabled = self.regs.rendering_enabled();
-        let pre_line = self.scanline == 261;
+        let preline = self.scanline == 261;
         let visible_line = self.scanline < 240;
-        let render_line = pre_line || visible_line;
+        let render_line = preline || visible_line;
         let pre_fetch_cycle = self.cycle >= 321 && self.cycle <= 336;
         let visible_cycle = self.cycle >= 1 && self.cycle <= 256;
         let fetch_cycle = pre_fetch_cycle || visible_cycle;
 
+        // background logic
         if rendering_enabled {
             if visible_line && visible_cycle {
+                self.render_pixel(frame);
+            }
+
+            if render_line && fetch_cycle {
                 self.tile_data <<= 4;
 
                 match self.cycle & 7 {
-                    0 => self.fetch_nametable_byte(),
-                    2 => self.fetch_attribute_table_byte(),
-                    4 => self.fetch_pattern_table_low_byte(),
-                    6 => self.fetch_pattern_table_high_byte(),
-                    1 if self.cycle > 8 => self.store_tile_data(),
+                    1 => self.fetch_nametable_byte(),
+                    3 => self.fetch_attribute_table_byte(),
+                    5 => self.fetch_pattern_table_low_byte(),
+                    7 => self.fetch_pattern_table_high_byte(),
+                    0 => self.store_tile_data(),
                     _ => {}
                 }
             }
 
-            if visible_line && visible_cycle {
-                self.render_pixel(frame);
-            }
-        }
-
-        match self.cycle {
-            256 if rendering_enabled => {
-                self.regs.increment_y();
-            }
-            257 if rendering_enabled => {
-                self.regs.copy_x();
-            }
-            280..=304 if pre_line && rendering_enabled => {
+            if preline && self.cycle >= 280 && self.cycle <= 304 {
                 self.regs.copy_y();
             }
-            341 => {
-                if self.is_sprite_zero_hit() {
-                    self.regs.status.set(Status::SPRITE_ZERO_HIT, true);
+
+            if render_line {
+                if fetch_cycle && self.cycle & 7 == 0 {
+                    self.regs.increment_x();
                 }
 
-                self.cycle = 0;
-                self.scanline += 1;
-
-                // VBlank
-                if self.scanline == 241 {
-                    self.frame_complete = true;
-                    self.regs.status.set(Status::VBLANK_STARTED, true);
-                    self.regs.status.set(Status::SPRITE_ZERO_HIT, false);
-                    if self.regs.ctrl.contains(Ctrl::GENERATE_NMI) {
-                        self.nmi_triggered = true;
-                    }
+                if self.cycle == 256 {
+                    self.regs.increment_y();
                 }
 
-                if self.scanline == 262 {
-                    self.scanline = 0;
-                    self.sprite_zero_hit_this_frame = false;
-                    self.regs.status.set(Status::VBLANK_STARTED, false);
-                    self.regs.status.set(Status::SPRITE_ZERO_HIT, false);
+                if self.cycle == 257 {
+                    self.regs.copy_x();
                 }
             }
-            _ => {}
         }
 
-        if rendering_enabled
-            && self.cycle >= 1
-            && (self.cycle <= 256 || self.cycle >= 328)
-            && self.cycle & 7 == 0
-        {
-            // increment coarse x every 8 cycles
-            self.regs.increment_x();
+        // VBlank
+        if self.scanline == 241 && self.cycle == 1 {
+            self.frame_complete = true;
+            self.regs.status.set(Status::VBLANK_STARTED, true);
+            self.regs.status.set(Status::SPRITE_ZERO_HIT, false);
+
+            if self.regs.ctrl.contains(Ctrl::GENERATE_NMI) {
+                self.nmi_triggered = true;
+            }
+        }
+
+        if preline && self.cycle == 1 {
+            self.sprite_zero_hit_this_frame = false;
+            self.regs.status.set(Status::VBLANK_STARTED, false);
+            self.regs.status.set(Status::SPRITE_ZERO_HIT, false);
         }
     }
 
     fn fetch_nametable_byte(&mut self) {
         // See Tile and attribute fetching
         // https://www.nesdev.org/wiki/PPU_scrolling
-        let offset = self.regs.v & 0x0FFF;
-        self.nametable_byte = self.read_nametable(0x2000 | offset);
+        let offset = 0x2000 | (self.regs.v & 0x0FFF);
+        self.nametable_byte = self.read_nametable(offset);
     }
 
     fn fetch_attribute_table_byte(&mut self) {
         let v = self.regs.v;
-        let offset = (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07);
-        self.attribute_table_byte = self.read_nametable(0x23C0 | offset);
+        let address = 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0b111);
+        let shift = ((v >> 4) & 4) | (v & 2);
+        self.attribute_table_byte = (self.read_nametable(address) >> shift) & 0b11;
     }
 
     fn fetch_pattern_table_low_byte(&mut self) {
@@ -200,65 +208,40 @@ impl PPU {
     }
 
     fn store_tile_data(&mut self) {
-        let mut data = 0u32;
+        let mut data: u32 = 0;
+        let attr = self.attribute_table_byte << 2;
 
         for _ in 0..8 {
-            let a = self.attribute_table_byte;
-            let p1 = (self.pattern_table_low_byte & 0x80) >> 7;
-            let p2 = (self.pattern_table_high_byte & 0x80) >> 6;
+            let p1 = (self.pattern_table_low_byte & (1 << 7)) >> 7;
+            let p2 = (self.pattern_table_high_byte & (1 << 7)) >> 6;
+            let pattern = p2 | p1;
             self.pattern_table_low_byte <<= 1;
             self.pattern_table_high_byte <<= 1;
             data <<= 4;
-            data |= (a | p1 | p2) as u32;
+            data |= (attr | pattern) as u32;
         }
 
         self.tile_data |= data as u64;
     }
 
-    fn shift_tile_buffer(&mut self) {
-        self.tile_pattern_shift_regs[0] = (self.pattern_table_low_byte as u16) << 8;
-        self.tile_pattern_shift_regs[1] = (self.pattern_table_high_byte as u16) << 8;
-
-        let mut attr = self.attribute_table_byte;
-
-        for _ in 0..8 {
-            self.tile_attributes_shift_regs[0] |= attr & 0b01;
-            self.tile_attributes_shift_regs[1] |= attr & 0b10;
-            self.tile_attributes_shift_regs[0] <<= 1;
-            self.tile_attributes_shift_regs[1] <<= 1;
-            attr >>= 2;
+    fn get_background_pixel(&mut self) -> usize {
+        if self.regs.show_background() {
+            let color_idx = ((self.tile_data >> 32) >> ((7 - self.regs.x) * 4)) & 0xF;
+            if color_idx & 3 == 0 {
+                0
+            } else {
+                color_idx as usize
+            }
+        } else {
+            0
         }
     }
 
-    fn get_background_pixel(&mut self) -> u8 {
-        let data = (self.tile_data >> 32) >> ((7 - self.regs.x) * 4);
-        (data & 0x0F) as u8
-
-        // let attr_low = self.tile_attributes_shift_regs[0] & 1;
-        // let attr_high = self.tile_attributes_shift_regs[1] & 1;
-        // let patt_low = self.tile_pattern_shift_regs[0] & 1;
-        // let patt_high = self.tile_pattern_shift_regs[1] & 1;
-        // let attr = (attr_high << 1) | attr_low;
-        // let patt = (patt_high << 1) | patt_low;
-        // let palette_idx = (attr << 2) | (patt as u8);
-
-        // self.tile_attributes_shift_regs[0] >>= 1;
-        // self.tile_attributes_shift_regs[1] >>= 1;
-        // self.tile_pattern_shift_regs[0] >>= 1;
-        // self.tile_pattern_shift_regs[1] >>= 1;
-
-        // palette_idx
-    }
-
     fn render_pixel(&mut self, frame: &mut [u8]) {
-        let bg = self.get_background_pixel();
         let x = self.cycle - 1;
         let y = self.scanline;
-
-        let color = COLOR_PALETTE[match bg {
-            0 => self.palette[0],
-            _ => self.palette[bg as usize % 64],
-        } as usize];
+        let color_idx = self.get_background_pixel();
+        let color = COLOR_PALETTE[self.palette[color_idx] as usize];
 
         Self::set_pixel(frame, x, y, color);
     }
@@ -279,77 +262,6 @@ impl PPU {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn render_background_tile(
-        &mut self,
-        frame: &mut [u8],
-        chr_bank_offset: u16,
-        nametable_offset: usize,
-        nth: usize,
-        tile_col: usize,
-        tile_row: usize,
-        viewport: BoundingBox,
-        shift_x: isize,
-        shift_y: isize,
-    ) {
-        let mut tile = [0u8; 16];
-        self.rom
-            .mapper
-            .get_tile(&self.rom.cart, chr_bank_offset, nth, &mut tile);
-
-        for y in 0..PIXELS_PER_TILE {
-            let mut plane1 = tile[y];
-            let mut plane2 = tile[y + 8];
-
-            for x in (0..PIXELS_PER_TILE).rev() {
-                let bit0 = plane1 & 1;
-                let bit1 = plane2 & 1;
-                let color_idx = (bit1 << 1) | bit0;
-
-                plane1 >>= 1;
-                plane2 >>= 1;
-
-                let rgb = self.background_color_at(
-                    nametable_offset,
-                    tile_col,
-                    tile_row,
-                    color_idx as usize,
-                );
-
-                let pixel_x = tile_col * PIXELS_PER_TILE + x;
-                let pixel_y = tile_row * PIXELS_PER_TILE + y;
-
-                if pixel_x >= viewport.x_min
-                    && pixel_x < viewport.x_max
-                    && pixel_y >= viewport.y_min
-                    && pixel_y < viewport.y_max
-                {
-                    let x = pixel_x as isize + shift_x;
-                    let y = pixel_y as isize + shift_y;
-
-                    if x >= 0 && y >= 0 {
-                        let x = x as usize;
-                        let y = y as usize;
-                        let idx = y * WIDTH + x;
-
-                        let color = if SHOW_OPAQUE_MAP {
-                            if color_idx == 0 {
-                                (0, 0, 0)
-                            } else {
-                                (255, 255, 255)
-                            }
-                        } else {
-                            rgb
-                        };
-
-                        PPU::set_pixel(frame, x, y, color);
-                        self.opaque_map[idx] = color_idx != 0;
-                    }
-                }
-            }
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
     fn render_sprite_tile(
         &mut self,
         frame: &mut [u8],
@@ -357,7 +269,6 @@ impl PPU {
         nth: usize,
         tile_x: usize,
         tile_y: usize,
-        behind_background: bool,
         flip_horizontally: bool,
         flip_vertically: bool,
         palette: [Option<(u8, u8, u8)>; 4],
@@ -389,45 +300,10 @@ impl PPU {
 
                     let pixel_x = tile_x + x;
                     let pixel_y = tile_y + y;
-                    let pixel_idx = pixel_y * WIDTH + pixel_x;
-                    if pixel_idx < self.opaque_map.len() {
-                        let is_bg_opaque = self.opaque_map[pixel_idx];
-                        if !behind_background || !is_bg_opaque {
-                            PPU::set_pixel(frame, pixel_x, pixel_y, rgb);
-                        }
-                    }
+                    PPU::set_pixel(frame, pixel_x, pixel_y, rgb);
                 }
             }
         }
-    }
-
-    fn background_color_at(
-        &self,
-        nametable_offset: usize,
-        tile_x: usize,
-        tile_y: usize,
-        color_idx: usize,
-    ) -> (u8, u8, u8) {
-        let x = tile_x / TILES_PER_NAMETABLE_BYTE; // 4x4 tiles
-        let y = tile_y / TILES_PER_NAMETABLE_BYTE;
-        let nametable_idx = y * 8 + x; // 1 byte for color info of 4x4 tiles
-        let color_byte = self.vram[nametable_offset + 0x3c0 + nametable_idx];
-
-        let block_x = (tile_x % TILES_PER_NAMETABLE_BYTE) / 2;
-        let block_y = (tile_y % TILES_PER_NAMETABLE_BYTE) / 2;
-
-        let palette_offset = 1 + 4 * match (block_x, block_y) {
-            (0, 0) => color_byte & 0b11,
-            (1, 0) => (color_byte >> 2) & 0b11,
-            (0, 1) => (color_byte >> 4) & 0b11,
-            (1, 1) => (color_byte >> 6) & 0b11,
-            _ => unreachable!(),
-        } as usize;
-
-        COLOR_PALETTE[match color_idx {
-            0 => self.palette[0],
-            _ => self.palette[palette_offset + color_idx - 1],
-        } as usize]
     }
 
     // https://www.nesdev.org/wiki/PPU_palettes
@@ -442,36 +318,11 @@ impl PPU {
         ]
     }
 
-    fn render_background(
-        &mut self,
-        frame: &mut [u8],
-        nametable_offset: usize,
-        viewport: BoundingBox,
-        shift_x: isize,
-        shift_y: isize,
-    ) {
-        let chr_bank_offset = self.regs.ctrl.background_chr_offset();
-
-        for i in 0..0x03c0 {
-            let tile_idx = self.vram[nametable_offset + i] as usize;
-            let tile_col = i % 32;
-            let tile_row = i / 32;
-
-            self.render_background_tile(
-                frame,
-                chr_bank_offset,
-                nametable_offset,
-                tile_idx,
-                tile_col,
-                tile_row,
-                viewport,
-                shift_x,
-                shift_y,
-            );
+    pub fn render_sprites(&mut self, frame: &mut [u8]) {
+        if !self.regs.show_sprites() {
+            return;
         }
-    }
 
-    fn render_sprites(&mut self, frame: &mut [u8]) {
         let sprite_size = self.regs.ctrl.sprite_size();
 
         // Sprites with lower OAM indices are drawn in front
@@ -485,7 +336,7 @@ impl PPU {
             let sprite_x = self.attributes[i + 3] as usize;
 
             let palette_idx = sprite_attr & 0b11;
-            let behind_background = sprite_attr & 0b0010_0000 != 0;
+            // let behind_background = sprite_attr & 0b0010_0000 != 0;
             let flip_horizontally = sprite_attr & 0b0100_0000 != 0;
             let flip_vertically = sprite_attr & 0b1000_0000 != 0;
             let palette = self.sprite_palette(palette_idx);
@@ -515,7 +366,6 @@ impl PPU {
                 top_tile_idx,
                 sprite_x,
                 sprite_y,
-                behind_background,
                 flip_horizontally,
                 flip_vertically,
                 palette,
@@ -528,97 +378,11 @@ impl PPU {
                     idx,
                     sprite_x,
                     sprite_y + 8,
-                    behind_background,
                     flip_horizontally,
                     flip_vertically,
                     palette,
                 );
             }
-        }
-    }
-
-    pub fn render_frame(&mut self, frame: &mut [u8]) {
-        let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
-        let scroll_x = self.regs.tmp_x_scroll as usize;
-        let scroll_y = self.regs.tmp_y_scroll as usize;
-
-        if self.regs.mask.contains(Mask::SHOW_BACKGROUND) {
-            let (nametable1, nametable2): (usize, usize) = match self.rom.cart.mirroring {
-                Mirroring::Vertical => match base_nametable_addr {
-                    0x2000 | 0x2800 => (0, 0x400),
-                    0x2400 | 0x2c00 => (0x400, 0),
-                    _ => unreachable!(),
-                },
-                Mirroring::Horizontal => match base_nametable_addr {
-                    0x2000 | 0x2400 => (0, 0x400),
-                    0x2800 | 0x2c00 => (0x400, 0),
-                    _ => unreachable!(),
-                },
-                Mirroring::OneScreenLowerBank => (0, 0),
-                Mirroring::OneScreenUpperBank => (0x400, 0x400),
-                Mirroring::FourScreen => match base_nametable_addr {
-                    0x2000 => (0x000, 0x400),
-                    0x2400 => (0x400, 0x800),
-                    0x2800 => (0x800, 0xc00),
-                    0x2c00 => (0xc00, 0x800),
-                    _ => unreachable!(),
-                },
-            };
-
-            self.render_background(
-                frame,
-                nametable1,
-                BoundingBox {
-                    x_min: scroll_x,
-                    x_max: WIDTH,
-                    y_min: scroll_y,
-                    y_max: HEIGHT,
-                },
-                -(scroll_x as isize),
-                -(scroll_y as isize),
-            );
-
-            if scroll_x > 0 {
-                self.render_background(
-                    frame,
-                    nametable2,
-                    BoundingBox {
-                        x_min: 0,
-                        x_max: scroll_x,
-                        y_min: 0,
-                        y_max: HEIGHT,
-                    },
-                    (WIDTH - scroll_x) as isize,
-                    0,
-                );
-            } else if scroll_y > 0 {
-                self.render_background(
-                    frame,
-                    nametable2,
-                    BoundingBox {
-                        x_min: 0,
-                        x_max: WIDTH,
-                        y_min: 0,
-                        y_max: scroll_y,
-                    },
-                    0,
-                    (HEIGHT - scroll_y) as isize,
-                );
-            }
-
-            if DEBUG_SCROLL {
-                for x in 0..WIDTH {
-                    PPU::set_pixel(frame, x, HEIGHT - scroll_y, (255, 0, 255));
-                }
-
-                for y in 0..HEIGHT {
-                    PPU::set_pixel(frame, WIDTH - scroll_x, y, (0, 255, 0));
-                }
-            }
-        }
-
-        if self.regs.mask.contains(Mask::SHOW_SPRITES) {
-            self.render_sprites(frame);
         }
     }
 
@@ -636,7 +400,7 @@ impl PPU {
         triggered
     }
 
-    fn vram_mirrored_addr(&self, addr: u16) -> u16 {
+    fn nametable_mirrored_addr(&self, addr: u16) -> u16 {
         match self.rom.cart.mirroring {
             Mirroring::Horizontal => match addr {
                 0x2000..=0x23ff => addr - 0x2000,        // A
@@ -688,7 +452,7 @@ impl PPU {
 
     #[inline]
     fn read_nametable(&self, addr: u16) -> u8 {
-        let addr = self.vram_mirrored_addr(addr);
+        let addr = self.nametable_mirrored_addr(addr);
         self.vram[addr as usize]
     }
 
@@ -707,7 +471,8 @@ impl PPU {
                 res
             }
             0x3000..=0x3eff => unreachable!(),
-            0x3f00..=0x3fff => self.palette[addr as usize - 0x3f00],
+            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.palette[(addr as usize - 0x3f10) & 31],
+            0x3f00..=0x3fff => self.palette[(addr as usize - 0x3f00) & 31],
             _ => unreachable!(),
         };
 
@@ -721,24 +486,14 @@ impl PPU {
         match addr {
             0x0000..=0x1fff => self.rom.mapper.write_chr(&mut self.rom.cart, addr, data),
             0x2000..=0x2fff => {
-                self.vram[self.vram_mirrored_addr(addr) as usize] = data;
+                self.vram[self.nametable_mirrored_addr(addr) as usize] = data;
             }
             0x3000..=0x3eff => unreachable!(),
             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => {
-                let mut addr = addr as usize - 0x3f10;
-                if addr >= 32 {
-                    addr %= 32;
-                }
-
-                self.palette[addr] = data;
+                self.palette[((addr - 0x3f10) & 31) as usize] = data;
             }
             0x3f00..=0x3fff => {
-                let mut addr = addr as usize - 0x3f00;
-                if addr >= 32 {
-                    addr %= 32;
-                }
-
-                self.palette[addr] = data;
+                self.palette[((addr - 0x3f00) & 31) as usize] = data;
             }
             _ => {
                 println!("ignoring write to {addr:04X}");
@@ -766,12 +521,27 @@ impl PPU {
             }
         }
     }
-}
 
-#[derive(Clone, Copy)]
-struct BoundingBox {
-    x_min: usize,
-    x_max: usize,
-    y_min: usize,
-    y_max: usize,
+    pub fn read_register(&mut self, addr: u16) -> u8 {
+        match addr {
+            0x2002 => self.regs.read_status(),
+            0x2004 => self.read_oam_data_reg(),
+            0x2007 => self.read_data_reg(),
+            _ => 0,
+        }
+    }
+
+    pub fn write_register(&mut self, addr: u16, data: u8) {
+        match addr {
+            0x2000 => self.write_ctrl_reg(data),
+            0x2001 => self.regs.write_mask(data),
+            0x2002 => panic!("PPU status register is read-only"),
+            0x2003 => self.regs.write_oam_address(data),
+            0x2004 => self.write_oam_data_reg(data),
+            0x2005 => self.regs.write_scroll(data),
+            0x2006 => self.regs.write_address(data),
+            0x2007 => self.write_data_reg(data),
+            _ => unreachable!("invalid PPU register address"),
+        }
+    }
 }

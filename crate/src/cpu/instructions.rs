@@ -9,6 +9,11 @@ const IRQ_VECTOR: u16 = 0xfffe;
 
 impl CPU {
     pub fn step(&mut self) -> usize {
+        if self.bus.cpu_stall > 0 {
+            self.bus.cpu_stall -= 1;
+            return 1;
+        }
+
         self.cycles = 0;
 
         match self.bus.pull_interrupt_status() {

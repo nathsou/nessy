@@ -6,9 +6,7 @@ pub struct Registers {
     pub t: u16,  // temp vram address
     pub x: u8,   // fine x scroll
     pub w: bool, // write toggle
-
-    pub tmp_x_scroll: u8,
-    pub tmp_y_scroll: u8,
+    pub f: bool, // even/odd frame flag
 
     pub ctrl: Ctrl,
     pub mask: Mask,
@@ -23,10 +21,7 @@ impl Registers {
             t: 0,
             x: 0,
             w: false,
-
-            tmp_x_scroll: 0,
-            tmp_y_scroll: 0,
-
+            f: false,
             ctrl: Ctrl::empty(),
             mask: Mask::empty(),
             status: Status::empty(),
@@ -116,16 +111,6 @@ impl Ctrl {
             SpriteSize::Sprite8x16
         } else {
             SpriteSize::Sprite8x8
-        }
-    }
-
-    pub fn base_nametable_addr(&self) -> u16 {
-        match self.bits() & 0b11 {
-            0 => 0x2000,
-            1 => 0x2400,
-            2 => 0x2800,
-            3 => 0x2c00,
-            _ => unreachable!(),
         }
     }
 }
@@ -229,6 +214,13 @@ impl Registers {
 }
 
 impl Registers {
+    #[inline]
+    pub fn write_oam_address(&mut self, val: u8) {
+        self.oam_addr = val;
+    }
+}
+
+impl Registers {
     pub fn write_scroll(&mut self, data: u8) {
         if !self.w {
             // t: ....... ...ABCDE <- d: ABCDE...
@@ -237,16 +229,12 @@ impl Registers {
             self.t = (self.t & 0xFFE0) | ((data as u16) >> 3);
             self.x = data & 0b111;
             self.w = true;
-
-            self.tmp_x_scroll = data;
         } else {
             // t: FGH..AB CDE..... <- d: ABCDEFGH
             // w:                  <- 0
             self.t = (self.t & 0x8FFF) | (((data as u16) & 0b111) << 12);
             self.t = (self.t & 0xFC1F) | (((data as u16) & 0b11111000) << 2);
             self.w = false;
-
-            self.tmp_y_scroll = data;
         }
     }
 
@@ -296,7 +284,7 @@ impl Registers {
 }
 
 impl Registers {
-    pub fn write_addr(&mut self, data: u8) {
+    pub fn write_address(&mut self, data: u8) {
         if !self.w {
             // t: .CDEFGH ........ <- d: ..CDEFGH
             // t: Z...... ........ <- 0 (bit Z is cleared)
@@ -314,6 +302,7 @@ impl Registers {
         }
     }
 
+    #[inline]
     pub fn increment_vram_addr(&mut self) {
         let step = self.ctrl.vram_addr_increment();
         self.v = self.v.wrapping_add(step) & 0x3fff;

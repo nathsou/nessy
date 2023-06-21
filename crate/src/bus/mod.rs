@@ -35,6 +35,7 @@ pub struct Bus {
     pub ram: RAM,
     pub ppu: PPU,
     pub joypad1: Joypad,
+    pub cpu_stall: usize,
 }
 
 impl Bus {
@@ -43,6 +44,7 @@ impl Bus {
             ram: RAM { ram: [0; 0x800] },
             ppu: PPU::new(rom),
             joypad1: Joypad::new(),
+            cpu_stall: 0,
         }
     }
 
@@ -71,9 +73,7 @@ impl Memory for Bus {
             // 0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 | 0x4014 => {
             //     panic!("PPU address {addr:x} is write-only");
             // }
-            0x2002 => self.ppu.regs.read_status(),
-            0x2004 => self.ppu.read_oam_data_reg(),
-            0x2007 => self.ppu.read_data_reg(),
+            0x2000..=0x2007 => self.ppu.read_register(addr),
             0x2008..=0x3fff => self.read_byte(addr & 0b0010_0000_0000_0111),
             0x4016 => self.joypad1.read(),
             0x4000..=0x4017 => {
@@ -91,14 +91,7 @@ impl Memory for Bus {
     fn write_byte(&mut self, addr: u16, val: u8) {
         match addr {
             0x0000..=0x1fff => self.ram.write_byte(addr, val),
-            0x2000 => self.ppu.write_ctrl_reg(val),
-            0x2001 => self.ppu.regs.write_mask(val),
-            0x2002 => panic!("PPU status register is read-only"),
-            0x2003 => self.ppu.regs.oam_addr = val,
-            0x2004 => self.ppu.write_oam_data_reg(val),
-            0x2005 => self.ppu.regs.write_scroll(val),
-            0x2006 => self.ppu.regs.write_addr(val),
-            0x2007 => self.ppu.write_data_reg(val),
+            0x2000..=0x2007 => self.ppu.write_register(addr, val),
             0x2008..=0x3fff => self.write_byte(addr & 0b0010_0000_0000_0111, val),
             0x4014 => {
                 let mut page = [0u8; 256];
@@ -109,7 +102,7 @@ impl Memory for Bus {
                 }
 
                 self.ppu.write_oam_dma_reg(page);
-                // TODO: should take 513 or 514 cycles
+                self.cpu_stall += 513 + (self.ppu.cycle & 1);
             }
             0x4016 => self.joypad1.write(val),
             0x4000..=0x4017 => (), // APU

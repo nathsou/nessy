@@ -10,7 +10,6 @@ use bitflags::bitflags;
 use crate::cpu::opcodes::INST_NAMES;
 
 use self::memory::Memory;
-use self::rom::ROM;
 use super::bus::Bus;
 use std::fmt;
 
