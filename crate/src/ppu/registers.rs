@@ -189,6 +189,16 @@ impl Registers {
     pub fn rendering_enabled(&self) -> bool {
         self.show_background() || self.show_sprites()
     }
+
+    #[inline]
+    pub fn show_leftmost_background(&self) -> bool {
+        self.mask.contains(Mask::SHOW_BACKGROUND_LEFT)
+    }
+
+    #[inline]
+    pub fn show_leftmost_sprites(&self) -> bool {
+        self.mask.contains(Mask::SHOW_SPRITES_LEFT)
+    }
 }
 
 // 7  bit  0

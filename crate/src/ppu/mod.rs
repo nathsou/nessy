@@ -1,12 +1,8 @@
 mod registers;
 
-use self::registers::{Ctrl, Mask, Registers, SpriteSize, Status};
-use crate::{
-    cpu::rom::{Mirroring, ROM},
-    js,
-};
+use self::registers::{Ctrl, Registers, SpriteSize, Status};
+use crate::cpu::rom::{Mirroring, ROM};
 
-const PIXELS_PER_TILE: usize = 8;
 const BYTES_PER_PALLETE: usize = 4;
 const SPRITE_PALETTES_OFFSET: usize = 0x11;
 const WIDTH: usize = 256;
@@ -31,7 +27,7 @@ pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
 
 #[derive(Clone, Copy)]
 struct SpriteData {
-    x: u8,
+    x: usize,
     idx: u8,
     chr: [u8; 8],
     palette_idx: u8,
@@ -41,12 +37,12 @@ struct SpriteData {
 #[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
     pub rom: ROM,
-    pub regs: Registers,
+    regs: Registers,
     vram: [u8; 2 * 1024],
     palette: [u8; 32],
     attributes: [u8; 64 * 4],
     pub cycle: usize,
-    pub scanline: usize,
+    scanline: usize,
     data_buffer: u8,
     nmi_triggered: bool,
     pub frame_complete: bool,
@@ -173,8 +169,8 @@ impl PPU {
         // VBlank
         if self.scanline == 241 && self.cycle == 1 {
             self.frame_complete = true;
-            self.regs.status.set(Status::VBLANK_STARTED, true);
-            self.regs.status.set(Status::SPRITE_ZERO_HIT, false);
+            self.regs.status.insert(Status::VBLANK_STARTED);
+            self.regs.status.remove(Status::SPRITE_ZERO_HIT);
 
             if self.regs.ctrl.contains(Ctrl::GENERATE_NMI) {
                 self.nmi_triggered = true;
@@ -182,8 +178,9 @@ impl PPU {
         }
 
         if preline && self.cycle == 1 {
-            self.regs.status.set(Status::VBLANK_STARTED, false);
-            self.regs.status.set(Status::SPRITE_ZERO_HIT, false);
+            self.regs.status.remove(Status::VBLANK_STARTED);
+            self.regs.status.remove(Status::SPRITE_ZERO_HIT);
+            self.regs.status.remove(Status::SPRITE_OVERFLOW);
         }
     }
 
@@ -252,14 +249,13 @@ impl PPU {
 
     fn get_sprite_pixel(&mut self) -> Option<((u8, u8, u8), bool, u8)> {
         if self.regs.show_sprites() {
-            let x = (self.cycle - 1) as u8;
+            let x = self.cycle - 1;
 
             for i in 0..self.visible_sprites_count {
                 let sprite = self.scanline_sprites[i];
                 if x >= sprite.x && x < sprite.x + 8 {
-                    let palette = self.sprite_palette(sprite.palette_idx);
                     let idx = sprite.chr[(x - sprite.x) as usize];
-                    if let Some(color) = palette[idx as usize] {
+                    if let Some(color) = self.sprite_color(sprite.palette_idx, idx) {
                         return Some((color, sprite.behind_background, sprite.idx));
                     };
                 }
@@ -271,24 +267,22 @@ impl PPU {
 
     fn fetch_next_scanline_sprites(&mut self) {
         let mut count = 0;
-        let mut overflow = false;
         let sprite_size = self.regs.ctrl.sprite_size();
-        let height = sprite_size.height();
+        let height = sprite_size.height() as usize;
 
         for i in 0..64 {
             let offset = i * 4;
-            let y = self.attributes[offset];
-            let scanline = self.scanline as u8;
+            let y = self.attributes[offset] as usize;
 
-            if scanline >= y && scanline < y + height {
-                let row = scanline - y;
+            if self.scanline >= y && self.scanline < y + height {
+                let row = self.scanline - y;
                 let tile_idx = self.attributes[offset + 1] as u16;
                 let attr = self.attributes[offset + 2];
                 let palette_idx = attr & 0b11;
                 let behind_background = attr & 0b0010_0000 != 0;
                 let flip_horizontally = attr & 0b0100_0000 != 0;
                 let flip_vertically = attr & 0b1000_0000 != 0;
-                let x = self.attributes[offset + 3];
+                let x = self.attributes[offset + 3] as usize;
 
                 let (chr_bank, row, tile_idx) = match sprite_size {
                     SpriteSize::Sprite8x8 => {
@@ -335,7 +329,8 @@ impl PPU {
 
                     count += 1;
                 } else {
-                    overflow = true;
+                    // TODO: implement sprite overflow hardware bug
+                    self.regs.status.insert(Status::SPRITE_OVERFLOW);
                     break;
                 }
             }
@@ -347,8 +342,18 @@ impl PPU {
     fn render_pixel(&mut self, frame: &mut [u8]) {
         let x = self.cycle - 1;
         let y = self.scanline;
-        let bg = self.get_background_pixel();
-        let sprite = self.get_sprite_pixel();
+        let mut bg = self.get_background_pixel();
+        let mut sprite = self.get_sprite_pixel();
+
+        if x <= 8 {
+            if !self.regs.show_leftmost_background() {
+                bg = None;
+            }
+
+            if !self.regs.show_leftmost_sprites() {
+                sprite = None;
+            }
+        }
 
         let color = match (bg, sprite) {
             (None, None) => COLOR_PALETTE[self.palette[0] as usize],
@@ -364,8 +369,10 @@ impl PPU {
         };
 
         if let Some((_, _, idx)) = sprite {
-            let sprite_zero_hit =
-                idx == 0 && bg.is_some() && !self.regs.status.contains(Status::SPRITE_ZERO_HIT);
+            let sprite_zero_hit = idx == 0
+                && x < 255
+                && bg.is_some()
+                && !self.regs.status.contains(Status::SPRITE_ZERO_HIT);
 
             if sprite_zero_hit {
                 self.regs.status.insert(Status::SPRITE_ZERO_HIT);
@@ -391,15 +398,16 @@ impl PPU {
     }
 
     // https://www.nesdev.org/wiki/PPU_palettes
-    fn sprite_palette(&self, palette_idx: u8) -> [Option<(u8, u8, u8)>; 4] {
+    fn sprite_color(&self, palette_idx: u8, color_idx: u8) -> Option<(u8, u8, u8)> {
         let palette_offset = SPRITE_PALETTES_OFFSET + palette_idx as usize * BYTES_PER_PALLETE;
 
-        [
-            None, // transparent
-            Some(COLOR_PALETTE[self.palette[palette_offset] as usize]),
-            Some(COLOR_PALETTE[self.palette[palette_offset + 1] as usize]),
-            Some(COLOR_PALETTE[self.palette[palette_offset + 2] as usize]),
-        ]
+        match color_idx {
+            0 => None,
+            1 => Some(COLOR_PALETTE[self.palette[palette_offset] as usize]),
+            2 => Some(COLOR_PALETTE[self.palette[palette_offset + 1] as usize]),
+            3 => Some(COLOR_PALETTE[self.palette[palette_offset + 2] as usize]),
+            _ => unreachable!(),
+        }
     }
 
     pub fn pull_nmi_status(&mut self) -> bool {
@@ -409,6 +417,7 @@ impl PPU {
     }
 
     fn nametable_mirrored_addr(&self, addr: u16) -> u16 {
+        let addr = addr & 0x2FFF;
         match self.rom.cart.mirroring {
             Mirroring::Horizontal => match addr {
                 0x2000..=0x23ff => addr - 0x2000,        // A
@@ -473,12 +482,11 @@ impl PPU {
                 self.data_buffer = self.read_chr(addr);
                 res
             }
-            0x2000..=0x2fff => {
+            0x2000..=0x3eff => {
                 let res = self.data_buffer;
                 self.data_buffer = self.read_nametable(addr);
                 res
             }
-            0x3000..=0x3eff => unreachable!(),
             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.palette[(addr as usize - 0x3f10) & 31],
             0x3f00..=0x3fff => self.palette[(addr as usize - 0x3f00) & 31],
             _ => unreachable!(),
