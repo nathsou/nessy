@@ -1,7 +1,10 @@
 mod registers;
 
 use self::registers::{Ctrl, Mask, Registers, SpriteSize, Status};
-use crate::cpu::rom::{Mirroring, ROM};
+use crate::{
+    cpu::rom::{Mirroring, ROM},
+    js,
+};
 
 const PIXELS_PER_TILE: usize = 8;
 const BYTES_PER_PALLETE: usize = 4;
@@ -26,6 +29,15 @@ pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
    (0x99, 0xFF, 0xFC), (0xDD, 0xDD, 0xDD), (0x11, 0x11, 0x11), (0x11, 0x11, 0x11),
 ];
 
+#[derive(Clone, Copy)]
+struct SpriteData {
+    x: u8,
+    idx: u8,
+    chr: [u8; 8],
+    palette_idx: u8,
+    behind_background: bool,
+}
+
 #[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
     pub rom: ROM,
@@ -37,13 +49,14 @@ pub struct PPU {
     pub scanline: usize,
     data_buffer: u8,
     nmi_triggered: bool,
-    sprite_zero_hit_this_frame: bool,
     pub frame_complete: bool,
     tile_data: u64,
     nametable_byte: u8,
     attribute_table_byte: u8,
     pattern_table_low_byte: u8,
     pattern_table_high_byte: u8,
+    scanline_sprites: [SpriteData; 8],
+    visible_sprites_count: usize,
 }
 
 impl PPU {
@@ -58,13 +71,21 @@ impl PPU {
             scanline: 0,
             data_buffer: 0,
             nmi_triggered: false,
-            sprite_zero_hit_this_frame: false,
             frame_complete: false,
+            // background data
             tile_data: 0,
             nametable_byte: 0,
             attribute_table_byte: 0,
             pattern_table_low_byte: 0,
             pattern_table_high_byte: 0,
+            scanline_sprites: [SpriteData {
+                x: 0,
+                idx: 0,
+                palette_idx: 0,
+                behind_background: false,
+                chr: [0; 8],
+            }; 8],
+            visible_sprites_count: 0,
         };
 
         ppu.reset();
@@ -86,10 +107,6 @@ impl PPU {
         self.cycle += 1;
 
         if self.cycle > 340 {
-            if self.is_sprite_zero_hit() {
-                self.regs.status.set(Status::SPRITE_ZERO_HIT, true);
-            }
-
             self.cycle = 0;
             self.scanline += 1;
 
@@ -103,7 +120,6 @@ impl PPU {
     pub fn step(&mut self, frame: &mut [u8]) {
         self.tick();
 
-        let rendering_enabled = self.regs.rendering_enabled();
         let preline = self.scanline == 261;
         let visible_line = self.scanline < 240;
         let render_line = preline || visible_line;
@@ -112,7 +128,7 @@ impl PPU {
         let fetch_cycle = pre_fetch_cycle || visible_cycle;
 
         // background logic
-        if rendering_enabled {
+        if self.regs.show_background() {
             if visible_line && visible_cycle {
                 self.render_pixel(frame);
             }
@@ -123,8 +139,9 @@ impl PPU {
                 match self.cycle & 7 {
                     1 => self.fetch_nametable_byte(),
                     3 => self.fetch_attribute_table_byte(),
-                    5 => self.fetch_pattern_table_low_byte(),
-                    7 => self.fetch_pattern_table_high_byte(),
+                    // 5 => self.fetch_pattern_table_low_byte(),
+                    // 7 => self.fetch_pattern_table_high_byte(),
+                    7 => self.fetch_pattern_table_bytes(),
                     0 => self.store_tile_data(),
                     _ => {}
                 }
@@ -149,6 +166,10 @@ impl PPU {
             }
         }
 
+        if visible_line && self.cycle == 257 {
+            self.fetch_next_scanline_sprites();
+        }
+
         // VBlank
         if self.scanline == 241 && self.cycle == 1 {
             self.frame_complete = true;
@@ -161,7 +182,6 @@ impl PPU {
         }
 
         if preline && self.cycle == 1 {
-            self.sprite_zero_hit_this_frame = false;
             self.regs.status.set(Status::VBLANK_STARTED, false);
             self.regs.status.set(Status::SPRITE_ZERO_HIT, false);
         }
@@ -181,21 +201,13 @@ impl PPU {
         self.attribute_table_byte = (self.read_nametable(address) >> shift) & 0b11;
     }
 
-    fn fetch_pattern_table_low_byte(&mut self) {
+    fn fetch_pattern_table_bytes(&mut self) {
         let table = self.regs.ctrl.background_chr_offset();
         let tile = self.nametable_byte as u16;
         let fine_y = self.regs.fine_y() as u16;
         let offset = table + tile * 16 + fine_y;
 
         self.pattern_table_low_byte = self.read_chr(offset);
-    }
-
-    fn fetch_pattern_table_high_byte(&mut self) {
-        let table = self.regs.ctrl.background_chr_offset();
-        let tile = self.nametable_byte as u16;
-        let fine_y = self.regs.fine_y() as u16;
-        let offset = table + tile * 16 + fine_y;
-
         self.pattern_table_high_byte = self.read_chr(offset + 8);
     }
 
@@ -224,24 +236,141 @@ impl PPU {
         self.tile_data |= data as u64;
     }
 
-    fn get_background_pixel(&mut self) -> usize {
+    fn get_background_pixel(&mut self) -> Option<(u8, u8, u8)> {
         if self.regs.show_background() {
             let color_idx = ((self.tile_data >> 32) >> ((7 - self.regs.x) * 4)) & 0xF;
             if color_idx & 3 == 0 {
-                0
+                None
             } else {
-                color_idx as usize
+                Some(color_idx as usize)
             }
         } else {
-            0
+            None
         }
+        .map(|idx| COLOR_PALETTE[self.palette[idx] as usize])
+    }
+
+    fn get_sprite_pixel(&mut self) -> Option<((u8, u8, u8), bool, u8)> {
+        if self.regs.show_sprites() {
+            let x = (self.cycle - 1) as u8;
+
+            for i in 0..self.visible_sprites_count {
+                let sprite = self.scanline_sprites[i];
+                if x >= sprite.x && x < sprite.x + 8 {
+                    let palette = self.sprite_palette(sprite.palette_idx);
+                    let idx = sprite.chr[(x - sprite.x) as usize];
+                    if let Some(color) = palette[idx as usize] {
+                        return Some((color, sprite.behind_background, sprite.idx));
+                    };
+                }
+            }
+        }
+
+        None
+    }
+
+    fn fetch_next_scanline_sprites(&mut self) {
+        let mut count = 0;
+        let mut overflow = false;
+        let sprite_size = self.regs.ctrl.sprite_size();
+        let height = sprite_size.height();
+
+        for i in 0..64 {
+            let offset = i * 4;
+            let y = self.attributes[offset];
+            let scanline = self.scanline as u8;
+
+            if scanline >= y && scanline < y + height {
+                let row = scanline - y;
+                let tile_idx = self.attributes[offset + 1] as u16;
+                let attr = self.attributes[offset + 2];
+                let palette_idx = attr & 0b11;
+                let behind_background = attr & 0b0010_0000 != 0;
+                let flip_horizontally = attr & 0b0100_0000 != 0;
+                let flip_vertically = attr & 0b1000_0000 != 0;
+                let x = self.attributes[offset + 3];
+
+                let (chr_bank, row, tile_idx) = match sprite_size {
+                    SpriteSize::Sprite8x8 => {
+                        let chr_bank = self.regs.ctrl.sprite_chr_offset();
+                        let row = if flip_vertically { 7 - row } else { row };
+                        (chr_bank, row, tile_idx)
+                    }
+                    SpriteSize::Sprite8x16 => {
+                        let chr_bank = (tile_idx & 1) * 0x1000;
+                        let mut tile_idx = tile_idx & 0xFE;
+                        let mut row = if flip_vertically { 15 - row } else { row };
+
+                        if row > 7 {
+                            row -= 8;
+                            tile_idx += 1;
+                        }
+
+                        (chr_bank, row, tile_idx)
+                    }
+                };
+
+                let tile_offset = chr_bank + tile_idx * 16 + row as u16;
+
+                if count < 8 {
+                    let chr_low = self.read_chr(tile_offset);
+                    let chr_high = self.read_chr(tile_offset + 8);
+                    let mut chr = [0u8; 8];
+
+                    for i in 0..8 {
+                        let mask = 1 << if flip_horizontally { i } else { 7 - i };
+                        let p1: u8 = (chr_low & mask != 0).into();
+                        let p2: u8 = (chr_high & mask != 0).into();
+                        let pattern = (p2 << 1) | p1;
+                        chr[i] = pattern;
+                    }
+
+                    self.scanline_sprites[count] = SpriteData {
+                        x,
+                        idx: i as u8,
+                        palette_idx,
+                        behind_background,
+                        chr,
+                    };
+
+                    count += 1;
+                } else {
+                    overflow = true;
+                    break;
+                }
+            }
+        }
+
+        self.visible_sprites_count = count;
     }
 
     fn render_pixel(&mut self, frame: &mut [u8]) {
         let x = self.cycle - 1;
         let y = self.scanline;
-        let color_idx = self.get_background_pixel();
-        let color = COLOR_PALETTE[self.palette[color_idx] as usize];
+        let bg = self.get_background_pixel();
+        let sprite = self.get_sprite_pixel();
+
+        let color = match (bg, sprite) {
+            (None, None) => COLOR_PALETTE[self.palette[0] as usize],
+            (None, Some((sp, _, _))) => sp,
+            (Some(bg), None) => bg,
+            (Some(bg), Some((sp, behind, _))) => {
+                if behind {
+                    bg
+                } else {
+                    sp
+                }
+            }
+        };
+
+        if let Some((_, _, idx)) = sprite {
+            let sprite_zero_hit =
+                idx == 0 && bg.is_some() && !self.regs.status.contains(Status::SPRITE_ZERO_HIT);
+
+            if sprite_zero_hit {
+                self.regs.status.insert(Status::SPRITE_ZERO_HIT);
+            }
+        }
 
         Self::set_pixel(frame, x, y, color);
     }
@@ -261,51 +390,6 @@ impl PPU {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn render_sprite_tile(
-        &mut self,
-        frame: &mut [u8],
-        chr_bank_offset: u16,
-        nth: usize,
-        tile_x: usize,
-        tile_y: usize,
-        flip_horizontally: bool,
-        flip_vertically: bool,
-        palette: [Option<(u8, u8, u8)>; 4],
-    ) {
-        let mut tile = [0u8; 16];
-        self.rom
-            .mapper
-            .get_tile(&self.rom.cart, chr_bank_offset, nth, &mut tile);
-
-        for y in 0..PIXELS_PER_TILE {
-            let mut plane1 = tile[y];
-            let mut plane2 = tile[y + 8];
-
-            for x in (0..PIXELS_PER_TILE).rev() {
-                let bit0 = plane1 & 1;
-                let bit1 = plane2 & 1;
-                let color_idx = (bit1 << 1) | bit0;
-
-                plane1 >>= 1;
-                plane2 >>= 1;
-
-                if let Some(rgb) = palette[color_idx as usize] {
-                    let (x, y) = match (flip_horizontally, flip_vertically) {
-                        (false, false) => (x, y),
-                        (true, false) => (7 - x, y),
-                        (false, true) => (x, 7 - y),
-                        (true, true) => (7 - x, 7 - y),
-                    };
-
-                    let pixel_x = tile_x + x;
-                    let pixel_y = tile_y + y;
-                    PPU::set_pixel(frame, pixel_x, pixel_y, rgb);
-                }
-            }
-        }
-    }
-
     // https://www.nesdev.org/wiki/PPU_palettes
     fn sprite_palette(&self, palette_idx: u8) -> [Option<(u8, u8, u8)>; 4] {
         let palette_offset = SPRITE_PALETTES_OFFSET + palette_idx as usize * BYTES_PER_PALLETE;
@@ -316,82 +400,6 @@ impl PPU {
             Some(COLOR_PALETTE[self.palette[palette_offset + 1] as usize]),
             Some(COLOR_PALETTE[self.palette[palette_offset + 2] as usize]),
         ]
-    }
-
-    pub fn render_sprites(&mut self, frame: &mut [u8]) {
-        if !self.regs.show_sprites() {
-            return;
-        }
-
-        let sprite_size = self.regs.ctrl.sprite_size();
-
-        // Sprites with lower OAM indices are drawn in front
-        for i in (0..WIDTH).step_by(4).rev() {
-            let sprite_y = self.attributes[i] as usize + 1;
-            let sprite_tile_idx = match sprite_size {
-                SpriteSize::Sprite8x8 => self.attributes[i + 1] as usize,
-                SpriteSize::Sprite8x16 => (self.attributes[i + 1]) as usize,
-            };
-            let sprite_attr = self.attributes[i + 2];
-            let sprite_x = self.attributes[i + 3] as usize;
-
-            let palette_idx = sprite_attr & 0b11;
-            // let behind_background = sprite_attr & 0b0010_0000 != 0;
-            let flip_horizontally = sprite_attr & 0b0100_0000 != 0;
-            let flip_vertically = sprite_attr & 0b1000_0000 != 0;
-            let palette = self.sprite_palette(palette_idx);
-            let chr_bank_offset: u16 = match sprite_size {
-                SpriteSize::Sprite8x8 => {
-                    if !self.regs.ctrl.contains(Ctrl::SPRITE_PATTERN_ADDR) {
-                        0
-                    } else {
-                        0x1000
-                    }
-                }
-                SpriteSize::Sprite8x16 => (sprite_tile_idx as u16 & 1) * 0x1000,
-            };
-
-            let (top_tile_idx, bot_tile_idx) = {
-                use SpriteSize::*;
-                match (sprite_size, flip_vertically) {
-                    (Sprite8x8, _) => (sprite_tile_idx, None),
-                    (Sprite8x16, false) => (sprite_tile_idx, Some(sprite_tile_idx + 1)),
-                    (Sprite8x16, true) => (sprite_tile_idx + 1, Some(sprite_tile_idx)),
-                }
-            };
-
-            self.render_sprite_tile(
-                frame,
-                chr_bank_offset,
-                top_tile_idx,
-                sprite_x,
-                sprite_y,
-                flip_horizontally,
-                flip_vertically,
-                palette,
-            );
-
-            if let Some(idx) = bot_tile_idx {
-                self.render_sprite_tile(
-                    frame,
-                    chr_bank_offset,
-                    idx,
-                    sprite_x,
-                    sprite_y + 8,
-                    flip_horizontally,
-                    flip_vertically,
-                    palette,
-                );
-            }
-        }
-    }
-
-    #[inline]
-    fn is_sprite_zero_hit(&mut self) -> bool {
-        let y = self.attributes[0] as usize;
-        let x = self.attributes[3] as usize;
-
-        y == self.scanline && x <= self.cycle && self.regs.mask.contains(Mask::SHOW_SPRITES)
     }
 
     pub fn pull_nmi_status(&mut self) -> bool {

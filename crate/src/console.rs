@@ -28,7 +28,6 @@ impl Nes {
         }
 
         self.cpu.bus.ppu.frame_complete = false;
-        self.cpu.bus.ppu.render_sprites(frame);
     }
 
     #[inline]

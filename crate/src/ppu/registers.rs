@@ -86,10 +86,31 @@ pub enum SpriteSize {
     Sprite8x16,
 }
 
+impl SpriteSize {
+    #[inline]
+    pub fn height(&self) -> u8 {
+        use SpriteSize::*;
+
+        match self {
+            Sprite8x8 => 8,
+            Sprite8x16 => 16,
+        }
+    }
+}
+
 impl Ctrl {
     #[inline]
     pub fn background_chr_offset(&self) -> u16 {
         if !self.contains(Ctrl::BACKROUND_PATTERN_ADDR) {
+            0
+        } else {
+            0x1000
+        }
+    }
+
+    #[inline]
+    pub fn sprite_chr_offset(&self) -> u16 {
+        if !self.contains(Ctrl::SPRITE_PATTERN_ADDR) {
             0
         } else {
             0x1000
