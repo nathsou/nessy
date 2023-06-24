@@ -138,7 +138,7 @@ impl PPU {
                     // 5 => self.fetch_pattern_table_low_byte(),
                     // 7 => self.fetch_pattern_table_high_byte(),
                     7 => self.fetch_pattern_table_bytes(),
-                    0 => self.store_tile_data(),
+                    0 => self.store_background_tile_data(),
                     _ => {}
                 }
             }
@@ -162,8 +162,13 @@ impl PPU {
             }
         }
 
-        if visible_line && self.cycle == 257 {
-            self.fetch_next_scanline_sprites();
+        if self.regs.show_sprites() && self.cycle == 257 {
+            if visible_line {
+                self.fetch_next_scanline_sprites();
+            } else {
+                // clear secondary OAM
+                self.visible_sprites_count = 0;
+            }
         }
 
         // VBlank
@@ -216,7 +221,7 @@ impl PPU {
         self.regs.oam_addr = 0;
     }
 
-    fn store_tile_data(&mut self) {
+    fn store_background_tile_data(&mut self) {
         let mut data: u32 = 0;
         let attr = self.attribute_table_byte << 2;
 
@@ -254,10 +259,10 @@ impl PPU {
             for i in 0..self.visible_sprites_count {
                 let sprite = self.scanline_sprites[i];
                 if x >= sprite.x && x < sprite.x + 8 {
-                    let idx = sprite.chr[(x - sprite.x) as usize];
+                    let idx = sprite.chr[x - sprite.x];
                     if let Some(color) = self.sprite_color(sprite.palette_idx, idx) {
                         return Some((color, sprite.behind_background, sprite.idx));
-                    };
+                    }
                 }
             }
         }
@@ -345,7 +350,7 @@ impl PPU {
         let mut bg = self.get_background_pixel();
         let mut sprite = self.get_sprite_pixel();
 
-        if x <= 8 {
+        if x < 8 {
             if !self.regs.show_leftmost_background() {
                 bg = None;
             }
@@ -387,12 +392,12 @@ impl PPU {
         self.regs.status.contains(Status::VBLANK_STARTED)
     }
 
-    pub fn set_pixel(frame: &mut [u8], x: usize, y: usize, rgb: (u8, u8, u8)) {
-        if (0..WIDTH).contains(&x) && (0..HEIGHT).contains(&y) {
+    pub fn set_pixel(frame: &mut [u8], x: usize, y: usize, (r, g, b): (u8, u8, u8)) {
+        if x < WIDTH && y < HEIGHT {
             let offset = (y * WIDTH + x) * 4;
-            frame[offset] = rgb.0;
-            frame[offset + 1] = rgb.1;
-            frame[offset + 2] = rgb.2;
+            frame[offset] = r;
+            frame[offset + 1] = g;
+            frame[offset + 2] = b;
             frame[offset + 3] = 255;
         }
     }
