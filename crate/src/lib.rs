@@ -35,6 +35,11 @@ pub fn update_joypad1(console: &mut Nes, button: u8, pressed: bool) {
     console.joypad1().update_button_state(btn, pressed);
 }
 
+#[wasm_bindgen(js_name = setJoypad1)]
+pub fn set_joypad1(console: &mut Nes, buttons: u8) {
+    console.joypad1().update(buttons);
+}
+
 #[cfg(test)]
 mod tests {
     use crate::bus::Bus;
