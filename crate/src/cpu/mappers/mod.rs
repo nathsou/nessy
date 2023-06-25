@@ -2,6 +2,7 @@ use super::rom::Cart;
 
 pub mod mmc1;
 pub mod nrom;
+pub mod unrom;
 
 pub trait Mapper {
     fn read_prg(&mut self, cart: &mut Cart, addr: u16) -> u8;

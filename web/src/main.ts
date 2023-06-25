@@ -21,14 +21,17 @@ const roms = {
     Zelda: 'Zelda',
     Zelda2: 'Zelda II',
     KidIcarus: 'Kid Icarus',
+    MegaMan: 'Mega Man',
     MegaMan2: 'Mega Man 2',
     Castlevania: 'Castlevania',
     Contra: 'Contra',
     Chessmaster: 'Chessmaster',
     NinjaTurtles: 'Teenage Mutant Ninja Turtles',
+    PrinceOfPersia: 'Prince of Persia',
+    DuckTales: 'Duck Tales',
 };
 
-const game = roms.Metroid;
+const game = roms.Castlevania;
 
 enum Joypad {
     A = 0b0000_0001,
@@ -168,15 +171,18 @@ async function setup() {
 
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.createImageData(WIDTH, HEIGHT);
-    const mode: Mode = { type: 'play' };
+    const inputs = await (await fetch(`inputs/zelda.json`)).json();
+    const mode: Mode = {
+        type: 'play',
+        // inputs,
+    };
 
     await init();
     const rom = await (await fetch(`roms/${game}.nes`)).arrayBuffer();
     const nes = createConsole(new Uint8Array(rom));
     const frame: Uint8Array = imageData.data as any;
     const controller = createController(nes);
-    const replay = createReplay(nes, []);
-
+    const replay = createReplay(nes, inputs);
 
     window.addEventListener('resize', resize);
     window.addEventListener('keyup', controller.onKeyUp);

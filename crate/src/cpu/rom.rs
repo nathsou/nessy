@@ -1,5 +1,6 @@
 use super::mappers::mmc1::MMC1;
 use super::mappers::nrom::NROM;
+use super::mappers::unrom::UNROM;
 use super::mappers::Mapper;
 use std::io;
 
@@ -87,6 +88,7 @@ impl ROM {
         match mapper_id {
             0 => Ok(Box::new(NROM::new())),
             1 => Ok(Box::new(MMC1::new())),
+            2 => Ok(Box::new(UNROM::new())),
             _ => Err(RomError::UnsupportedMapper(mapper_id)),
         }
     }
