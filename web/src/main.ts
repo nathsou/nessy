@@ -32,7 +32,7 @@ const roms = {
     DuckTales: 'Duck Tales',
     MetalGear: 'Metal Gear',
     GhostsNGoblins: "Ghosts 'N Goblins",
-    // BackToTheFuture: 'Back to the Future',
+    BackToTheFuture: 'Back to the Future',
     // BackToTheFuture2And3: 'Back to the Future II & III',
 };
 

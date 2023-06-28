@@ -47,6 +47,8 @@ pub struct PPU {
     frame: usize,
     data_buffer: u8,
     nmi_triggered: bool,
+    nmi_edge_detector: bool,
+    should_trigger_nmi: bool,
     pub frame_complete: bool,
     tile_data: u64,
     nametable_byte: u8,
@@ -71,6 +73,8 @@ impl PPU {
             frame: 0,
             data_buffer: 0,
             nmi_triggered: false,
+            should_trigger_nmi: false,
+            nmi_edge_detector: false,
             frame_complete: false,
             // background data
             tile_data: 0,
@@ -94,6 +98,14 @@ impl PPU {
 
     fn tick(&mut self) {
         // TODO: handle NMI delay
+
+        if self.should_trigger_nmi
+            && self.regs.ctrl.contains(Ctrl::GENERATE_NMI)
+            && self.regs.status.contains(Status::VBLANK_STARTED)
+        {
+            self.nmi_triggered = true;
+            self.should_trigger_nmi = false;
+        }
 
         if self.regs.rendering_enabled() && self.regs.f && self.scanline == 261 && self.cycle == 339
         {
@@ -181,17 +193,26 @@ impl PPU {
         if self.scanline == 241 && self.cycle == 1 {
             self.frame_complete = true;
             self.regs.status.insert(Status::VBLANK_STARTED);
-
-            if self.regs.ctrl.contains(Ctrl::GENERATE_NMI) {
-                self.nmi_triggered = true;
-            }
+            self.detect_nmi_edge();
         }
 
         if preline && self.cycle == 1 {
             self.regs.status.remove(Status::VBLANK_STARTED);
             self.regs.status.remove(Status::SPRITE_ZERO_HIT);
             self.regs.status.remove(Status::SPRITE_OVERFLOW);
+            self.detect_nmi_edge();
         }
+    }
+
+    fn detect_nmi_edge(&mut self) {
+        let nmi = self.regs.ctrl.contains(Ctrl::GENERATE_NMI)
+            && self.regs.status.contains(Status::VBLANK_STARTED);
+
+        if !self.nmi_edge_detector && nmi {
+            self.should_trigger_nmi = true;
+        }
+
+        self.nmi_edge_detector = nmi;
     }
 
     fn fetch_nametable_byte(&mut self) {
@@ -462,14 +483,9 @@ impl PPU {
     }
 
     pub fn write_ctrl_reg(&mut self, data: u8) {
-        // the PPU immediately triggers a NMI when the VBlank flag transitions from 0 to 1 during VBlank
-        let prev_nmi_status = self.regs.ctrl.contains(Ctrl::GENERATE_NMI);
         self.regs.write_ctrl(data);
-        let new_nmi_status = self.regs.ctrl.contains(Ctrl::GENERATE_NMI);
-
-        if self.vblank_started() && !prev_nmi_status && new_nmi_status {
-            self.nmi_triggered = true;
-        }
+        // the PPU immediately triggers a NMI when the VBlank flag transitions from 0 to 1 during VBlank
+        self.detect_nmi_edge();
     }
 
     #[inline]
@@ -550,7 +566,11 @@ impl PPU {
 
     pub fn read_register(&mut self, addr: u16) -> u8 {
         match addr {
-            0x2002 => self.regs.read_status(self.open_bus),
+            0x2002 => {
+                let res = self.regs.read_status(self.open_bus);
+                self.detect_nmi_edge();
+                res
+            }
             0x2004 => self.read_oam_data_reg(),
             0x2007 => self.read_data_reg(),
             _ => 0,
@@ -559,11 +579,6 @@ impl PPU {
 
     pub fn write_register(&mut self, addr: u16, data: u8) {
         // https://www.nesdev.org/wiki/Open_bus_behavior#PPU_open_bus
-        println!(
-            "write_register {addr:04X} {data:02X}",
-            addr = addr,
-            data = data
-        );
         self.open_bus = data;
 
         match addr {

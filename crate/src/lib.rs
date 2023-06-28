@@ -56,8 +56,7 @@ mod tests {
 
     #[test]
     fn test_dump() {
-        let rom =
-            load_rom("/Users/nathan/Documents/Code/Rust/nessy/web/public/roms/Duck Tales.nes");
+        let rom = load_rom("/Users/nathan/Documents/Code/Rust/nessy/web/public/roms/Bomberman.nes");
         let path = Path::new("/Users/nathan/Desktop/dump.log");
         let file = File::open(path).expect("Failed to open dump file");
         let reader = io::BufReader::new(file);
@@ -83,7 +82,7 @@ mod tests {
 
                 if !is_loop {
                     let trace = nes.trace();
-                    // println!("{}", trace);
+                    // println!("{trace}");
                     assert_eq!(&trace, line);
                     lines.next();
                 }

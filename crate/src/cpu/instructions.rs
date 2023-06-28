@@ -256,7 +256,7 @@ impl CPU {
         };
 
         let raw_inst = format!("{op_code:02X} {formatted_args}");
-        let disasm_inst = format!("{inst_name} {args}",);
+        let disasm_inst = format!("{inst_name} {args}");
 
         let regs = format!(
             "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
@@ -284,6 +284,7 @@ impl CPU {
     }
 
     fn nmi(&mut self) {
+        println!("NMI");
         self.push_word(self.pc);
         self.php();
         self.sei();
