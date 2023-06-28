@@ -38,11 +38,13 @@ struct SpriteData {
 pub struct PPU {
     pub rom: ROM,
     regs: Registers,
+    open_bus: u8,
     vram: [u8; 2 * 1024],
     palette: [u8; 32],
     attributes: [u8; 64 * 4],
     pub cycle: usize,
     scanline: usize,
+    frame: usize,
     data_buffer: u8,
     nmi_triggered: bool,
     pub frame_complete: bool,
@@ -60,11 +62,13 @@ impl PPU {
         let mut ppu = PPU {
             rom,
             regs: Registers::new(),
+            open_bus: 0,
             vram: [0; 2 * 1024],
             palette: [0; 32],
             attributes: [0; 64 * 4],
             cycle: 0,
             scanline: 0,
+            frame: 0,
             data_buffer: 0,
             nmi_triggered: false,
             frame_complete: false,
@@ -97,6 +101,7 @@ impl PPU {
             self.cycle = 0;
             self.scanline = 0;
             self.regs.f = !self.regs.f;
+            self.frame += 1;
             return;
         }
 
@@ -109,6 +114,7 @@ impl PPU {
             if self.scanline > 261 {
                 self.scanline = 0;
                 self.regs.f = !self.regs.f;
+                self.frame += 1;
             }
         }
     }
@@ -175,7 +181,6 @@ impl PPU {
         if self.scanline == 241 && self.cycle == 1 {
             self.frame_complete = true;
             self.regs.status.insert(Status::VBLANK_STARTED);
-            self.regs.status.remove(Status::SPRITE_ZERO_HIT);
 
             if self.regs.ctrl.contains(Ctrl::GENERATE_NMI) {
                 self.nmi_triggered = true;
@@ -545,7 +550,7 @@ impl PPU {
 
     pub fn read_register(&mut self, addr: u16) -> u8 {
         match addr {
-            0x2002 => self.regs.read_status(),
+            0x2002 => self.regs.read_status(self.open_bus),
             0x2004 => self.read_oam_data_reg(),
             0x2007 => self.read_data_reg(),
             _ => 0,
@@ -553,6 +558,14 @@ impl PPU {
     }
 
     pub fn write_register(&mut self, addr: u16, data: u8) {
+        // https://www.nesdev.org/wiki/Open_bus_behavior#PPU_open_bus
+        println!(
+            "write_register {addr:04X} {data:02X}",
+            addr = addr,
+            data = data
+        );
+        self.open_bus = data;
+
         match addr {
             0x2000 => self.write_ctrl_reg(data),
             0x2001 => self.regs.write_mask(data),
@@ -564,5 +577,23 @@ impl PPU {
             0x2007 => self.write_data_reg(data),
             _ => unreachable!("invalid PPU register address"),
         }
+    }
+
+    pub fn trace(&self) -> String {
+        format!(
+            "c{}s{}f{}v{:X}t{:X}x{:X}w{:X}f{}-c{:X}m{:X}s{:X}r{:X}",
+            self.cycle,
+            self.scanline,
+            self.frame,
+            self.regs.v,
+            self.regs.t,
+            self.regs.x,
+            if self.regs.w { 1 } else { 0 },
+            if self.regs.f { 1 } else { 0 },
+            self.regs.ctrl.bits(),
+            self.regs.mask.bits(),
+            self.regs.status.bits(),
+            self.open_bus,
+        )
     }
 }

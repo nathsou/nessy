@@ -9,12 +9,17 @@ const IRQ_VECTOR: u16 = 0xfffe;
 
 impl CPU {
     pub fn step(&mut self) -> usize {
-        if self.bus.cpu_stall > 0 {
-            self.bus.cpu_stall -= 1;
-            return 1;
+        self.instr_cycles = 0;
+
+        if self.bus.dma_transfer {
+            self.bus.dma_transfer = false;
+            self.stall += 513 + (self.total_cycles & 1);
         }
 
-        self.cycles = 0;
+        if self.stall > 0 {
+            self.stall -= 1;
+            return 1;
+        }
 
         match self.bus.pull_interrupt_status() {
             Interrupt::None => {}
@@ -211,7 +216,10 @@ impl CPU {
             }
         }
 
-        self.cycles + INST_CYCLES[op_code as usize]
+        let instr_cycles = self.instr_cycles + INST_CYCLES[op_code as usize];
+        self.total_cycles += instr_cycles;
+
+        instr_cycles
     }
 
     #[allow(dead_code)]
@@ -280,12 +288,12 @@ impl CPU {
         self.php();
         self.sei();
         self.pc = self.bus.read_word(NMI_VECTOR);
-        // self.cycles += 7;
+        self.instr_cycles += 7;
     }
 
     fn irq(&mut self) {
         self.brk();
-        // self.cycles += 7;
+        self.instr_cycles += 7;
     }
 
     // NOP: No Operation
@@ -591,13 +599,9 @@ impl CPU {
     // SBC - Subtract with Carry
     #[inline]
     fn sbc(&mut self, val: u8) {
-        let sub = if !self.status.contains(Status::CARRY) {
-            val.wrapping_add(1)
-        } else {
-            val
-        };
-
-        let (sum, carried) = self.a.overflowing_sub(sub);
+        let (sum, carried1) = self.a.overflowing_sub(val);
+        let (sum, carried2) = sum.overflowing_sub(!self.status.contains(Status::CARRY) as u8);
+        let carried = carried1 || carried2;
 
         self.status.set(
             Status::OVERFLOW,
@@ -1098,10 +1102,10 @@ impl CPU {
         let jump_addr = self.pc.wrapping_add(rel as u16);
         let prev_pc = self.pc;
         self.pc = jump_addr;
-        self.cycles += 1;
+        self.instr_cycles += 1;
 
         if self.page_crossed(prev_pc, jump_addr) {
-            self.cycles += 1;
+            self.instr_cycles += 1;
         }
     }
 

@@ -35,7 +35,7 @@ pub struct Bus {
     pub ram: RAM,
     pub ppu: PPU,
     pub joypad1: Joypad,
-    pub cpu_stall: usize,
+    pub dma_transfer: bool,
 }
 
 impl Bus {
@@ -44,7 +44,7 @@ impl Bus {
             ram: RAM { ram: [0; 0x800] },
             ppu: PPU::new(rom),
             joypad1: Joypad::new(),
-            cpu_stall: 0,
+            dma_transfer: false,
         }
     }
 
@@ -74,7 +74,7 @@ impl Memory for Bus {
             //     panic!("PPU address {addr:x} is write-only");
             // }
             0x2000..=0x2007 => self.ppu.read_register(addr),
-            0x2008..=0x3fff => self.read_byte(addr & 0b0010_0000_0000_0111),
+            0x2008..=0x3fff => self.ppu.read_register(0x2000 + (addr & 7)),
             0x4016 => self.joypad1.read(),
             0x4000..=0x4017 => {
                 // APU
@@ -92,7 +92,7 @@ impl Memory for Bus {
         match addr {
             0x0000..=0x1fff => self.ram.write_byte(addr, val),
             0x2000..=0x2007 => self.ppu.write_register(addr, val),
-            0x2008..=0x3fff => self.write_byte(addr & 0b0010_0000_0000_0111, val),
+            0x2008..=0x3fff => self.ppu.write_register(0x2000 + (addr & 7), val),
             0x4014 => {
                 let mut page = [0u8; 256];
                 let high_byte = (val as u16) << 8;
@@ -102,7 +102,7 @@ impl Memory for Bus {
                 }
 
                 self.ppu.write_oam_dma_reg(page);
-                self.cpu_stall += 513 + (self.ppu.cycle & 1);
+                self.dma_transfer = true;
             }
             0x4016 => self.joypad1.write(val),
             0x4000..=0x4017 => (), // APU

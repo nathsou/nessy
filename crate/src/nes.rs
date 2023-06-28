@@ -17,7 +17,7 @@ impl Nes {
     }
 
     #[inline]
-    fn step(&mut self, frame: &mut [u8]) {
+    pub fn step(&mut self, frame: &mut [u8]) {
         let cpu_cycles = self.cpu.step();
         self.cpu.bus.advance_ppu(frame, cpu_cycles);
     }
@@ -33,5 +33,16 @@ impl Nes {
     #[inline]
     pub fn joypad1(&mut self) -> &mut Joypad {
         &mut self.cpu.bus.joypad1
+    }
+
+    #[inline]
+    pub fn get_cpu(&self) -> &CPU {
+        &self.cpu
+    }
+
+    pub fn trace(&self) -> String {
+        let cpu_trace = self.cpu.trace();
+        let ppu_trace = self.cpu.bus.ppu.trace();
+        format!("{cpu_trace}|{ppu_trace}")
     }
 }

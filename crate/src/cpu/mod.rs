@@ -7,8 +7,6 @@ pub mod rom;
 
 use bitflags::bitflags;
 
-use crate::cpu::opcodes::INST_NAMES;
-
 use self::memory::Memory;
 use super::bus::Bus;
 use std::fmt;
@@ -63,9 +61,11 @@ pub struct CPU {
     y: u8,
     pub pc: u16,
     sp: u8,
-    cycles: usize,
+    instr_cycles: usize,
+    total_cycles: usize,
     status: Status,
     pub bus: Bus,
+    stall: usize,
 }
 
 impl CPU {
@@ -76,9 +76,11 @@ impl CPU {
             y: 0,
             pc: bus.read_word(RESET_VECTOR),
             sp: STACK_TOP,
-            cycles: 0,
+            instr_cycles: 0,
+            total_cycles: 0,
             status: Status::new(),
             bus,
+            stall: 0,
         }
     }
 
@@ -87,7 +89,7 @@ impl CPU {
         self.x = 0;
         self.y = 0;
         self.sp = STACK_TOP;
-        self.cycles = 0;
+        self.instr_cycles = 0;
         self.status.update(DEFAULT_STATUS_STATE);
         self.pc = self.bus.read_word(RESET_VECTOR);
     }
@@ -193,7 +195,7 @@ impl CPU {
 
         // if page boundary crossed
         if add_on_boundary_crossed && self.page_crossed(addr, res) {
-            self.cycles += 1;
+            self.instr_cycles += 1;
         }
 
         res
@@ -218,7 +220,7 @@ impl CPU {
 
         // if page boundary crossed
         if add_on_boundary_crossed && self.page_crossed(addr, res) {
-            self.cycles += 1;
+            self.instr_cycles += 1;
         }
 
         res
@@ -242,7 +244,7 @@ impl CPU {
         let final_addr = addr.wrapping_add(self.y as u16);
 
         if add_on_boundary_crossed && self.page_crossed(addr, final_addr) {
-            self.cycles += 1;
+            self.instr_cycles += 1;
         }
 
         final_addr
@@ -289,20 +291,16 @@ impl CPU {
         self.toggle_zero_flag(val);
     }
 
-    pub fn state_fmt(&mut self) -> String {
-        let opcode = self.bus.read_byte(self.pc);
-        let mnemonic = INST_NAMES[opcode as usize].unwrap();
-
+    pub fn trace(&self) -> String {
         format!(
-            "{:04X} {:02X} {} A {:02X} X {:02X} Y {:02X} P {:02X} SP {:02X}",
+            "{:4X}a{:02X}x{:02X}y{:02X}p{:02X}s{:02X}c{}",
             self.pc,
-            opcode,
-            mnemonic,
             self.a,
             self.x,
             self.y,
             self.status.bits(),
-            self.sp
+            self.sp,
+            self.total_cycles,
         )
     }
 }

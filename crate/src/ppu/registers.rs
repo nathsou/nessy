@@ -236,8 +236,8 @@ bitflags! {
 
 impl Registers {
     #[inline]
-    pub fn read_status(&mut self) -> u8 {
-        let res = self.status.bits();
+    pub fn read_status(&mut self, open_bus: u8) -> u8 {
+        let res = self.status.bits() | (open_bus & 0b0001_1111);
         self.status.remove(Status::VBLANK_STARTED);
         self.w = false;
         res

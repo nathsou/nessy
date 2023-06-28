@@ -1,12 +1,12 @@
 mod bus;
-mod console;
 mod cpu;
 mod js;
+mod nes;
 mod ppu;
 use bus::controller::JoypadStatus;
 use cfg_if::cfg_if;
-use console::Nes;
 use cpu::rom::ROM;
+use nes::Nes;
 extern crate console_error_panic_hook;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -42,9 +42,12 @@ pub fn set_joypad1(console: &mut Nes, buttons: u8) {
 
 #[cfg(test)]
 mod tests {
-    use crate::bus::Bus;
+    use std::fs::File;
+    use std::io::{self, BufRead};
+    use std::path::Path;
+
     use crate::cpu::rom::ROM;
-    use crate::cpu::CPU;
+    use crate::nes::Nes;
 
     fn load_rom(path: &str) -> ROM {
         let bytes = std::fs::read(path).unwrap();
@@ -52,30 +55,39 @@ mod tests {
     }
 
     #[test]
-    fn test_nestest_dump() {
-        let rom = load_rom("tests/nestest.nes");
-        let logs = include_str!("tests/nestest.log").lines();
-        let bus = Bus::new(rom);
-        let mut cpu = CPU::new(bus);
-        cpu.pc = 0xc000;
+    fn test_dump() {
+        let rom =
+            load_rom("/Users/nathan/Documents/Code/Rust/nessy/web/public/roms/Duck Tales.nes");
+        let path = Path::new("/Users/nathan/Desktop/dump.log");
+        let file = File::open(path).expect("Failed to open dump file");
+        let reader = io::BufReader::new(file);
+        let mut nes = Nes::new(rom);
+        let mut lines = reader.lines().map(|l| l.unwrap()).peekable();
+        let mut frame = [0u8; 256 * 240 * 4];
+        let mut pcs = [0, 0, 0, 0];
 
-        for log_line in logs {
-            if cpu.pc == 0xc6bd {
-                // illegal opcodes after this point
-                break;
+        while let Some(line) = lines.peek() {
+            if let Some(input) = line.strip_prefix('!') {
+                let joypad1 = u8::from_str_radix(input, 2).unwrap();
+                nes.joypad1().update(joypad1);
+                lines.next();
+            } else {
+                nes.step(&mut frame);
+                let pc = nes.get_cpu().pc;
+                let is_loop = pcs.contains(&pc);
+
+                pcs[3] = pcs[2];
+                pcs[2] = pcs[1];
+                pcs[1] = pcs[0];
+                pcs[0] = pc;
+
+                if !is_loop {
+                    let trace = nes.trace();
+                    // println!("{}", trace);
+                    assert_eq!(&trace, line);
+                    lines.next();
+                }
             }
-
-            println!("{log_line}");
-
-            let expected_pc = &log_line[0..4];
-            let actual_pc = format!("{:04X}", cpu.pc);
-            assert_eq!(expected_pc, actual_pc, "PC mismatch");
-
-            let expected_regs = &log_line[48..73];
-            let actual_regs = format!("{cpu:?}");
-            assert_eq!(expected_regs, actual_regs, "Registers mismatch");
-
-            cpu.step();
         }
     }
 }

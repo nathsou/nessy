@@ -8,6 +8,7 @@ const roms = {
     BalloonFight: 'Balloon Fight',
     SuperMarioBros: 'Super Mario Bros',
     PacMan: 'Pac-Man',
+    DonkeyKong: 'Donkey Kong',
     DonkeyKongJr: 'Donkey Kong Jr',
     Tetris: 'Tetris',
     DrMario: 'Dr. Mario',
@@ -29,9 +30,13 @@ const roms = {
     NinjaTurtles: 'Teenage Mutant Ninja Turtles',
     PrinceOfPersia: 'Prince of Persia',
     DuckTales: 'Duck Tales',
+    MetalGear: 'Metal Gear',
+    GhostsNGoblins: "Ghosts 'N Goblins",
+    // BackToTheFuture: 'Back to the Future',
+    // BackToTheFuture2And3: 'Back to the Future II & III',
 };
 
-const game = roms.Castlevania;
+const game = roms.Bomberman;
 
 enum Joypad {
     A = 0b0000_0001,
@@ -171,7 +176,7 @@ async function setup() {
 
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.createImageData(WIDTH, HEIGHT);
-    const inputs = await (await fetch(`inputs/zelda.json`)).json();
+    const inputs = await (await fetch(`inputs/tetris.json`)).json();
     const mode: Mode = {
         type: 'play',
         // inputs,

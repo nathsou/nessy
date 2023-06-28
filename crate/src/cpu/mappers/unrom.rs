@@ -48,7 +48,7 @@ impl Mapper for UNROM {
             0x8000..=0xFFFF => {
                 self.bank = val & 0b1111;
             }
-            _ => panic!("Invalid NROM write address: {:04X}", addr),
+            _ => {}
         }
     }
 
