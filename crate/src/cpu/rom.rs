@@ -67,21 +67,20 @@ impl ROM {
         let chr_rom_size = bytes[5];
         let prg_rom_start = 16 + if trainer { 512 } else { 0 };
         let chr_rom_start = prg_rom_start + (prg_rom_size as usize) * PRG_ROM_PAGE_SIZE;
+        let mapper = ROM::get_mapper(mapper_id)?;
+        let cart = Cart {
+            prg_rom_size,
+            chr_rom_size,
+            mirroring,
+            mapper_id,
+            battery,
+            trainer,
+            bytes,
+            prg_rom_start,
+            chr_rom_start,
+        };
 
-        Ok(ROM {
-            cart: Cart {
-                prg_rom_size,
-                chr_rom_size,
-                mirroring,
-                mapper_id,
-                battery,
-                trainer,
-                bytes,
-                prg_rom_start,
-                chr_rom_start,
-            },
-            mapper: ROM::get_mapper(mapper_id)?,
-        })
+        Ok(ROM { mapper, cart })
     }
 
     fn get_mapper(mapper_id: u8) -> Result<Box<dyn Mapper>, RomError> {

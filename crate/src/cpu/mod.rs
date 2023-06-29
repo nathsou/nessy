@@ -70,11 +70,13 @@ pub struct CPU {
 
 impl CPU {
     pub fn new(mut bus: Bus) -> CPU {
+        let pc = bus.read_word(RESET_VECTOR);
+
         CPU {
             a: 0,
             x: 0,
             y: 0,
-            pc: bus.read_word(RESET_VECTOR),
+            pc,
             sp: STACK_TOP,
             instr_cycles: 0,
             total_cycles: 0,

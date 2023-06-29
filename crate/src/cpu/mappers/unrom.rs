@@ -20,8 +20,16 @@ impl UNROM {
 }
 
 impl Mapper for UNROM {
-    fn read_prg(&mut self, cart: &mut Cart, addr: u16) -> u8 {
+    fn read(&mut self, cart: &mut Cart, addr: u16) -> u8 {
         match addr {
+            0x0000..=0x1FFF => {
+                if cart.chr_rom_size == 0 {
+                    self.chr_ram[addr as usize]
+                } else {
+                    let addr = cart.chr_rom_start + (addr & 0x1fff) as usize;
+                    cart.bytes[addr]
+                }
+            }
             0x6000..=0x7FFF => self.prg_ram[((addr - 0x6000) & 0x7FF) as usize],
             0x8000..=0xBFFF => {
                 let addr =
@@ -40,8 +48,16 @@ impl Mapper for UNROM {
         }
     }
 
-    fn write_prg(&mut self, _: &mut Cart, addr: u16, val: u8) {
+    fn write(&mut self, cart: &mut Cart, addr: u16, val: u8) {
         match addr {
+            0x0000..=0x1FFF => {
+                if cart.chr_rom_size == 0 {
+                    self.chr_ram[addr as usize] = val;
+                } else {
+                    let addr = cart.chr_rom_start + (addr & 0x1fff) as usize;
+                    cart.bytes[addr] = val;
+                }
+            }
             0x6000..=0x7FFF => {
                 self.prg_ram[(addr - 0x6000) as usize] = val;
             }
@@ -49,24 +65,6 @@ impl Mapper for UNROM {
                 self.bank = val & 0b1111;
             }
             _ => {}
-        }
-    }
-
-    fn read_chr(&self, cart: &Cart, addr: u16) -> u8 {
-        if cart.chr_rom_size == 0 {
-            self.chr_ram[addr as usize]
-        } else {
-            let addr = cart.chr_rom_start + (addr & 0x1fff) as usize;
-            cart.bytes[addr]
-        }
-    }
-
-    fn write_chr(&mut self, cart: &mut Cart, addr: u16, val: u8) {
-        if cart.chr_rom_size == 0 {
-            self.chr_ram[addr as usize] = val;
-        } else {
-            let addr = cart.chr_rom_start + (addr & 0x1fff) as usize;
-            cart.bytes[addr] = val;
         }
     }
 }

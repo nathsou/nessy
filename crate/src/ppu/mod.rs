@@ -489,8 +489,8 @@ impl PPU {
     }
 
     #[inline]
-    fn read_chr(&self, addr: u16) -> u8 {
-        self.rom.mapper.read_chr(&self.rom.cart, addr)
+    fn read_chr(&mut self, addr: u16) -> u8 {
+        self.rom.mapper.read(&mut self.rom.cart, addr)
     }
 
     #[inline]
@@ -526,7 +526,7 @@ impl PPU {
         let addr = self.regs.v;
 
         match addr {
-            0x0000..=0x1fff => self.rom.mapper.write_chr(&mut self.rom.cart, addr, data),
+            0x0000..=0x1fff => self.rom.mapper.write(&mut self.rom.cart, addr, data),
             0x2000..=0x2fff => {
                 self.vram[self.nametable_mirrored_addr(addr) as usize] = data;
             }

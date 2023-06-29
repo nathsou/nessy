@@ -284,7 +284,6 @@ impl CPU {
     }
 
     fn nmi(&mut self) {
-        println!("NMI");
         self.push_word(self.pc);
         self.php();
         self.sei();
@@ -966,7 +965,7 @@ impl CPU {
     #[inline]
     fn inc(&mut self, addr: u16) {
         let val = self.bus.read_byte(addr);
-        let val = if val == 0xff { 0 } else { val + 1 };
+        let val = val.wrapping_add(1);
         self.bus.write_byte(addr, val);
         self.toggle_nz(val);
     }
@@ -985,8 +984,8 @@ impl CPU {
 
     #[inline]
     fn inc_abs(&mut self) {
-        let addr = self.absolute();
-        self.inc(addr);
+        let val = self.absolute();
+        self.inc(val);
     }
 
     #[inline]

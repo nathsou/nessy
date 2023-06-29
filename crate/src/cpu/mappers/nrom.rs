@@ -25,8 +25,12 @@ fn mirrored_addr(cart: &Cart, addr: u16) -> usize {
 }
 
 impl Mapper for NROM {
-    fn read_prg(&mut self, cart: &mut Cart, addr: u16) -> u8 {
+    fn read(&mut self, cart: &mut Cart, addr: u16) -> u8 {
         match addr {
+            0x0000..=0x1FFF => {
+                let addr = cart.chr_rom_start + addr as usize;
+                cart.bytes[addr]
+            }
             0x6000..=0x7FFF => self.ram[((addr - 0x6000) & 0x7FF) as usize],
             0x8000..=0xFFFF => {
                 let addr = mirrored_addr(cart, addr);
@@ -36,21 +40,15 @@ impl Mapper for NROM {
         }
     }
 
-    fn write_prg(&mut self, _: &mut Cart, addr: u16, val: u8) {
+    fn write(&mut self, cart: &mut Cart, addr: u16, val: u8) {
         match addr {
+            0x0000..=0x1FFF => {
+                // panic!("Attempted to write to CHR ROM on NROM mapper");
+            }
             0x6000..=0x7FFF => {
                 self.ram[(addr - 0x6000) as usize] = val;
             }
             _ => panic!("Invalid NROM write address: {:04X}", addr),
         }
-    }
-
-    fn read_chr(&self, cart: &Cart, addr: u16) -> u8 {
-        let addr = cart.chr_rom_start + (addr & 0x1fff) as usize;
-        cart.bytes[addr]
-    }
-
-    fn write_chr(&mut self, _: &mut Cart, _: u16, _: u8) {
-        // panic!("Attempted to write to CHR ROM on NROM mapper");
     }
 }

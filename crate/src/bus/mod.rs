@@ -80,11 +80,11 @@ impl Memory for Bus {
                 // APU
                 0
             }
-            0x4020..=0xffff => self.ppu.rom.mapper.read_prg(&mut self.ppu.rom.cart, addr),
-            _ => {
-                println!("ignoring read at address {addr:x}");
+            0x4018..=0x401F => {
+                // APU and I/O functionality that is normally disabled.
                 0
             }
+            0x4020..=0xffff => self.ppu.rom.mapper.read(&mut self.ppu.rom.cart, addr),
         }
     }
 
@@ -106,12 +106,8 @@ impl Memory for Bus {
             }
             0x4016 => self.joypad1.write(val),
             0x4000..=0x4017 => (), // APU
-            0x4020..=0xffff => self
-                .ppu
-                .rom
-                .mapper
-                .write_prg(&mut self.ppu.rom.cart, addr, val),
-            _ => println!("ignoring write at address {addr:x}"),
+            0x4018..=0x401F => (), // APU and I/O functionality that is normally disabled.
+            0x4020..=0xffff => self.ppu.rom.mapper.write(&mut self.ppu.rom.cart, addr, val),
         }
     }
 }

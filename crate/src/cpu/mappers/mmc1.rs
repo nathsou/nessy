@@ -22,7 +22,7 @@ impl MMC1 {
             chr_ram: [0; 0x2000],
             shift_reg: 0b10000,
             control: 0,
-            prg_mode: 0,
+            prg_mode: 3, // https://forums.nesdev.org/viewtopic.php?t=6766
             chr_mode: 0,
             chr_bank0: 0,
             chr_bank1: 0,
@@ -32,8 +32,16 @@ impl MMC1 {
 }
 
 impl Mapper for MMC1 {
-    fn read_prg(&mut self, cart: &mut Cart, addr: u16) -> u8 {
+    fn read(&mut self, cart: &mut Cart, addr: u16) -> u8 {
         match addr {
+            0x0000..=0x1FFF => {
+                if cart.chr_rom_size == 0 {
+                    self.chr_ram[addr as usize]
+                } else {
+                    let offset = self.chr_rom_offset(cart, addr);
+                    cart.bytes[cart.chr_rom_start + offset]
+                }
+            }
             0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize],
             0x8000..=0xBFFF => {
                 let bank = match self.prg_mode {
@@ -49,7 +57,7 @@ impl Mapper for MMC1 {
             }
             0xC000..=0xFFFF => {
                 let bank = match self.prg_mode {
-                    0 | 1 => (self.prg_bank & 0xFE) | 1,
+                    0 | 1 => self.prg_bank | 1,
                     2 => self.prg_bank,
                     3 => cart.prg_rom_size - 1,
                     _ => unreachable!(),
@@ -59,12 +67,22 @@ impl Mapper for MMC1 {
                 let addr = cart.prg_rom_start + (bank as usize * 0x4000) + offset;
                 cart.bytes[addr]
             }
-            _ => panic!("Invalid MMC1 read address: {:04X}", addr),
+            _ => {
+                panic!("Invalid MMC1 read address: {:04X}", addr);
+            }
         }
     }
 
-    fn write_prg(&mut self, cart: &mut Cart, addr: u16, val: u8) {
+    fn write(&mut self, cart: &mut Cart, addr: u16, val: u8) {
         match addr {
+            0x0000..=0x1FFF => {
+                if cart.chr_rom_size == 0 {
+                    self.chr_ram[addr as usize] = val;
+                } else {
+                    let offset = self.chr_rom_offset(cart, addr);
+                    cart.bytes[cart.chr_rom_start + offset] = val;
+                }
+            }
             0x6000..=0x7FFF => {
                 self.prg_ram[(addr - 0x6000) as usize] = val;
             }
@@ -98,25 +116,7 @@ impl Mapper for MMC1 {
                     }
                 }
             }
-            _ => panic!("Invalid NROM write address: {:04X}", addr),
-        }
-    }
-
-    fn read_chr(&self, cart: &Cart, addr: u16) -> u8 {
-        if cart.chr_rom_size == 0 {
-            self.chr_ram[addr as usize]
-        } else {
-            let offset = self.chr_rom_offset(cart, addr);
-            cart.bytes[cart.chr_rom_start + offset]
-        }
-    }
-
-    fn write_chr(&mut self, cart: &mut Cart, addr: u16, val: u8) {
-        if cart.chr_rom_size == 0 {
-            self.chr_ram[addr as usize] = val;
-        } else {
-            let offset = self.chr_rom_offset(cart, addr);
-            cart.bytes[cart.chr_rom_start + offset] = val;
+            _ => panic!("Invalid MMC1 write address: {:04X}", addr),
         }
     }
 }
@@ -125,7 +125,12 @@ impl MMC1 {
     fn chr_rom_offset(&self, _: &Cart, addr: u16) -> usize {
         if self.chr_mode == 0 {
             // switch 8 KB at a time
-            self.chr_bank0 as usize * 0x2000 + (addr as usize & 0x1FFF)
+            (addr as usize & 0xFFF)
+                + match addr {
+                    0x0000..=0x0FFF => (self.chr_bank0 as usize & 0xFE) * 0x1000,
+                    0x1000..=0x1FFF => (self.chr_bank0 as usize | 1) * 0x1000,
+                    _ => unreachable!(),
+                }
         } else {
             // switch two separate 4 KB banks
             (addr as usize & 0xFFF)
@@ -142,6 +147,7 @@ impl MMC1 {
         // CPPMM
         self.prg_mode = (val >> 2) & 0b11;
         self.chr_mode = (val >> 4) & 1;
+
         cart.mirroring = match val & 0b11 {
             0 => Mirroring::OneScreenLowerBank,
             1 => Mirroring::OneScreenUpperBank,
