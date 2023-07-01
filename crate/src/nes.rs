@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use crate::{
     bus::{controller::Joypad, Bus},
     cpu::{rom::ROM, CPU},
+    savestate::{Save, SaveState},
 };
 
 #[wasm_bindgen]
@@ -30,6 +31,10 @@ impl Nes {
         self.cpu.bus.ppu.frame_complete = false;
     }
 
+    pub fn reset(&mut self) {
+        self.cpu.reset();
+    }
+
     #[inline]
     pub fn joypad1(&mut self) -> &mut Joypad {
         &mut self.cpu.bus.joypad1
@@ -44,5 +49,15 @@ impl Nes {
         let cpu_trace = self.cpu.trace();
         let ppu_trace = self.cpu.bus.ppu.trace();
         format!("{cpu_trace}|{ppu_trace}")
+    }
+}
+
+impl Save for Nes {
+    fn save(&self, s: &mut SaveState) {
+        self.cpu.save(s);
+    }
+
+    fn load(&mut self, s: &mut SaveState) {
+        self.cpu.load(s);
     }
 }

@@ -1,4 +1,7 @@
-use crate::cpu::rom::Cart;
+use crate::{
+    cpu::rom::Cart,
+    savestate::{Save, SaveState},
+};
 
 use super::Mapper;
 
@@ -66,5 +69,19 @@ impl Mapper for UNROM {
             }
             _ => {}
         }
+    }
+}
+
+impl Save for UNROM {
+    fn save(&self, s: &mut SaveState) {
+        s.write_slice(&self.prg_ram);
+        s.write_slice(&self.chr_ram);
+        s.write_u8(self.bank);
+    }
+
+    fn load(&mut self, s: &mut SaveState) {
+        s.read_slice(&mut self.prg_ram);
+        s.read_slice(&mut self.chr_ram);
+        self.bank = s.read_u8();
     }
 }

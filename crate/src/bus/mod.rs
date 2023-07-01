@@ -1,6 +1,9 @@
 use self::controller::Joypad;
 use super::ppu::PPU;
-use crate::cpu::{memory::Memory, rom::ROM};
+use crate::{
+    cpu::{memory::Memory, rom::ROM},
+    savestate::{Save, SaveState},
+};
 pub mod controller;
 
 #[allow(clippy::upper_case_acronyms)]
@@ -56,7 +59,7 @@ impl Bus {
         }
     }
 
-    pub fn advance_ppu(&mut self, frame: &mut [u8], cpu_cycles: usize) {
+    pub fn advance_ppu(&mut self, frame: &mut [u8], cpu_cycles: u32) {
         let ppu_cycles = cpu_cycles * 3;
 
         for _ in 0..ppu_cycles {
@@ -109,5 +112,21 @@ impl Memory for Bus {
             0x4018..=0x401F => (), // APU and I/O functionality that is normally disabled.
             0x4020..=0xffff => self.ppu.rom.mapper.write(&mut self.ppu.rom.cart, addr, val),
         }
+    }
+}
+
+impl Save for Bus {
+    fn save(&self, s: &mut SaveState) {
+        s.write_slice(&self.ram.ram);
+        self.ppu.save(s);
+        self.joypad1.save(s);
+        s.write_bool(self.dma_transfer);
+    }
+
+    fn load(&mut self, s: &mut SaveState) {
+        s.read_slice(&mut self.ram.ram);
+        self.ppu.load(s);
+        self.joypad1.load(s);
+        self.dma_transfer = s.read_bool();
     }
 }

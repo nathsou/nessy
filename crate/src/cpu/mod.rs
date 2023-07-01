@@ -7,6 +7,8 @@ pub mod rom;
 
 use bitflags::bitflags;
 
+use crate::savestate::{Save, SaveState};
+
 use self::memory::Memory;
 use super::bus::Bus;
 use std::fmt;
@@ -61,11 +63,11 @@ pub struct CPU {
     y: u8,
     pub pc: u16,
     sp: u8,
-    instr_cycles: usize,
-    total_cycles: usize,
+    instr_cycles: u32,
+    total_cycles: u32,
     status: Status,
     pub bus: Bus,
-    stall: usize,
+    stall: u32,
 }
 
 impl CPU {
@@ -86,7 +88,7 @@ impl CPU {
         }
     }
 
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.a = 0;
         self.x = 0;
         self.y = 0;
@@ -318,5 +320,33 @@ impl fmt::Debug for CPU {
             self.status.bits(),
             self.sp,
         )
+    }
+}
+
+impl Save for CPU {
+    fn save(&self, s: &mut SaveState) {
+        s.write_u8(self.a);
+        s.write_u8(self.x);
+        s.write_u8(self.y);
+        s.write_u16(self.pc);
+        s.write_u8(self.sp);
+        s.write_u32(self.instr_cycles);
+        s.write_u32(self.total_cycles);
+        s.write_u8(self.status.bits());
+        s.write_u32(self.stall);
+        self.bus.save(s);
+    }
+
+    fn load(&mut self, s: &mut SaveState) {
+        self.a = s.read_u8();
+        self.x = s.read_u8();
+        self.y = s.read_u8();
+        self.pc = s.read_u16();
+        self.sp = s.read_u8();
+        self.instr_cycles = s.read_u32();
+        self.total_cycles = s.read_u32();
+        *self.status.0.bits_mut() = s.read_u8();
+        self.stall = s.read_u32();
+        self.bus.load(s);
     }
 }

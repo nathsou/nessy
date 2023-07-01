@@ -1,4 +1,7 @@
-use crate::cpu::rom::{Cart, Mirroring};
+use crate::{
+    cpu::rom::{Cart, Mirroring},
+    savestate::{Save, SaveState},
+};
 
 use super::Mapper;
 
@@ -155,5 +158,31 @@ impl MMC1 {
             3 => Mirroring::Horizontal,
             _ => unreachable!(),
         };
+    }
+}
+
+impl Save for MMC1 {
+    fn save(&self, s: &mut SaveState) {
+        s.write_slice(&self.prg_ram);
+        s.write_slice(&self.chr_ram);
+        s.write_u8(self.shift_reg);
+        s.write_u8(self.control);
+        s.write_u8(self.prg_mode);
+        s.write_u8(self.chr_mode);
+        s.write_u8(self.chr_bank0);
+        s.write_u8(self.chr_bank1);
+        s.write_u8(self.prg_bank);
+    }
+
+    fn load(&mut self, s: &mut SaveState) {
+        s.read_slice(&mut self.prg_ram);
+        s.read_slice(&mut self.chr_ram);
+        self.shift_reg = s.read_u8();
+        self.control = s.read_u8();
+        self.prg_mode = s.read_u8();
+        self.chr_mode = s.read_u8();
+        self.chr_bank0 = s.read_u8();
+        self.chr_bank1 = s.read_u8();
+        self.prg_bank = s.read_u8();
     }
 }

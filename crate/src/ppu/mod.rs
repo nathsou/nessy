@@ -1,7 +1,10 @@
 mod registers;
 
 use self::registers::{Ctrl, Registers, SpriteSize, Status};
-use crate::cpu::rom::{Mirroring, ROM};
+use crate::{
+    cpu::rom::{Mirroring, ROM},
+    savestate::{Save, SaveState},
+};
 
 const BYTES_PER_PALLETE: usize = 4;
 const SPRITE_PALETTES_OFFSET: usize = 0x11;
@@ -27,7 +30,7 @@ pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
 
 #[derive(Clone, Copy)]
 struct SpriteData {
-    x: usize,
+    x: u16,
     idx: u8,
     chr: [u8; 8],
     palette_idx: u8,
@@ -42,9 +45,9 @@ pub struct PPU {
     vram: [u8; 2 * 1024],
     palette: [u8; 32],
     attributes: [u8; 64 * 4],
-    pub cycle: usize,
-    scanline: usize,
-    frame: usize,
+    pub cycle: u16,
+    scanline: u16,
+    frame: u64,
     data_buffer: u8,
     nmi_triggered: bool,
     nmi_edge_detector: bool,
@@ -56,7 +59,7 @@ pub struct PPU {
     pattern_table_low_byte: u8,
     pattern_table_high_byte: u8,
     scanline_sprites: [SpriteData; 8],
-    visible_sprites_count: usize,
+    visible_sprites_count: u8,
 }
 
 impl PPU {
@@ -282,10 +285,10 @@ impl PPU {
         if self.regs.show_sprites() {
             let x = self.cycle - 1;
 
-            for i in 0..self.visible_sprites_count {
+            for i in 0..(self.visible_sprites_count as usize) {
                 let sprite = self.scanline_sprites[i];
                 if x >= sprite.x && x < sprite.x + 8 {
-                    let idx = sprite.chr[x - sprite.x];
+                    let idx = sprite.chr[(x - sprite.x) as usize];
                     if let Some(color) = self.sprite_color(sprite.palette_idx, idx) {
                         return Some((color, sprite.behind_background, sprite.idx));
                     }
@@ -299,11 +302,11 @@ impl PPU {
     fn fetch_next_scanline_sprites(&mut self) {
         let mut count = 0;
         let sprite_size = self.regs.ctrl.sprite_size();
-        let height = sprite_size.height() as usize;
+        let height = sprite_size.height() as u16;
 
         for i in 0..64 {
             let offset = i * 4;
-            let y = self.attributes[offset] as usize;
+            let y = self.attributes[offset] as u16;
 
             if self.scanline >= y && self.scanline < y + height {
                 let row = self.scanline - y;
@@ -313,7 +316,7 @@ impl PPU {
                 let behind_background = attr & 0b0010_0000 != 0;
                 let flip_horizontally = attr & 0b0100_0000 != 0;
                 let flip_vertically = attr & 0b1000_0000 != 0;
-                let x = self.attributes[offset + 3] as usize;
+                let x = self.attributes[offset + 3];
 
                 let (chr_bank, row, tile_idx) = match sprite_size {
                     SpriteSize::Sprite8x8 => {
@@ -351,7 +354,7 @@ impl PPU {
                     }
 
                     self.scanline_sprites[count] = SpriteData {
-                        x,
+                        x: x as u16,
                         idx: i as u8,
                         palette_idx,
                         behind_background,
@@ -367,7 +370,7 @@ impl PPU {
             }
         }
 
-        self.visible_sprites_count = count;
+        self.visible_sprites_count = count as u8;
     }
 
     fn render_pixel(&mut self, frame: &mut [u8]) {
@@ -410,7 +413,7 @@ impl PPU {
             }
         }
 
-        Self::set_pixel(frame, x, y, color);
+        Self::set_pixel(frame, x as usize, y as usize, color);
     }
 
     #[inline]
@@ -610,5 +613,71 @@ impl PPU {
             self.regs.status.bits(),
             self.open_bus,
         )
+    }
+}
+
+impl Save for SpriteData {
+    fn save(&self, s: &mut SaveState) {
+        s.write_u16(self.x);
+        s.write_u8(self.idx);
+        s.write_u8(self.palette_idx);
+        s.write_bool(self.behind_background);
+    }
+
+    fn load(&mut self, s: &mut SaveState) {
+        self.x = s.read_u16();
+        self.idx = s.read_u8();
+        self.palette_idx = s.read_u8();
+        self.behind_background = s.read_bool();
+    }
+}
+
+impl Save for PPU {
+    fn save(&self, s: &mut SaveState) {
+        self.rom.mapper.save(s);
+        self.regs.save(s);
+        s.write_u8(self.open_bus);
+        s.write_slice(&self.vram);
+        s.write_slice(&self.palette);
+        s.write_slice(&self.attributes);
+        s.write_u16(self.cycle);
+        s.write_u16(self.scanline);
+        s.write_u64(self.frame);
+        s.write_u8(self.data_buffer);
+        s.write_bool(self.nmi_triggered);
+        s.write_bool(self.nmi_edge_detector);
+        s.write_bool(self.should_trigger_nmi);
+        s.write_bool(self.frame_complete);
+        s.write_u64(self.tile_data);
+        s.write_u8(self.nametable_byte);
+        s.write_u8(self.attribute_table_byte);
+        s.write_u8(self.pattern_table_low_byte);
+        s.write_u8(self.pattern_table_high_byte);
+        s.write_all(&self.scanline_sprites);
+        s.write_u8(self.visible_sprites_count);
+    }
+
+    fn load(&mut self, s: &mut SaveState) {
+        self.rom.mapper.load(s);
+        self.regs.load(s);
+        self.open_bus = s.read_u8();
+        s.read_slice(&mut self.vram);
+        s.read_slice(&mut self.palette);
+        s.read_slice(&mut self.attributes);
+        self.cycle = s.read_u16();
+        self.scanline = s.read_u16();
+        self.frame = s.read_u64();
+        self.data_buffer = s.read_u8();
+        self.nmi_triggered = s.read_bool();
+        self.nmi_edge_detector = s.read_bool();
+        self.should_trigger_nmi = s.read_bool();
+        self.frame_complete = s.read_bool();
+        self.tile_data = s.read_u64();
+        self.nametable_byte = s.read_u8();
+        self.attribute_table_byte = s.read_u8();
+        self.pattern_table_low_byte = s.read_u8();
+        self.pattern_table_high_byte = s.read_u8();
+        s.read_all(&mut self.scanline_sprites);
+        self.visible_sprites_count = s.read_u8();
     }
 }

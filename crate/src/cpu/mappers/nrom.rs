@@ -1,4 +1,7 @@
-use crate::cpu::rom::Cart;
+use crate::{
+    cpu::rom::Cart,
+    savestate::{Save, SaveState},
+};
 
 use super::Mapper;
 
@@ -50,5 +53,15 @@ impl Mapper for NROM {
             }
             _ => panic!("Invalid NROM write address: {:04X}", addr),
         }
+    }
+}
+
+impl Save for NROM {
+    fn save(&self, s: &mut SaveState) {
+        s.write_slice(&self.ram);
+    }
+
+    fn load(&mut self, s: &mut SaveState) {
+        s.read_slice(&mut self.ram);
     }
 }

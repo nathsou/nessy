@@ -8,7 +8,7 @@ const NMI_VECTOR: u16 = 0xfffa;
 const IRQ_VECTOR: u16 = 0xfffe;
 
 impl CPU {
-    pub fn step(&mut self) -> usize {
+    pub fn step(&mut self) -> u32 {
         self.instr_cycles = 0;
 
         if self.bus.dma_transfer {
@@ -223,7 +223,7 @@ impl CPU {
     }
 
     #[allow(dead_code)]
-    pub fn trace_step(&mut self) -> (usize, String) {
+    pub fn trace_step(&mut self) -> (u32, String) {
         let op_code = self.bus.read_byte(self.pc) as usize;
         let inst_name = INST_NAMES[op_code].unwrap_or("???");
         let addr_mode = AddressingMode::from(INST_ADDR_MODES[op_code]);

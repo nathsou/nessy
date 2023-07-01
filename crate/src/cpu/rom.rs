@@ -1,3 +1,5 @@
+use crate::savestate::Save;
+
 use super::mappers::mmc1::MMC1;
 use super::mappers::nrom::NROM;
 use super::mappers::unrom::UNROM;

@@ -1,5 +1,7 @@
 use bitflags::bitflags;
 
+use crate::savestate::{Save, SaveState};
+
 bitflags! {
     #[derive(Copy, Clone)]
     pub struct JoypadStatus: u8 {
@@ -61,5 +63,19 @@ impl Joypad {
 
     pub fn update(&mut self, val: u8) {
         *self.status.0.bits_mut() = val;
+    }
+}
+
+impl Save for Joypad {
+    fn save(&self, s: &mut SaveState) {
+        s.write_bool(self.strobe);
+        s.write_u8(self.index);
+        s.write_u8(self.status.bits());
+    }
+
+    fn load(&mut self, s: &mut SaveState) {
+        self.strobe = s.read_bool();
+        self.index = s.read_u8();
+        self.update(s.read_u8());
     }
 }

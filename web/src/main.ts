@@ -1,4 +1,7 @@
-import init, { Nes, createConsole, nextFrame, setJoypad1 } from '../public/pkg/nessy';
+import init, {
+    Nes, createConsole, nextFrame, setJoypad1, saveState, loadState,
+    resetConsole,
+} from '../public/pkg/nessy';
 
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
@@ -37,7 +40,7 @@ const roms = {
     // BackToTheFuture2And3: 'Back to the Future II & III',
 };
 
-const game = roms.KidIcarus;
+const game = roms.SuperMarioBros;
 
 enum Joypad {
     A = 0b0000_0001,
@@ -77,8 +80,38 @@ const createController = (nes: Nes) => {
     let changed = false;
     const history: number[] = [];
     const localStorageKey = `nessy.inputs.${game}.${Date.now()}`;
+    let isMetaDown = false;
 
     function handleInput(nes: Nes, event: KeyboardEvent, pressed: boolean): void {
+        if (event.key === 'Meta') {
+            isMetaDown = pressed;
+            event.preventDefault();
+        }
+
+        if (isMetaDown && pressed) {
+            switch (event.key) {
+                case 's': {
+                    const save = saveState(nes);
+                    localStorage.setItem('nessy.save', `[${save.join(',')}]`);
+                    event.preventDefault();
+                    return;
+                }
+                case 'r': {
+                    resetConsole(nes);
+                    event.preventDefault();
+                    return;
+                }
+                case 'l': {
+                    const save = localStorage.getItem('nessy.save');
+                    if (save != null) {
+                        loadState(nes, new Uint8Array(JSON.parse(save)));
+                    }
+                    event.preventDefault();
+                    return;
+                }
+            }
+        }
+
         if (event.key in joypad1Mapping) {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();

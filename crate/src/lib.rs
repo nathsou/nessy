@@ -3,11 +3,12 @@ mod cpu;
 mod js;
 mod nes;
 mod ppu;
-use bus::controller::JoypadStatus;
 use cfg_if::cfg_if;
 use cpu::rom::ROM;
 use nes::Nes;
+mod savestate;
 extern crate console_error_panic_hook;
+use savestate::{Save, SaveState};
 use wasm_bindgen::prelude::wasm_bindgen;
 
 cfg_if! {
@@ -24,20 +25,32 @@ pub fn create_console(rom: Vec<u8>) -> Nes {
     Nes::new(rom)
 }
 
+#[wasm_bindgen(js_name = resetConsole)]
+pub fn reset_console(console: &mut Nes) {
+    console.reset();
+}
+
 #[wasm_bindgen(js_name = nextFrame)]
 pub fn next_frame(console: &mut Nes, buffer: &mut [u8]) {
     console.next_frame(buffer);
 }
 
-#[wasm_bindgen(js_name = updateJoypad1)]
-pub fn update_joypad1(console: &mut Nes, button: u8, pressed: bool) {
-    let btn = JoypadStatus::from_bits(button).unwrap();
-    console.joypad1().update_button_state(btn, pressed);
-}
-
 #[wasm_bindgen(js_name = setJoypad1)]
 pub fn set_joypad1(console: &mut Nes, buttons: u8) {
     console.joypad1().update(buttons);
+}
+
+#[wasm_bindgen(js_name = saveState)]
+pub fn save_state(console: &mut Nes) -> Vec<u8> {
+    let mut state = SaveState::new();
+    console.save(&mut state);
+    state.get_data()
+}
+
+#[wasm_bindgen(js_name = loadState)]
+pub fn load_state(console: &mut Nes, data: Vec<u8>) {
+    let mut state = SaveState::from(data);
+    console.load(&mut state);
 }
 
 #[cfg(test)]

@@ -1,5 +1,7 @@
 use bitflags::bitflags;
 
+use crate::savestate::{Save, SaveState};
+
 // https://wiki.nesdev.com/w/index.php/PPU_registers
 pub struct Registers {
     pub v: u16,  // current vram address
@@ -337,5 +339,31 @@ impl Registers {
     pub fn increment_vram_addr(&mut self) {
         let step = self.ctrl.vram_addr_increment();
         self.v = self.v.wrapping_add(step) & 0x3fff;
+    }
+}
+
+impl Save for Registers {
+    fn save(&self, s: &mut SaveState) {
+        s.write_u16(self.v);
+        s.write_u16(self.t);
+        s.write_u8(self.x);
+        s.write_bool(self.w);
+        s.write_bool(self.f);
+        s.write_u8(self.ctrl.bits());
+        s.write_u8(self.mask.bits());
+        s.write_u8(self.status.bits());
+        s.write_u8(self.oam_addr);
+    }
+
+    fn load(&mut self, s: &mut SaveState) {
+        self.v = s.read_u16();
+        self.t = s.read_u16();
+        self.x = s.read_u8();
+        self.w = s.read_bool();
+        self.f = s.read_bool();
+        *self.ctrl.0.bits_mut() = s.read_u8();
+        *self.mask.0.bits_mut() = s.read_u8();
+        *self.status.0.bits_mut() = s.read_u8();
+        self.oam_addr = s.read_u8();
     }
 }
