@@ -2,7 +2,7 @@ import init, {
     Nes, createConsole, nextFrame, setJoypad1, saveState, loadState,
     resetConsole,
 } from '../public/pkg/nessy';
-
+import { createUI } from './ui/ui';
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
 
@@ -228,19 +228,26 @@ async function setup() {
     window.addEventListener('keydown', controller.onKeyDown);
     window.addEventListener('beforeunload', controller.save);
 
+    const ui = createUI();
+
     function run(): void {
         requestAnimationFrame(run);
 
-        nextFrame(nes, frame);
+        if (!ui.showUI.ref) {
+            nextFrame(nes, frame);
+
+            if (mode.type === 'play' || mode.type === 'loadSave') {
+                controller.tick();
+            }
+
+            if (mode.type === 'replay') {
+                replay.tick();
+            }
+        } else {
+            ui.render(imageData);
+        }
+
         ctx.putImageData(imageData, 0, 0);
-
-        if (mode.type === 'play' || mode.type === 'loadSave') {
-            controller.tick();
-        }
-
-        if (mode.type === 'replay') {
-            replay.tick();
-        }
     }
 
     run();
