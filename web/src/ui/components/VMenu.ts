@@ -9,11 +9,11 @@ export const VMenu = (items: Component<{ active: boolean }>[]): Component<{ acti
     const state = { activeIndex: -1 };
 
     const setActiveIndex = (index: number) => {
-        if (state.activeIndex != -1) {
+        if (state.activeIndex !== -1) {
             items[state.activeIndex].state.active = false;
         }
 
-        if (index != -1) {
+        if (index !== -1) {
             items[index].state.active = true;
         }
 

@@ -2,6 +2,7 @@ import init, {
     Nes, createConsole, nextFrame, setJoypad1, saveState, loadState,
     resetConsole,
 } from '../public/pkg/nessy';
+import { store } from './ui/store';
 import { createUI } from './ui/ui';
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
@@ -42,10 +43,10 @@ const roms = {
 
 const game = roms.SuperMarioBros;
 
-enum Joypad {
+export enum Joypad {
     A = 0b0000_0001,
     B = 0b0000_0010,
-    Select = 0b0000_0100,
+    SELECT = 0b0000_0100,
     START = 0b0000_1000,
     UP = 0b0001_0000,
     DOWN = 0b0010_0000,
@@ -61,17 +62,7 @@ const joypad1Mapping: Record<KeyboardEvent['key'], Joypad> = {
     'k': Joypad.B,
     'l': Joypad.A,
     'Enter': Joypad.START,
-    ' ': Joypad.Select,
-};
-
-type Mode = {
-    type: 'play',
-} | {
-    type: 'replay',
-    inputs: number[],
-} | {
-    type: 'loadSave',
-    inputs: number[],
+    ' ': Joypad.SELECT,
 };
 
 const createController = (nes: Nes) => {
@@ -210,39 +201,51 @@ async function setup() {
 
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.createImageData(WIDTH, HEIGHT);
-    const inputs = await (await fetch(`inputs/zelda2.json`)).json();
-    const mode: Mode = {
-        type: 'play',
-        // inputs,
-    };
 
     await init();
-    const rom = await (await fetch(`roms/${game}.nes`)).arrayBuffer();
-    const nes = createConsole(new Uint8Array(rom));
+    let nes: Nes;
+    let controller: ReturnType<typeof createController>;
     const frame: Uint8Array = imageData.data as any;
-    const controller = createController(nes);
-    const replay = createReplay(nes, inputs);
-
-    window.addEventListener('resize', resize);
-    window.addEventListener('keyup', controller.onKeyUp);
-    window.addEventListener('keydown', controller.onKeyDown);
-    window.addEventListener('beforeunload', controller.save);
-
     const ui = createUI();
+
+    const updateROM = (rom: Uint8Array): void => {
+        ui.showUI.ref = false;
+        nes = createConsole(rom);
+
+        if (controller) {
+            window.removeEventListener('resize', resize);
+            window.removeEventListener('keyup', controller.onKeyUp);
+            window.removeEventListener('keydown', controller.onKeyDown);
+            window.removeEventListener('beforeunload', controller.save);
+        }
+
+        controller = createController(nes);
+
+        window.addEventListener('resize', resize);
+        window.addEventListener('keyup', controller.onKeyUp);
+        window.addEventListener('keydown', controller.onKeyDown);
+        window.addEventListener('beforeunload', controller.save);
+
+        frame.fill(0);
+    };
+
+    if (store.ref.rom != null) {
+        updateROM(new Uint8Array(store.ref.rom));
+    }
+
+    store.subscribe('rom', async (rom) => {
+        if (rom != null) {
+            const bytes = new Uint8Array(rom);
+            updateROM(bytes);
+        }
+    });
 
     function run(): void {
         requestAnimationFrame(run);
 
         if (!ui.showUI.ref) {
             nextFrame(nes, frame);
-
-            if (mode.type === 'play' || mode.type === 'loadSave') {
-                controller.tick();
-            }
-
-            if (mode.type === 'replay') {
-                replay.tick();
-            }
+            controller.tick();
         } else {
             ui.render(imageData);
         }

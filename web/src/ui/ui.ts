@@ -1,4 +1,6 @@
-import { Menu } from "./components/Menu";
+import { Controls } from "./components/Controls";
+import { HMenu } from "./components/HMenu";
+import { Library } from "./components/Library";
 import { VMenu } from "./components/VMenu";
 import { Text } from "./components/text";
 import { createScreen } from "./screen";
@@ -10,28 +12,11 @@ export const createUI = () => {
     const menuItems = [
         'library',
         'controls',
-        'rendering',
-        'save',
+        // 'rendering',
+        // 'save',
     ];
 
-    let activeMenuItem = menuItems[1];
-
-    const menu = Menu(menuItems, 1, item => { activeMenuItem = item; });
-
-    const libraryList = VMenu([
-        Text('Library'),
-    ]);
-
-    const controlsList = VMenu([
-        Text(`UP     -> ${store.controls.up.toUpperCase()}`),
-        Text(`LEFT   -> ${store.controls.left.toUpperCase()}`),
-        Text(`DOWN   -> ${store.controls.down.toUpperCase()}`),
-        Text(`RIGHT  -> ${store.controls.right.toUpperCase()}`),
-        Text(`A      -> ${store.controls.a.toUpperCase()}`),
-        Text(`B      -> ${store.controls.b.toUpperCase()}`),
-        Text(`START  -> ${store.controls.start.toUpperCase()}`),
-        Text(`SELECT -> ${store.controls.select.toUpperCase()}`),
-    ]);
+    const menu = HMenu(menuItems.map(item => Text(item)), 1);
 
     const renderingList = VMenu([
         Text('Scaling factor'),
@@ -44,18 +29,25 @@ export const createUI = () => {
         Text('Load state'),
     ]);
 
-    const subMenuMapping: Record<string, VMenu> = {
-        library: libraryList,
-        controls: controlsList,
-        rendering: renderingList,
-        save: saveList,
+    const library = Library();
+    const controls = Controls();
+
+    const subMenuMapping: Record<string, typeof library> = {
+        library: library,
+        controls: controls,
+        // rendering: renderingList,
+        // save: saveList,
     };
 
     window.addEventListener('keydown', event => {
+        const activeMenuItem = menuItems[menu.state.activeIndex];
+
         switch (event.key) {
             case 'Escape':
-                showUI.ref = !showUI.ref;
-                event.preventDefault();
+                if (store.ref.rom != null) {
+                    showUI.ref = !showUI.ref;
+                    event.preventDefault();
+                }
                 break;
             case 'ArrowLeft':
                 if (showUI.ref) {
@@ -77,6 +69,13 @@ export const createUI = () => {
                     subMenuMapping[activeMenuItem].prev();
                 }
                 break;
+            default: {
+                if (showUI.ref) {
+                    const menuItem = subMenuMapping[activeMenuItem];
+                    menuItem.onKeyDown(event.key);
+                }
+                break;
+            }
         }
 
         if (showUI.ref) {
@@ -87,6 +86,7 @@ export const createUI = () => {
     function render(imageData: ImageData): void {
         screen.clear();
         menu.render(0, 6, screen);
+        const activeMenuItem = menuItems[menu.state.activeIndex];
         subMenuMapping[activeMenuItem].render(9, 9, screen);
         screen.render(imageData);
     }

@@ -20,5 +20,8 @@
   "sideEffects": false,
   "devDependencies": {
     "vite": "^4.3.9"
+  },
+  "dependencies": {
+    "browser-fs-access": "^0.34.1"
   }
 }
