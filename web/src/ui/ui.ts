@@ -1,7 +1,9 @@
+import { Center } from "./components/Center";
 import { Controls } from "./components/Controls";
 import { HMenu } from "./components/HMenu";
 import { Library } from "./components/Library";
 import { Misc } from "./components/Misc";
+import { Saves } from "./components/Saves";
 import { Component } from "./components/component";
 import { Text } from "./components/text";
 import { createScreen } from "./screen";
@@ -13,6 +15,7 @@ export const createUI = (store: Store) => {
     const menuItems = [
         'library',
         'controls',
+        'saves',
         'misc.',
     ];
 
@@ -24,8 +27,11 @@ export const createUI = (store: Store) => {
     }> = {
         library: Library(store),
         controls: Controls(store),
+        saves: Saves(store),
         'misc.': Misc(store),
     };
+
+    const subMenu = Center(subMenuMapping[menuItems[menu.state.activeIndex]]);
 
     window.addEventListener('keydown', event => {
         const activeMenuItem = menuItems[menu.state.activeIndex];
@@ -40,11 +46,13 @@ export const createUI = (store: Store) => {
             case 'ArrowLeft':
                 if (showUI.ref) {
                     menu.prev();
+                    subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
                 }
                 break;
             case 'ArrowRight':
                 if (showUI.ref) {
                     menu.next();
+                    subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
                 }
                 break;
             case 'ArrowDown':
@@ -74,8 +82,7 @@ export const createUI = (store: Store) => {
     function render(imageData: ImageData): void {
         screen.clear();
         menu.render(0, 6, screen);
-        const activeMenuItem = menuItems[menu.state.activeIndex];
-        subMenuMapping[activeMenuItem].render(9, 9, screen);
+        subMenu.render(0, 9, screen);
         screen.render(imageData);
     }
 

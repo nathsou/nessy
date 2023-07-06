@@ -1,31 +1,24 @@
+import { createControls } from "../controls";
+
 const array = <T>(): T[] => [];
 const union = <T>(value: T): T => value;
 
-export type StoreData = typeof DEFAULT_STORE;
+export type StoreData = ReturnType<typeof getDefaultStore>;
 export type Store = Awaited<ReturnType<typeof createStore>>;
 export const LOCAL_STORAGE_STORE_KEY = 'nessy.store';
 
-const DEFAULT_STORE = {
+const getDefaultStore = () => ({
     version: 1,
     frameCount: 0,
     rom: union<string | null>(null),
-    controls: {
-        up: 'w',
-        left: 'a',
-        down: 's',
-        right: 'd',
-        a: 'l',
-        b: 'k',
-        start: 'Enter',
-        select: 'Space',
-    },
+    controls: createControls(),
     scalingFactor: union<1 | 2 | 3 | 4>(3),
     scalingMode: union<'pixelated' | 'blurry'>('pixelated'),
-};
+});
 
 const Binary = {
-    async hash(binary: BufferSource): Promise<string> {
-        const digest = await crypto.subtle.digest('SHA-256', binary);
+    async hash(data: BufferSource): Promise<string> {
+        const digest = await crypto.subtle.digest('SHA-256', data);
         const hexes = [];
 
         const view = new DataView(digest);
@@ -43,18 +36,30 @@ export type RomEntry = {
     data: Uint8Array,
 };
 
-const createDatabase = async () => {
+export type SaveEntry = {
+    timestamp: number,
+    romHash: string,
+    state: Uint8Array,
+};
 
+const createDatabase = async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const request = indexedDB.open('nessy', 1);
         request.onerror = reject;
 
         request.onupgradeneeded = () => {
             const db = request.result;
+
             const roms = db.createObjectStore('roms', { keyPath: 'hash' });
             roms.createIndex('hash', 'hash', { unique: true });
             roms.createIndex('name', 'name', { unique: false });
             roms.createIndex('data', 'data', { unique: false });
+
+            const saves = db.createObjectStore('saves', { keyPath: 'timestamp' });
+            saves.createIndex('timestamp', 'timestamp', { unique: true });
+            saves.createIndex('romHash', 'romHash', { unique: false });
+            saves.createIndex('state', 'state', { unique: false });
+
             resolve(db);
         };
 
@@ -114,18 +119,98 @@ const createDatabase = async () => {
         });
     };
 
+    const insertSave = async (romHash: string, state: Uint8Array): Promise<number> => {
+        const entry: SaveEntry = {
+            timestamp: Date.now(),
+            romHash,
+            state,
+        };
+
+        const transaction = db.transaction(['saves'], 'readwrite');
+        const saves = transaction.objectStore('saves');
+        const request = saves.put(entry);
+
+        return new Promise<number>((resolve, reject) => {
+            request.onerror = reject;
+            request.onsuccess = () => {
+                resolve(entry.timestamp);
+            };
+        });
+    };
+
+    const getSave = async (timestamp: number): Promise<SaveEntry> => {
+        const transaction = db.transaction(['saves'], 'readonly');
+        const saves = transaction.objectStore('saves');
+        const request = saves.get(timestamp);
+
+        return new Promise<SaveEntry>((resolve, reject) => {
+            request.onerror = reject;
+            request.onsuccess = () => {
+                if (request.result == null) {
+                    reject(new Error(`Save with timestamp ${timestamp} not found`));
+                } else {
+                    resolve(request.result);
+                }
+            };
+        });
+    };
+
+    const getLastSave = async (romHash: string): Promise<SaveEntry | null> => {
+        const transaction = db.transaction(['saves'], 'readonly');
+        const saves = transaction.objectStore('saves');
+        const index = saves.index('romHash');
+        const request = index.openCursor(IDBKeyRange.only(romHash), 'prev');
+
+        return new Promise<SaveEntry | null>((resolve, reject) => {
+            request.onerror = reject;
+            request.onsuccess = () => {
+                if (request.result == null) {
+                    resolve(null);
+                } else {
+                    resolve(request.result.value);
+                }
+            };
+        });
+    };
+
+    const listSaves = async (romHash: string): Promise<SaveEntry[]> => {
+        const transaction = db.transaction(['saves'], 'readonly');
+        const saves = transaction.objectStore('saves');
+        const index = saves.index('romHash');
+        const request = index.getAll(romHash);
+
+        return new Promise<SaveEntry[]>((resolve, _reject) => {
+            request.onerror = () => {
+                resolve([]);
+            };
+
+            request.onsuccess = () => {
+                resolve(request.result);
+            };
+        });
+    };
+
     return {
         rom: { get: getROM, insert: insertROM, list: listROMs },
+        save: { get: getSave, getLast: getLastSave, insert: insertSave, list: listSaves },
     };
 };
 
 export const createStore = async () => {
     const serialize = (store: StoreData): string => {
-        return JSON.stringify(store);
+        return JSON.stringify({
+            ...store,
+            controls: store.controls.ref,
+        });
     };
 
     const deserialize = (string: string): StoreData => {
-        return JSON.parse(string);
+        const store = JSON.parse(string);
+        const controls = createControls();
+        controls.update(store.controls);
+        store.controls = controls;
+
+        return store;
     };
 
     const store = (() => {
@@ -134,7 +219,7 @@ export const createStore = async () => {
         if (savedStore != null) {
             return deserialize(savedStore);
         } else {
-            return DEFAULT_STORE;
+            return getDefaultStore();
         }
     })();
 

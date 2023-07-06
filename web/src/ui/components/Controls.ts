@@ -1,4 +1,4 @@
-import { Joypad } from "../../main";
+import { Joypad } from "../../controls";
 import { Store } from "../store";
 import { ControllerMapping } from "./ControllerMapping";
 import { VMenu } from "./VMenu";

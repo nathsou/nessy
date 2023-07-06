@@ -2,121 +2,15 @@ import init, {
     Nes, createConsole,
     loadState,
     nextFrame,
-    resetConsole,
     saveState,
-    setJoypad1,
+    setJoypad1
 } from '../public/pkg/nessy';
+import { createController } from './controls';
+import { events } from './ui/events';
 import { StoreData, createStore } from './ui/store';
 import { createUI } from './ui/ui';
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
-
-export enum Joypad {
-    A = 0b0000_0001,
-    B = 0b0000_0010,
-    SELECT = 0b0000_0100,
-    START = 0b0000_1000,
-    UP = 0b0001_0000,
-    DOWN = 0b0010_0000,
-    LEFT = 0b0100_0000,
-    RIGHT = 0b1000_0000,
-};
-
-const joypad1Mapping: Record<KeyboardEvent['key'], Joypad> = {
-    'w': Joypad.UP,
-    'a': Joypad.LEFT,
-    's': Joypad.DOWN,
-    'd': Joypad.RIGHT,
-    'k': Joypad.B,
-    'l': Joypad.A,
-    'Enter': Joypad.START,
-    ' ': Joypad.SELECT,
-};
-
-const createController = (nes: Nes) => {
-    let currentFrame = 0;
-    let state = 0;
-    let changed = false;
-    const history: number[] = [];
-    let isMetaDown = false;
-
-    function handleInput(nes: Nes, event: KeyboardEvent, pressed: boolean): void {
-        if (event.key === 'Meta') {
-            isMetaDown = pressed;
-            event.preventDefault();
-        }
-
-        if (isMetaDown && pressed) {
-            switch (event.key) {
-                case 's': {
-                    const save = saveState(nes);
-                    localStorage.setItem('nessy.save', `[${save.join(',')}]`);
-                    event.preventDefault();
-                    return;
-                }
-                case 'r': {
-                    resetConsole(nes);
-                    event.preventDefault();
-                    return;
-                }
-                case 'l': {
-                    const save = localStorage.getItem('nessy.save');
-                    if (save != null) {
-                        loadState(nes, new Uint8Array(JSON.parse(save)));
-                    }
-                    event.preventDefault();
-                    return;
-                }
-            }
-        }
-
-        if (event.key in joypad1Mapping) {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-            }
-
-            const prevState = state;
-
-            if (pressed) {
-                state |= joypad1Mapping[event.key];
-            } else {
-                state &= ~joypad1Mapping[event.key];
-            }
-
-            if (prevState !== state) {
-                changed = true;
-            }
-
-            setJoypad1(nes, state);
-        }
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => handleInput(nes, event, true);
-    const onKeyUp = (event: KeyboardEvent) => handleInput(nes, event, false);
-
-    function tick(): void {
-        currentFrame += 1;
-
-        if (changed) {
-            history.push(currentFrame, state);
-            changed = false;
-        }
-    }
-
-    function save(): void {
-        if (history.length > 0) {
-            // localStorage.setItem(localStorageKey, JSON.stringify(history));
-        }
-    }
-
-    return {
-        onKeyDown,
-        onKeyUp,
-        history,
-        tick,
-        save,
-    };
-};
 
 const createReplay = (nes: Nes, inputs: number[]) => {
     let currentFrame = 0;
@@ -208,7 +102,7 @@ async function setup() {
             window.removeEventListener('beforeunload', controller.save);
         }
 
-        controller = createController(nes);
+        controller = createController(nes, store);
 
         window.addEventListener('resize', resize);
         window.addEventListener('keyup', onKeyUp);
@@ -234,6 +128,27 @@ async function setup() {
 
     store.subscribe('rom', async (rom) => {
         await loadROM(rom);
+    });
+
+    events.on('loadRequest', async ({ timestamp }) => {
+        const save = await store.db.save.get(timestamp);
+        loadState(nes, save.state);
+        ui.showUI.ref = false;
+        events.emit('loaded', { timestamp });
+    });
+
+    events.on('loadLastRequest', async () => {
+        const save = await store.db.save.getLast(store.ref.rom!);
+        if (save != null) {
+            loadState(nes, save.state);
+            ui.showUI.ref = false;
+        }
+    });
+
+    events.on('saveRequest', async () => {
+        const state = saveState(nes);
+        const timestamp = await store.db.save.insert(store.ref.rom!, state);
+        events.emit('saved', { timestamp });
     });
 
     function run(): void {

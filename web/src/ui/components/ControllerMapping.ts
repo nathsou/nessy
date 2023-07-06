@@ -1,10 +1,11 @@
-import { Joypad } from "../../main";
+
+import { Joypad } from "../../controls";
 import { Screen } from "../screen";
 import { Store, StoreData } from "../store";
 import { Text } from "./text";
 
 export const ControllerMapping = (button: Joypad, store: Store) => {
-    let buttonName: keyof StoreData['controls'];
+    let buttonName: keyof StoreData['controls']['ref'];
     let isListening = false;
 
     switch (button) {
@@ -41,11 +42,10 @@ export const ControllerMapping = (button: Joypad, store: Store) => {
             return `${btnName} > ...`;
         }
 
-        let keyName = store.ref.controls[buttonName];
+        let keyName = store.ref.controls.ref[buttonName];
         if (keyName === ' ') {
             keyName = 'space';
         }
-
 
         return `${btnName} > ${keyName.toUpperCase()}`;
     };
@@ -60,7 +60,7 @@ export const ControllerMapping = (button: Joypad, store: Store) => {
         },
         onKeyDown(key: string) {
             if (isListening) {
-                store.ref.controls[buttonName] = key;
+                store.ref.controls.set(key, buttonName);
                 isListening = false;
                 text.update(getText());
             } else if (key === 'Enter') {
