@@ -4,10 +4,10 @@ import { Library } from "./components/Library";
 import { VMenu } from "./components/VMenu";
 import { Text } from "./components/text";
 import { createScreen } from "./screen";
-import { store } from "./store";
+import { Store } from "./store";
 
-export const createUI = () => {
-    let showUI = { ref: true };
+export const createUI = (store: Store) => {
+    let showUI = { ref: store.ref.rom == null };
     const screen = createScreen();
     const menuItems = [
         'library',
@@ -16,7 +16,7 @@ export const createUI = () => {
         // 'save',
     ];
 
-    const menu = HMenu(menuItems.map(item => Text(item)), 1);
+    const menu = HMenu(menuItems.map(item => Text(item)), 0);
 
     const renderingList = VMenu([
         Text('Scaling factor'),
@@ -29,8 +29,8 @@ export const createUI = () => {
         Text('Load state'),
     ]);
 
-    const library = Library();
-    const controls = Controls();
+    const library = Library(store);
+    const controls = Controls(store);
 
     const subMenuMapping: Record<string, typeof library> = {
         library: library,

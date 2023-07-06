@@ -1,10 +1,10 @@
 import { Joypad } from "../../main";
 import { Screen } from "../screen";
-import { Store, store } from "../store";
+import { Store, StoreData } from "../store";
 import { Text } from "./text";
 
-export const ControllerMapping = (button: Joypad) => {
-    let buttonName: keyof Store['controls'];
+export const ControllerMapping = (button: Joypad, store: Store) => {
+    let buttonName: keyof StoreData['controls'];
     let isListening = false;
 
     switch (button) {

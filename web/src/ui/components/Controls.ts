@@ -1,8 +1,9 @@
 import { Joypad } from "../../main";
+import { Store } from "../store";
 import { ControllerMapping } from "./ControllerMapping";
 import { VMenu } from "./VMenu";
 
-export const Controls = () => {
+export const Controls = (store: Store) => {
     const ctrls = [
         Joypad.UP,
         Joypad.LEFT,
@@ -12,7 +13,7 @@ export const Controls = () => {
         Joypad.B,
         Joypad.START,
         Joypad.SELECT,
-    ].map(ControllerMapping);
+    ].map(btn => ControllerMapping(btn, store));
 
     const controlsList = VMenu(ctrls);
 

@@ -1,47 +1,15 @@
 import init, {
-    Nes, createConsole, nextFrame, setJoypad1, saveState, loadState,
+    Nes, createConsole,
+    loadState,
+    nextFrame,
     resetConsole,
+    saveState,
+    setJoypad1,
 } from '../public/pkg/nessy';
-import { store } from './ui/store';
+import { createStore } from './ui/store';
 import { createUI } from './ui/ui';
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
-
-const roms = {
-    Metroid: 'Metroid',
-    BalloonFight: 'Balloon Fight',
-    SuperMarioBros: 'Super Mario Bros',
-    PacMan: 'Pac-Man',
-    DonkeyKong: 'Donkey Kong',
-    DonkeyKongJr: 'Donkey Kong Jr',
-    Tetris: 'Tetris',
-    DrMario: 'Dr. Mario',
-    IceClimber: 'Ice Climber',
-    Pinball: 'Pinball',
-    Bomberman: 'Bomberman',
-    Tennis: 'Tennis',
-    Spelunker: 'Spelunker',
-    UrbanChampion: 'Urban Champion',
-    Excitebike: 'Excitebike',
-    Zelda: 'Zelda',
-    Zelda2: 'Zelda II',
-    KidIcarus: 'Kid Icarus',
-    MegaMan: 'Mega Man',
-    MegaMan2: 'Mega Man 2',
-    Castlevania: 'Castlevania',
-    Castlevania2: 'Castlevania II',
-    Contra: 'Contra',
-    Chessmaster: 'Chessmaster',
-    NinjaTurtles: 'Teenage Mutant Ninja Turtles',
-    PrinceOfPersia: 'Prince of Persia',
-    DuckTales: 'Duck Tales',
-    MetalGear: 'Metal Gear',
-    GhostsNGoblins: "Ghosts 'N Goblins",
-    BackToTheFuture: 'Back to the Future',
-    // BackToTheFuture2And3: 'Back to the Future II & III',
-};
-
-const game = roms.SuperMarioBros;
 
 export enum Joypad {
     A = 0b0000_0001,
@@ -70,7 +38,6 @@ const createController = (nes: Nes) => {
     let state = 0;
     let changed = false;
     const history: number[] = [];
-    const localStorageKey = `nessy.inputs.${game}.${Date.now()}`;
     let isMetaDown = false;
 
     function handleInput(nes: Nes, event: KeyboardEvent, pressed: boolean): void {
@@ -138,7 +105,7 @@ const createController = (nes: Nes) => {
 
     function save(): void {
         if (history.length > 0) {
-            localStorage.setItem(localStorageKey, JSON.stringify(history));
+            // localStorage.setItem(localStorageKey, JSON.stringify(history));
         }
     }
 
@@ -203,49 +170,71 @@ async function setup() {
     const imageData = ctx.createImageData(WIDTH, HEIGHT);
 
     await init();
+    const store = await createStore();
     let nes: Nes;
     let controller: ReturnType<typeof createController>;
     const frame: Uint8Array = imageData.data as any;
-    const ui = createUI();
+    const ui = createUI(store);
 
     const updateROM = (rom: Uint8Array): void => {
         ui.showUI.ref = false;
         nes = createConsole(rom);
 
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (!ui.showUI.ref) {
+                controller.onKeyDown(event);
+            }
+        };
+
+        const onKeyUp = (event: KeyboardEvent) => {
+            if (!ui.showUI.ref) {
+                controller.onKeyUp(event);
+            }
+        };
+
         if (controller) {
             window.removeEventListener('resize', resize);
-            window.removeEventListener('keyup', controller.onKeyUp);
-            window.removeEventListener('keydown', controller.onKeyDown);
+            window.removeEventListener('keyup', onKeyUp);
+            window.removeEventListener('keydown', onKeyDown);
             window.removeEventListener('beforeunload', controller.save);
         }
 
         controller = createController(nes);
 
         window.addEventListener('resize', resize);
-        window.addEventListener('keyup', controller.onKeyUp);
-        window.addEventListener('keydown', controller.onKeyDown);
+        window.addEventListener('keyup', onKeyUp);
+        window.addEventListener('keydown', onKeyDown);
         window.addEventListener('beforeunload', controller.save);
 
         frame.fill(0);
     };
 
-    if (store.ref.rom != null) {
-        updateROM(new Uint8Array(store.ref.rom));
+    async function loadROM(hash: string | null): Promise<void> {
+        if (hash != null) {
+            try {
+                const rom = await store.db.rom.get(hash);
+                updateROM(rom.data);
+            } catch (e) {
+                console.error(e);
+                store.set('rom', null);
+            }
+        }
     }
 
+    loadROM(store.ref.rom);
+
     store.subscribe('rom', async (rom) => {
-        if (rom != null) {
-            const bytes = new Uint8Array(rom);
-            updateROM(bytes);
-        }
+        await loadROM(rom);
     });
 
     function run(): void {
         requestAnimationFrame(run);
 
         if (!ui.showUI.ref) {
-            nextFrame(nes, frame);
-            controller.tick();
+            if (nes !== undefined) {
+                nextFrame(nes, frame);
+                controller.tick();
+            }
         } else {
             ui.render(imageData);
         }
@@ -254,6 +243,8 @@ async function setup() {
     }
 
     run();
+
+    window.addEventListener('beforeunload', store.save);
 }
 
-document.addEventListener('DOMContentLoaded', setup);
+window.addEventListener('DOMContentLoaded', setup);

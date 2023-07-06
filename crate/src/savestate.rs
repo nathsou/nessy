@@ -4,6 +4,7 @@ pub struct SaveState {
 }
 
 impl SaveState {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         SaveState {
             data: vec![],

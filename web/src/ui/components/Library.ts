@@ -1,45 +1,65 @@
-import { directoryOpen, fileOpen } from "browser-fs-access";
+import { fileOpen } from "browser-fs-access";
+import { RomEntry, Store } from "../store";
 import { VMenu } from "./VMenu";
 import { Text } from "./text";
-import { store } from "../store";
 
-export const Library = () => {
-    const list = VMenu([
-        Text('Load ROM file'),
-        Text('Load ROM dir.'),
-    ]);
+export const Library = (store: Store) => {
+    const baseItems = [
+        Text('Load ROMs...'),
+    ];
+
+    const list = VMenu(baseItems, 8);
+    let roms: RomEntry[] = [];
+
+    const updateList = async () => {
+        roms = (await store.db.rom.list()).sort((a, b) => a.name.localeCompare(b.name));
+        list.update(baseItems.concat(roms.map(rom => Text(rom.name, { maxLength: 22 }))));
+    };
+
+    updateList();
 
     const loadRomFile = async () => {
-        const file = await fileOpen({
-            description: 'NES ROM file',
-            extensions: ['.nes'],
-            mimeTypes: ['application/octet-stream'],
-            multiple: false,
-            startIn: 'downloads',
-        });
+        try {
+            const files = await fileOpen({
+                description: 'NES ROM file',
+                extensions: ['.nes'],
+                mimeTypes: ['application/octet-stream'],
+                multiple: true,
+            });
 
-        const bytes = Array.from(new Uint8Array(await file.arrayBuffer()));
-        store.set('rom', bytes);
+            for (const file of files) {
+                try {
+                    const bytes = new Uint8Array(await file.arrayBuffer());
+                    const hash = await store.db.rom.insert(file.name, bytes);
+
+                    if (files.length === 1) {
+                        store.set('rom', hash);
+                    }
+                } catch (error) {
+                    console.error(`Failed to load file ${file.name}: ${error}`);
+                }
+            }
+
+            await updateList();
+        } catch (error) {
+            console.error(error);
+        }
     };
 
-    const loadRomDir = async () => {
-        const dir = await directoryOpen({
-            recursive: false,
-            mode: 'read',
-            startIn: 'downloads',
-        });
-
-        console.log(dir);
-    };
-
-    const onClickMappings = [
+    const onEnterMappings = [
         loadRomFile,
-        loadRomDir,
     ];
 
     const onKeyDown = (key: string): void => {
         if (list.state.activeIndex !== -1 && key === 'Enter') {
-            onClickMappings[list.state.activeIndex]();
+            if (list.state.activeIndex < onEnterMappings.length) {
+                onEnterMappings[list.state.activeIndex]();
+            } else {
+                const rom = roms[list.state.activeIndex - onEnterMappings.length];
+                if (rom.hash !== store.ref.rom) {
+                    store.set('rom', rom.hash);
+                }
+            }
         }
     };
 

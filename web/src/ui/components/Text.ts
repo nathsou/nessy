@@ -15,8 +15,31 @@ export function drawText(
     }
 };
 
-export const Text = (text: string, textColor = 0x30, bgColor = 0x00) => {
+export type TextSettings = {
+    textColor: number,
+    bgColor: number,
+    maxLength: number,
+};
+
+const DEFAULT_SETTINGS: TextSettings = {
+    textColor: 0x30,
+    bgColor: 0x00,
+    maxLength: Infinity,
+};
+
+const textWithEllipsis = (text: string, maxLength: number) => {
+    if (text.length > maxLength) {
+        return text.slice(0, maxLength - 3) + '...';
+    } else {
+        return text;
+    }
+};
+
+export const Text = (text: string, options: Partial<TextSettings> = DEFAULT_SETTINGS) => {
     const state = { active: false };
+    const settings = { ...DEFAULT_SETTINGS, ...options };
+    text = textWithEllipsis(text, settings.maxLength);
+
     const ret: Component<{ active: boolean }> & { update(newText: string): void } = {
         state,
         width: text.length,
@@ -24,14 +47,14 @@ export const Text = (text: string, textColor = 0x30, bgColor = 0x00) => {
         update(newText: string): void {
             if (newText !== text) {
                 ret.width = newText.length;
-                text = newText;
+                text = textWithEllipsis(newText, settings.maxLength ?? Infinity);
             }
         },
         render: (x, y, screen) => {
             if (state.active) {
-                drawText(x, y, text, screen, bgColor, textColor);
+                drawText(x, y, text, screen, settings.bgColor, settings.textColor);
             } else {
-                drawText(x, y, text, screen, textColor, bgColor);
+                drawText(x, y, text, screen, settings.textColor, settings.bgColor);
             }
         },
     };
