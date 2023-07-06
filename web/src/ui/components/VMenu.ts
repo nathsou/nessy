@@ -2,12 +2,15 @@ import { VList } from "./VList";
 import { Component } from "./component";
 
 export type VMenu = ReturnType<typeof VMenu>;
-export const VMenu = (items: Component<{ active: boolean }>[], visibleItems = items.length): Component<{ activeIndex: number }> & {
+export const VMenu = <C extends Component<{ active: boolean }>>(
+    items: C[],
+    visibleItems = items.length
+): Component<{ activeIndex: number, items: C[] }> & {
     next(): void,
     prev(): void,
-    update(newItems: Component<{ active: boolean }>[]): void,
+    update(newItems: C[]): void,
 } => {
-    const state = { activeIndex: -1 };
+    const state = { activeIndex: -1, items };
     const list = VList(items, {
         spacing: 1,
         align: 'start',
@@ -59,10 +62,11 @@ export const VMenu = (items: Component<{ active: boolean }>[], visibleItems = it
             setActiveIndex(Math.max(state.activeIndex - 1, -1));
             updateVisibleWindow();
         },
-        update(newItems: Component<{ active: boolean }>[]): void {
+        update(newItems: C[]): void {
             setActiveIndex(-1);
             list.update(newItems);
             items = newItems;
+            state.items = newItems;
             updateVisibleWindow();
         },
     };

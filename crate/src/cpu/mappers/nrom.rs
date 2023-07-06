@@ -43,7 +43,7 @@ impl Mapper for NROM {
         }
     }
 
-    fn write(&mut self, cart: &mut Cart, addr: u16, val: u8) {
+    fn write(&mut self, _: &mut Cart, addr: u16, val: u8) {
         match addr {
             0x0000..=0x1FFF => {
                 // panic!("Attempted to write to CHR ROM on NROM mapper");
@@ -51,7 +51,9 @@ impl Mapper for NROM {
             0x6000..=0x7FFF => {
                 self.ram[(addr - 0x6000) as usize] = val;
             }
-            _ => panic!("Invalid NROM write address: {:04X}", addr),
+            _ => {
+                // panic!("Invalid NROM write address: {:04X}", addr)
+            }
         }
     }
 }

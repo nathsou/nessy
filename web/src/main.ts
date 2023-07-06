@@ -6,7 +6,7 @@ import init, {
     saveState,
     setJoypad1,
 } from '../public/pkg/nessy';
-import { createStore } from './ui/store';
+import { StoreData, createStore } from './ui/store';
 import { createUI } from './ui/ui';
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
@@ -150,27 +150,36 @@ const createReplay = (nes: Nes, inputs: number[]) => {
     return ret;
 };
 
+const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['style']['imageRendering']> = {
+    pixelated: 'pixelated',
+    blurry: 'auto',
+};
+
 async function setup() {
+    const store = await createStore();
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
-    canvas.style.imageRendering = 'pixelated';
+    canvas.style.imageRendering = SCALING_MODE_MAPPING[store.ref.scalingMode];
 
     function resize(): void {
         const w = window.innerWidth;
         const h = window.innerHeight;
-        const scale = Math.min(w / WIDTH, h / HEIGHT, 3);
+        const scale = Math.min(w / WIDTH, h / HEIGHT, store.ref.scalingFactor);
         canvas.style.width = `${WIDTH * scale}px`;
         canvas.style.height = `${HEIGHT * scale}px`;
     }
 
     resize();
+    store.subscribe('scalingFactor', resize);
+    store.subscribe('scalingMode', () => {
+        canvas.style.imageRendering = SCALING_MODE_MAPPING[store.ref.scalingMode];
+    });
 
     const ctx = canvas.getContext('2d')!;
     const imageData = ctx.createImageData(WIDTH, HEIGHT);
 
     await init();
-    const store = await createStore();
     let nes: Nes;
     let controller: ReturnType<typeof createController>;
     const frame: Uint8Array = imageData.data as any;

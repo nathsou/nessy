@@ -1,7 +1,8 @@
 import { Controls } from "./components/Controls";
 import { HMenu } from "./components/HMenu";
 import { Library } from "./components/Library";
-import { VMenu } from "./components/VMenu";
+import { Misc } from "./components/Misc";
+import { Component } from "./components/component";
 import { Text } from "./components/text";
 import { createScreen } from "./screen";
 import { Store } from "./store";
@@ -12,31 +13,18 @@ export const createUI = (store: Store) => {
     const menuItems = [
         'library',
         'controls',
-        // 'rendering',
-        // 'save',
+        'misc.',
     ];
 
     const menu = HMenu(menuItems.map(item => Text(item)), 0);
-
-    const renderingList = VMenu([
-        Text('Scaling factor'),
-        Text('Color palette'),
-        Text('Scale mode'),
-    ]);
-
-    const saveList = VMenu([
-        Text('Save state'),
-        Text('Load state'),
-    ]);
-
-    const library = Library(store);
-    const controls = Controls(store);
-
-    const subMenuMapping: Record<string, typeof library> = {
-        library: library,
-        controls: controls,
-        // rendering: renderingList,
-        // save: saveList,
+    const subMenuMapping: Record<string, Component<{ activeIndex: number }> & {
+        prev(): void,
+        next(): void,
+        onKeyDown(key: string): void
+    }> = {
+        library: Library(store),
+        controls: Controls(store),
+        'misc.': Misc(store),
     };
 
     window.addEventListener('keydown', event => {
@@ -79,7 +67,7 @@ export const createUI = (store: Store) => {
         }
 
         if (showUI.ref) {
-            menu.state.active = subMenuMapping[activeMenuItem].state.activeIndex === -1;
+            // menu.state.active = subMenuMapping[activeMenuItem].state.activeIndex === -1;
         }
     });
 

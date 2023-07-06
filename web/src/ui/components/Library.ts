@@ -2,22 +2,9 @@ import { fileOpen } from "browser-fs-access";
 import { RomEntry, Store } from "../store";
 import { VMenu } from "./VMenu";
 import { Text } from "./text";
+import { Button } from "./Button";
 
 export const Library = (store: Store) => {
-    const baseItems = [
-        Text('Load ROMs...'),
-    ];
-
-    const list = VMenu(baseItems, 8);
-    let roms: RomEntry[] = [];
-
-    const updateList = async () => {
-        roms = (await store.db.rom.list()).sort((a, b) => a.name.localeCompare(b.name));
-        list.update(baseItems.concat(roms.map(rom => Text(rom.name, { maxLength: 22 }))));
-    };
-
-    updateList();
-
     const loadRomFile = async () => {
         try {
             const files = await fileOpen({
@@ -46,20 +33,29 @@ export const Library = (store: Store) => {
         }
     };
 
-    const onEnterMappings = [
-        loadRomFile,
+    const baseItems = [
+        Button(Text('Load ROMs...'), loadRomFile),
     ];
+
+    const list = VMenu(baseItems, 8);
+    let roms: RomEntry[] = [];
+
+    const playROM = (rom: RomEntry): void => {
+        if (rom.hash !== store.ref.rom) {
+            store.set('rom', rom.hash);
+        }
+    };
+
+    const updateList = async () => {
+        roms = (await store.db.rom.list()).sort((a, b) => a.name.localeCompare(b.name));
+        list.update(baseItems.concat(roms.map(rom => Button(Text(rom.name, { maxLength: 22 }), () => playROM(rom)))));
+    };
+
+    updateList();
 
     const onKeyDown = (key: string): void => {
         if (list.state.activeIndex !== -1 && key === 'Enter') {
-            if (list.state.activeIndex < onEnterMappings.length) {
-                onEnterMappings[list.state.activeIndex]();
-            } else {
-                const rom = roms[list.state.activeIndex - onEnterMappings.length];
-                if (rom.hash !== store.ref.rom) {
-                    store.set('rom', rom.hash);
-                }
-            }
+            list.state.items[list.state.activeIndex].enter();
         }
     };
 

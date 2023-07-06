@@ -9,10 +9,6 @@ const DEFAULT_STORE = {
     version: 1,
     frameCount: 0,
     rom: union<string | null>(null),
-    interface: {
-        primary: union<'library' | 'controls'>('controls'),
-        secondary: union<string | number>(0),
-    },
     controls: {
         up: 'w',
         left: 'a',
@@ -23,6 +19,8 @@ const DEFAULT_STORE = {
         start: 'Enter',
         select: 'Space',
     },
+    scalingFactor: union<1 | 2 | 3 | 4>(3),
+    scalingMode: union<'pixelated' | 'blurry'>('pixelated'),
 };
 
 const Binary = {
