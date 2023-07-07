@@ -2,47 +2,14 @@ import init, {
     Nes, createConsole,
     loadState,
     nextFrame,
-    saveState,
-    setJoypad1
+    saveState
 } from '../public/pkg/nessy';
 import { createController } from './controls';
 import { events } from './ui/events';
-import { StoreData, createStore } from './ui/store';
+import { Binary, StoreData, createStore } from './ui/store';
 import { createUI } from './ui/ui';
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
-
-const createReplay = (nes: Nes, inputs: number[]) => {
-    let currentFrame = 0;
-    let index = 0;
-    const ret = { tick, reachEnd, isOver: false };
-
-    function tick(): void {
-        if (!ret.isOver) {
-            currentFrame += 1;
-            const frame = inputs[index];
-
-            if (frame === currentFrame + 1) {
-                const buttons = inputs[index + 1];
-                setJoypad1(nes, buttons);
-                index += 2;
-            }
-
-            if (index >= inputs.length) {
-                ret.isOver = true;
-            }
-        }
-    }
-
-    function reachEnd(buffer: Uint8Array): void {
-        while (!ret.isOver) {
-            nextFrame(nes, buffer);
-            tick();
-        }
-    }
-
-    return ret;
-};
 
 const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['style']['imageRendering']> = {
     pixelated: 'pixelated',
@@ -80,17 +47,17 @@ async function setup() {
     const ui = createUI(store);
 
     const updateROM = (rom: Uint8Array): void => {
-        ui.showUI.ref = false;
+        ui.visible.ref = false;
         nes = createConsole(rom);
 
         const onKeyDown = (event: KeyboardEvent) => {
-            if (!ui.showUI.ref) {
+            if (!ui.visible.ref) {
                 controller.onKeyDown(event);
             }
         };
 
         const onKeyUp = (event: KeyboardEvent) => {
-            if (!ui.showUI.ref) {
+            if (!ui.visible.ref) {
                 controller.onKeyUp(event);
             }
         };
@@ -124,8 +91,6 @@ async function setup() {
         }
     }
 
-    loadROM(store.ref.rom);
-
     store.subscribe('rom', async (rom) => {
         await loadROM(rom);
     });
@@ -133,7 +98,7 @@ async function setup() {
     events.on('loadRequest', async ({ timestamp }) => {
         const save = await store.db.save.get(timestamp);
         loadState(nes, save.state);
-        ui.showUI.ref = false;
+        ui.visible.ref = false;
         events.emit('loaded', { timestamp });
     });
 
@@ -141,7 +106,7 @@ async function setup() {
         const save = await store.db.save.getLast(store.ref.rom!);
         if (save != null) {
             loadState(nes, save.state);
-            ui.showUI.ref = false;
+            ui.visible.ref = false;
         }
     });
 
@@ -163,6 +128,8 @@ async function setup() {
             case 'current': {
                 if (pausedState != null) {
                     renderState(pausedState, frame);
+                } else {
+                    return;
                 }
                 break;
             }
@@ -187,6 +154,25 @@ async function setup() {
         ctx.putImageData(imageData, 0, 0);
         ui.screen.setBackgroundOpacity(0.2);
     });
+
+    async function onInit() {
+        if (store.ref.rom != null) {
+            await loadROM(store.ref.rom);
+
+            if (store.ref.lastState != null) {
+                loadState(nes, store.ref.lastState);
+                nextFrame(nes, frame);
+                loadState(nes, store.ref.lastState);
+
+                ui.visible.ref = true;
+                pausedState = store.ref.lastState;
+
+                events.emit('setBackgroundRequest', { mode: 'current' });
+            }
+        }
+
+        run();
+    }
 
     events.on('uiToggled', ({ visible }) => {
         if (visible) {
@@ -226,10 +212,21 @@ async function setup() {
         }
     });
 
+    function onExit() {
+        if (nes != null) {
+            store.ref.lastState = saveState(nes);
+            Binary.hash(store.ref.lastState).then(hash => {
+                console.log(`onExit: ${hash}`);
+            });
+        }
+
+        store.save();
+    }
+
     function run(): void {
         requestAnimationFrame(run);
 
-        if (!ui.showUI.ref) {
+        if (!ui.visible.ref) {
             if (nes !== undefined) {
                 nextFrame(nes, frame);
                 controller.tick();
@@ -241,9 +238,9 @@ async function setup() {
         ctx.putImageData(imageData, 0, 0);
     }
 
-    run();
+    await onInit();
 
-    window.addEventListener('beforeunload', store.save);
+    window.addEventListener('beforeunload', onExit);
 }
 
 window.addEventListener('DOMContentLoaded', setup);

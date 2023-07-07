@@ -40,8 +40,8 @@ export const Misc = (store: Store) => {
         ScalingMode(store),
     ]);
 
-    const onKeyDown = (key: string) => {
-        list.state.items[list.state.activeIndex].onKeyDown(key);
+    const onKeyDown = (key: string): boolean => {
+        return list.state.items[list.state.activeIndex].onKeyDown(key);
     };
 
     const setActive = (_isActive: boolean) => { };

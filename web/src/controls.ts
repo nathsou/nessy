@@ -1,4 +1,4 @@
-import { Nes, loadState, resetConsole, saveState, setJoypad1 } from "../public/pkg/nessy";
+import { Nes, loadState, resetConsole, setJoypad1 } from "../public/pkg/nessy";
 import { events } from "./ui/events";
 import { Store } from "./ui/store";
 

@@ -2,7 +2,7 @@
 import { Joypad } from "../../controls";
 import { Screen } from "../screen";
 import { Store, StoreData } from "../store";
-import { Text } from "./text";
+import { Text } from "./Text";
 
 export const ControllerMapping = (button: Joypad, store: Store) => {
     let buttonName: keyof StoreData['controls']['ref'];
@@ -58,14 +58,18 @@ export const ControllerMapping = (button: Joypad, store: Store) => {
             text.update(getText());
             text.render(x, y, screen);
         },
-        onKeyDown(key: string) {
+        onKeyDown(key: string): boolean {
             if (isListening) {
                 store.ref.controls.set(key, buttonName);
                 isListening = false;
                 text.update(getText());
+                return true;
             } else if (key === 'Enter') {
                 isListening = true;
+                return true;
             }
+
+            return false;
         },
     };
 };

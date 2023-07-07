@@ -19,7 +19,8 @@
   "types": "nessy.d.ts",
   "sideEffects": false,
   "devDependencies": {
-    "vite": "^4.3.9"
+    "vite": "^4.3.9",
+    "typescript": "^5.1.6"
   },
   "dependencies": {
     "browser-fs-access": "^0.34.1"

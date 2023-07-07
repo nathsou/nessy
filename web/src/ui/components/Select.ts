@@ -1,4 +1,4 @@
-import { Text, TextSettings } from "./text";
+import { Text, TextSettings } from "./Text";
 
 type SelectSettings<Opt extends string> = {
     name: string,
@@ -22,23 +22,19 @@ export const Select = <Opt extends string>({ name, options, onChange, initialOpt
 
     return {
         ...comp,
-        onKeyDown(key: string): void {
+        onKeyDown(key: string): boolean {
             if (comp.state.active) {
                 switch (key) {
-                    case 'ArrowLeft':
-                        let index = activeIndex - 1;
-                        if (index < 0) {
-                            index = options.length - 1;
-                        }
-
-                        setActiveIndex(index);
-                        break;
-                    case 'ArrowRight':
+                    case ' ':
+                        setActiveIndex(activeIndex === 0 ? options.length - 1 : activeIndex - 1);
+                        return true;
                     case 'Enter':
                         setActiveIndex((activeIndex + 1) % options.length);
-                        break;
+                        return true;
                 }
             }
+
+            return false;
         },
     };
 };

@@ -1,30 +1,19 @@
 
-export type SavedEvent = { timestamp: number };
-export type LoadedEvent = { timestamp: number };
-export type UIToggledEvent = { visible: boolean };
-export type LoadRequestEvent = { timestamp: number };
-export type SaveRequestEvent = {};
-export type LoadLastRequestEvent = {};
-export type SetBackgroundRequestEvent =
+export type EventMapping = {
+    saved: { timestamp: number },
+    loaded: { timestamp: number },
+    uiToggled: { visible: boolean },
+    loadRequest: { timestamp: number },
+    saveRequest: {},
+    loadLastRequest: {},
+    setBackgroundRequest:
     { mode: 'current' } |
     { mode: 'at', timestamp: number } |
-    { mode: 'titleScreen', hash: string };
-export type GenerateTitleScreenRequestEvent = { hash: string };
-export type TitleScreenGeneratedEvent = { hash: string, data: Uint8Array };
-
-export type EventMapping = {
-    saved: SavedEvent,
-    loaded: LoadedEvent,
-    uiToggled: UIToggledEvent,
-    loadRequest: LoadRequestEvent,
-    saveRequest: SaveRequestEvent,
-    loadLastRequest: LoadLastRequestEvent,
-    setBackgroundRequest: SetBackgroundRequestEvent,
-    titleScreenGenerated: TitleScreenGeneratedEvent,
-    generateTitleScreenRequest: GenerateTitleScreenRequestEvent,
+    { mode: 'titleScreen', hash: string },
+    titleScreenGenerated: { hash: string, data: Uint8Array },
+    generateTitleScreenRequest: { hash: string },
 };
 
-export type Events = SavedEvent;
 type EventType = keyof EventMapping;
 
 const createEventEmitter = () => {

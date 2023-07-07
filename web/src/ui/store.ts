@@ -14,9 +14,16 @@ const getDefaultStore = () => ({
     controls: createControls(),
     scalingFactor: union<1 | 2 | 3 | 4>(3),
     scalingMode: union<'pixelated' | 'blurry'>('pixelated'),
+    lastState: union<Uint8Array | null>(null),
 });
 
-const Binary = {
+export const Binary = {
+    serialize(data: Uint8Array): string {
+        return Array.from(data).map(byte => String.fromCharCode(byte)).join('');
+    },
+    deserialize(data: string): Uint8Array {
+        return Uint8Array.from(data.split('').map(char => char.charCodeAt(0)));
+    },
     async hash(data: BufferSource): Promise<string> {
         const digest = await crypto.subtle.digest('SHA-256', data);
         return Array.from(new Uint8Array(digest))
@@ -257,6 +264,7 @@ export const createStore = async () => {
         return JSON.stringify({
             ...store,
             controls: store.controls.ref,
+            lastState: store.lastState != null ? Binary.serialize(store.lastState) : null,
         });
     };
 
@@ -265,6 +273,7 @@ export const createStore = async () => {
         const controls = createControls();
         controls.update(store.controls);
         store.controls = controls;
+        store.lastState = store.lastState != null ? Binary.deserialize(store.lastState) : null;
 
         return store;
     };

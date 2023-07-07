@@ -1,5 +1,5 @@
 import { Component, WIDTH } from "./component";
-import { drawText } from "./text";
+import { drawText } from "./Text";
 
 export type HMenuSettings = {
     initialIndex?: number,

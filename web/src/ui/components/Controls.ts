@@ -17,8 +17,8 @@ export const Controls = (store: Store) => {
 
     const controlsList = VMenu(ctrls);
 
-    const onKeyDown = (key: string) => {
-        ctrls[controlsList.state.activeIndex].onKeyDown(key);
+    const onKeyDown = (key: string): boolean => {
+        return ctrls[controlsList.state.activeIndex].onKeyDown(key);
     };
 
     const setActive = (_isActive: boolean) => { };

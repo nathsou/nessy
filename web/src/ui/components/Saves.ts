@@ -2,7 +2,7 @@ import { events } from "../events";
 import { SaveEntry, Store } from "../store";
 import { Button } from "./Button";
 import { VMenu } from "./VMenu";
-import { Text } from "./text";
+import { Text } from "./Text";
 
 const SAVE_MENU_ITEM_INDEX = 0;
 const LOAD_LAST_MENU_ITEM_INDEX = 1;
@@ -56,10 +56,13 @@ export const Saves = (store: Store) => {
     store.subscribe('rom', updateList);
     events.on('saved', updateList);
 
-    const onKeyDown = (key: string): void => {
+    const onKeyDown = (key: string): boolean => {
         if (key === 'Enter') {
             list.state.items[list.state.activeIndex].enter();
+            return true;
         }
+
+        return false;
     };
 
     const setActive = (isActive: boolean) => {

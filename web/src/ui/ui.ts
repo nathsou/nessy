@@ -5,18 +5,18 @@ import { Library } from "./components/Library";
 import { Misc } from "./components/Misc";
 import { Saves } from "./components/Saves";
 import { Component } from "./components/component";
-import { Text } from "./components/text";
+import { Text } from "./components/Text";
 import { events } from "./events";
 import { createScreen } from "./screen";
 import { Store } from "./store";
 
 export const createUI = (store: Store) => {
-    let showUI = { ref: true };
+    let visible = { ref: true };
     const screen = createScreen();
     const subMenuMapping: Record<string, Component<{ activeIndex: number }> & {
         prev(): void,
         next(): void,
-        onKeyDown(key: string): void,
+        onKeyDown(key: string): boolean,
         setActive(isActive: boolean): void,
     }> = {
         library: Library(store),
@@ -43,42 +43,38 @@ export const createUI = (store: Store) => {
     window.addEventListener('keydown', event => {
         const activeMenuItem = menuItems[menu.state.activeIndex];
 
-        switch (event.key) {
-            case 'Escape':
-                if (store.ref.rom != null) {
-                    showUI.ref = !showUI.ref;
-                    events.emit('uiToggled', { visible: showUI.ref });
-                    event.preventDefault();
+        if (event.key === 'Escape') {
+            visible.ref = !visible.ref;
+            events.emit('uiToggled', { visible: visible.ref });
+            event.preventDefault();
+        } else if (visible.ref) {
+            const captured = subMenuMapping[activeMenuItem].onKeyDown(event.key);
+
+            if (!captured) {
+                switch (event.key) {
+                    case 'ArrowLeft':
+                        if (visible.ref) {
+                            menu.prev();
+                            subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
+                        }
+                        break;
+                    case 'ArrowRight':
+                        if (visible.ref) {
+                            menu.next();
+                            subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
+                        }
+                        break;
+                    case 'ArrowDown':
+                        if (visible.ref) {
+                            subMenuMapping[activeMenuItem].next();
+                        }
+                        break;
+                    case 'ArrowUp':
+                        if (visible.ref) {
+                            subMenuMapping[activeMenuItem].prev();
+                        }
+                        break;
                 }
-                break;
-            case 'ArrowLeft':
-                if (showUI.ref) {
-                    menu.prev();
-                    subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
-                }
-                break;
-            case 'ArrowRight':
-                if (showUI.ref) {
-                    menu.next();
-                    subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
-                }
-                break;
-            case 'ArrowDown':
-                if (showUI.ref) {
-                    subMenuMapping[activeMenuItem].next();
-                }
-                break;
-            case 'ArrowUp':
-                if (showUI.ref) {
-                    subMenuMapping[activeMenuItem].prev();
-                }
-                break;
-            default: {
-                if (showUI.ref) {
-                    const menuItem = subMenuMapping[activeMenuItem];
-                    menuItem.onKeyDown(event.key);
-                }
-                break;
             }
         }
     });
@@ -90,5 +86,5 @@ export const createUI = (store: Store) => {
         screen.render(imageData);
     }
 
-    return { render, screen, showUI };
+    return { render, screen, visible };
 };

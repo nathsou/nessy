@@ -1,7 +1,7 @@
 import { fileOpen } from "browser-fs-access";
 import { RomEntry, Store } from "../store";
 import { VMenu } from "./VMenu";
-import { Text } from "./text";
+import { Text } from "./Text";
 import { Button } from "./Button";
 import { events } from "../events";
 
@@ -90,10 +90,13 @@ export const Library = (store: Store) => {
 
     updateList();
 
-    const onKeyDown = (key: string): void => {
+    const onKeyDown = (key: string): boolean => {
         if (key === 'Enter') {
             list.state.items[list.state.activeIndex].enter();
+            return true;
         }
+
+        return false;
     };
 
     const setActive = (isActive: boolean) => {
