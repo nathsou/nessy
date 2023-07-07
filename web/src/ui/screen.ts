@@ -26,6 +26,8 @@ export type Screen = ReturnType<typeof createScreen>;
 export const createScreen = () => {
     const tiles: Tile[] = [];
     const blankTile: Tile = new Uint8Array(64).fill(0x00);
+    const background = new Uint8Array(WIDTH * HEIGHT * 4).fill(0);
+    let opacity = 0;
 
     for (let i = 0; i < TILES_PER_ROW * TILES_PER_COL; i += 1) {
         tiles.push(blankTile);
@@ -47,6 +49,14 @@ export const createScreen = () => {
         }
     }
 
+    function setBackground(data: Uint8Array): void {
+        background.set(data);
+    }
+
+    const mix = (a: number, b: number) => {
+        return Math.round(a * (1 - opacity) + b * opacity);
+    };
+
     function render(imageData: ImageData): void {
         for (let y = 0; y < TILES_PER_COL; y += 1) {
             for (let x = 0; x < TILES_PER_ROW; x += 1) {
@@ -56,9 +66,9 @@ export const createScreen = () => {
                         const colorIndex = tile[i + j * 8];
                         const color = PALETTE[colorIndex];
                         const index = (x * 8 + i + (y * 8 + j) * WIDTH) * 4;
-                        imageData.data[index + 0] = color[0];
-                        imageData.data[index + 1] = color[1];
-                        imageData.data[index + 2] = color[2];
+                        imageData.data[index + 0] = mix(color[0], background[index + 0]);
+                        imageData.data[index + 1] = mix(color[1], background[index + 1]);
+                        imageData.data[index + 2] = mix(color[2], background[index + 2]);
                         imageData.data[index + 3] = 0xff;
                     }
                 }
@@ -66,11 +76,14 @@ export const createScreen = () => {
         }
     }
 
-
     return {
         setTile,
         clearTile,
         clear,
         render,
+        setBackground,
+        setBackgroundOpacity: (alpha: number) => {
+            opacity = alpha;
+        },
     };
 };

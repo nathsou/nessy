@@ -19,14 +19,9 @@ const getDefaultStore = () => ({
 const Binary = {
     async hash(data: BufferSource): Promise<string> {
         const digest = await crypto.subtle.digest('SHA-256', data);
-        const hexes = [];
-
-        const view = new DataView(digest);
-        for (let i = 0; i < view.byteLength; i += 4) {
-            hexes.push(('00000000' + view.getUint32(i).toString(16)).slice(-8));
-        }
-
-        return hexes.join('');
+        return Array.from(new Uint8Array(digest))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('');
     },
 };
 
@@ -40,6 +35,11 @@ export type SaveEntry = {
     timestamp: number,
     romHash: string,
     state: Uint8Array,
+};
+
+export type TitleScreenEntry = {
+    romHash: string,
+    data: Uint8Array,
 };
 
 const createDatabase = async () => {
@@ -59,6 +59,10 @@ const createDatabase = async () => {
             saves.createIndex('timestamp', 'timestamp', { unique: true });
             saves.createIndex('romHash', 'romHash', { unique: false });
             saves.createIndex('state', 'state', { unique: false });
+
+            const titleScreens = db.createObjectStore('titleScreens', { keyPath: 'romHash' });
+            titleScreens.createIndex('romHash', 'romHash', { unique: true });
+            titleScreens.createIndex('data', 'data', { unique: false });
 
             resolve(db);
         };
@@ -190,9 +194,61 @@ const createDatabase = async () => {
         });
     };
 
+    const insertTitleScreen = async (romHash: string, data: Uint8Array): Promise<void> => {
+        const entry: TitleScreenEntry = {
+            romHash,
+            data,
+        };
+
+        const transaction = db.transaction(['titleScreens'], 'readwrite');
+        const titleScreens = transaction.objectStore('titleScreens');
+        const request = titleScreens.put(entry);
+
+        return new Promise<void>((resolve, reject) => {
+            request.onerror = reject;
+            request.onsuccess = () => {
+                resolve();
+            };
+        });
+    };
+
+    const getTitleScreen = async (romHash: string): Promise<TitleScreenEntry | null> => {
+        const transaction = db.transaction(['titleScreens'], 'readonly');
+        const titleScreens = transaction.objectStore('titleScreens');
+        const request = titleScreens.get(romHash);
+
+        return new Promise<TitleScreenEntry | null>((resolve, reject) => {
+            request.onerror = reject;
+            request.onsuccess = () => {
+                if (request.result == null) {
+                    resolve(null);
+                } else {
+                    resolve(request.result);
+                }
+            };
+        });
+    };
+
+    const listTitleScreens = async (): Promise<TitleScreenEntry[]> => {
+        const transaction = db.transaction(['titleScreens'], 'readonly');
+        const titleScreens = transaction.objectStore('titleScreens');
+        const request = titleScreens.getAll();
+
+        return new Promise<TitleScreenEntry[]>((resolve, _reject) => {
+            request.onerror = () => {
+                resolve([]);
+            };
+
+            request.onsuccess = () => {
+                resolve(request.result);
+            };
+        });
+    };
+
     return {
         rom: { get: getROM, insert: insertROM, list: listROMs },
         save: { get: getSave, getLast: getLastSave, insert: insertSave, list: listSaves },
+        titleScreen: { get: getTitleScreen, insert: insertTitleScreen, list: listTitleScreens },
     };
 };
 

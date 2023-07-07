@@ -6,32 +6,39 @@ import { Misc } from "./components/Misc";
 import { Saves } from "./components/Saves";
 import { Component } from "./components/component";
 import { Text } from "./components/text";
+import { events } from "./events";
 import { createScreen } from "./screen";
 import { Store } from "./store";
 
 export const createUI = (store: Store) => {
-    let showUI = { ref: store.ref.rom == null };
+    let showUI = { ref: true };
     const screen = createScreen();
-    const menuItems = [
-        'library',
-        'controls',
-        'saves',
-        'misc.',
-    ];
-
-    const menu = HMenu(menuItems.map(item => Text(item)), 0);
     const subMenuMapping: Record<string, Component<{ activeIndex: number }> & {
         prev(): void,
         next(): void,
-        onKeyDown(key: string): void
+        onKeyDown(key: string): void,
+        setActive(isActive: boolean): void,
     }> = {
         library: Library(store),
-        controls: Controls(store),
         saves: Saves(store),
+        controls: Controls(store),
         'misc.': Misc(store),
     };
 
+    const menuItems = Object.keys(subMenuMapping);
+    const menu = HMenu(menuItems.map(item => Text(item)), { initialIndex: 0, onSelect });
     const subMenu = Center(subMenuMapping[menuItems[menu.state.activeIndex]]);
+    let previousActiveIndex = menu.state.activeIndex;
+
+    function onSelect(index: number): void {
+        subMenuMapping[menuItems[previousActiveIndex]].setActive(false);
+        subMenuMapping[menuItems[index]].setActive(true);
+        previousActiveIndex = index;
+    }
+
+    events.on('uiToggled', ({ visible }) => {
+        subMenuMapping[menuItems[menu.state.activeIndex]].setActive(visible);
+    });
 
     window.addEventListener('keydown', event => {
         const activeMenuItem = menuItems[menu.state.activeIndex];
@@ -40,6 +47,7 @@ export const createUI = (store: Store) => {
             case 'Escape':
                 if (store.ref.rom != null) {
                     showUI.ref = !showUI.ref;
+                    events.emit('uiToggled', { visible: showUI.ref });
                     event.preventDefault();
                 }
                 break;
@@ -73,10 +81,6 @@ export const createUI = (store: Store) => {
                 break;
             }
         }
-
-        if (showUI.ref) {
-            // menu.state.active = subMenuMapping[activeMenuItem].state.activeIndex === -1;
-        }
     });
 
     function render(imageData: ImageData): void {
@@ -86,5 +90,5 @@ export const createUI = (store: Store) => {
         screen.render(imageData);
     }
 
-    return { render, showUI };
+    return { render, screen, showUI };
 };

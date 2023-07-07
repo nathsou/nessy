@@ -151,6 +151,81 @@ async function setup() {
         events.emit('saved', { timestamp });
     });
 
+    const renderState = (state: Uint8Array, buffer: Uint8Array): void => {
+        loadState(nes, state);
+        nextFrame(nes, buffer);
+    };
+
+    let pausedState: Uint8Array | null = null;
+
+    events.on('setBackgroundRequest', async event => {
+        switch (event.mode) {
+            case 'current': {
+                if (pausedState != null) {
+                    renderState(pausedState, frame);
+                }
+                break;
+            }
+            case 'at': {
+                const save = await store.db.save.get(event.timestamp);
+                renderState(save.state, frame);
+                break;
+            }
+            case 'titleScreen': {
+                const titleScreen = await store.db.titleScreen.get(event.hash);
+                if (titleScreen != null) {
+                    frame.set(titleScreen.data);
+                } else {
+                    frame.fill(0);
+                }
+
+                break;
+            }
+        }
+
+        ui.screen.setBackground(frame);
+        ctx.putImageData(imageData, 0, 0);
+        ui.screen.setBackgroundOpacity(0.2);
+    });
+
+    events.on('uiToggled', ({ visible }) => {
+        if (visible) {
+            pausedState = saveState(nes);
+            events.emit('setBackgroundRequest', { mode: 'current' });
+        } else {
+            if (pausedState !== null) {
+                loadState(nes, pausedState);
+            }
+        }
+    });
+
+    const titleScreenFrame = new Uint8Array(256 * 240 * 4);
+
+    events.on('generateTitleScreenRequest', async ({ hash }) => {
+        try {
+            const rom = await store.db.rom.get(hash);
+            const titleScreen = await store.db.titleScreen.get(hash);
+
+            if (titleScreen == null) {
+                const titleScreenNes = createConsole(rom.data);
+
+                // Generate the screenshot after 2 seconds
+                for (let i = 0; i < 120; i++) {
+                    nextFrame(titleScreenNes, titleScreenFrame);
+                }
+
+                await store.db.titleScreen.insert(hash, titleScreenFrame);
+                events.emit('titleScreenGenerated', { hash, data: titleScreenFrame });
+            } else {
+                events.emit('titleScreenGenerated', { hash, data: titleScreen.data });
+            }
+        } catch (error) {
+            console.error(`Failed to generate title screen for ${hash}: ${error}`);
+            titleScreenFrame.fill(0);
+            events.emit('titleScreenGenerated', { hash, data: titleScreenFrame });
+        }
+    });
+
     function run(): void {
         requestAnimationFrame(run);
 

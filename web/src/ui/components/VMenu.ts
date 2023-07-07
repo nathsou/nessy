@@ -1,54 +1,43 @@
 import { VList } from "./VList";
 import { Component } from "./component";
 
+type VMenuSettings = {
+    visibleItems?: number,
+    onSelect?(index: number): void,
+};
+
 export type VMenu = ReturnType<typeof VMenu>;
 export const VMenu = <C extends Component<{ active: boolean }>>(
     items: C[],
-    visibleItems = items.length
+    { visibleItems = items.length, onSelect }: VMenuSettings = {},
 ): Component<{ activeIndex: number, items: C[] }> & {
     next(): void,
     prev(): void,
     update(newItems: C[]): void,
 } => {
-    const state = { activeIndex: -1, items };
-    const list = VList(items, {
-        spacing: 1,
-        align: 'start',
-        firstIndex: 0,
-        lastIndex: visibleItems - 1,
-    });
+    const state = { activeIndex: 0, items };
+    const list = VList(items);
+    items[0].state.active = true;
 
     const setActiveIndex = (index: number): void => {
-        if (state.activeIndex !== -1) {
-            items[state.activeIndex].state.active = false;
-        }
-
-        if (index !== -1) {
-            items[index].state.active = true;
-        }
-
+        items[state.activeIndex].state.active = false;
         state.activeIndex = index;
-    };
-
-    const visibleWindow = {
-        firstIndex: 0,
-        lastIndex: visibleItems - 1,
+        items[index].state.active = true;
+        onSelect?.(index);
     };
 
     const updateVisibleWindow = (): void => {
+        const visibleWindow: { firstIndex: number, lastIndex: number } = list.state;
+
         if (state.activeIndex < visibleWindow.firstIndex) {
             visibleWindow.firstIndex = Math.max(state.activeIndex, 0);
             visibleWindow.lastIndex = Math.min(visibleWindow.firstIndex + visibleItems - 1, items.length - 1);
-        } else if (state.activeIndex > visibleWindow.lastIndex) {
+        } if (state.activeIndex > visibleWindow.lastIndex) {
             visibleWindow.firstIndex = Math.max(state.activeIndex - visibleItems + 1, 0);
             visibleWindow.lastIndex = Math.min(state.activeIndex, items.length - 1);
         }
-
-        list.state.firstIndex = visibleWindow.firstIndex;
-        list.state.lastIndex = visibleWindow.lastIndex;
     };
 
-    setActiveIndex(-1);
     updateVisibleWindow();
 
     return {
@@ -59,15 +48,16 @@ export const VMenu = <C extends Component<{ active: boolean }>>(
             updateVisibleWindow();
         },
         prev(): void {
-            setActiveIndex(Math.max(state.activeIndex - 1, -1));
+            setActiveIndex(Math.max(state.activeIndex - 1, 0));
             updateVisibleWindow();
         },
         update(newItems: C[]): void {
-            setActiveIndex(-1);
             list.update(newItems);
             items = newItems;
             state.items = newItems;
-            updateVisibleWindow();
+            state.activeIndex = 0;
+            list.state.firstIndex = 0;
+            list.state.lastIndex = Math.min(visibleItems, newItems.length) - 1;
         },
     };
 };

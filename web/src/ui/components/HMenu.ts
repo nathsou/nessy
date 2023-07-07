@@ -1,9 +1,14 @@
 import { Component, WIDTH } from "./component";
 import { drawText } from "./text";
 
+export type HMenuSettings = {
+    initialIndex?: number,
+    onSelect?: (index: number) => void,
+};
+
 export const HMenu = (
     items: Component<{ active: boolean }>[],
-    initialIndex = 0,
+    { initialIndex = 0, onSelect }: HMenuSettings = {},
 ): Component<{ active: boolean, activeIndex: number }> & {
     next(): void,
     prev(): void,
@@ -28,6 +33,7 @@ export const HMenu = (
             items[state.activeIndex].state.active = false;
             items[index].state.active = true;
             state.activeIndex = index;
+            onSelect?.(index);
         }
     };
 

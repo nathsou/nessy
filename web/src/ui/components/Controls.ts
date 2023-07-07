@@ -18,13 +18,14 @@ export const Controls = (store: Store) => {
     const controlsList = VMenu(ctrls);
 
     const onKeyDown = (key: string) => {
-        if (controlsList.state.activeIndex !== -1) {
-            ctrls[controlsList.state.activeIndex].onKeyDown(key);
-        }
+        ctrls[controlsList.state.activeIndex].onKeyDown(key);
     };
+
+    const setActive = (_isActive: boolean) => { };
 
     return {
         ...controlsList,
         onKeyDown,
+        setActive,
     };
 };

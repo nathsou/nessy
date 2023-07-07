@@ -100,6 +100,8 @@ export const createController = (nes: Nes, store: Store) => {
                     }
                     return;
                 }
+                default:
+                    event.preventDefault();
             }
         }
 

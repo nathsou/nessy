@@ -41,13 +41,14 @@ export const Misc = (store: Store) => {
     ]);
 
     const onKeyDown = (key: string) => {
-        if (list.state.activeIndex !== -1) {
-            list.state.items[list.state.activeIndex].onKeyDown(key);
-        }
+        list.state.items[list.state.activeIndex].onKeyDown(key);
     };
+
+    const setActive = (_isActive: boolean) => { };
 
     return {
         ...list,
         onKeyDown,
+        setActive,
     };
 };

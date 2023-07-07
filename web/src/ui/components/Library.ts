@@ -3,9 +3,20 @@ import { RomEntry, Store } from "../store";
 import { VMenu } from "./VMenu";
 import { Text } from "./text";
 import { Button } from "./Button";
+import { events } from "../events";
+
+const MAX_LENGTH = 22;
 
 export const Library = (store: Store) => {
-    const loadRomFile = async () => {
+    const baseItems = [
+        Button(Text('Load ROMs...'), loadRoms),
+    ];
+
+    const list = VMenu(baseItems, { visibleItems: 8, onSelect });
+    list.width = MAX_LENGTH;
+    let roms: RomEntry[] = [];
+
+    async function loadRoms(): Promise<void> {
         try {
             const files = await fileOpen({
                 description: 'NES ROM file',
@@ -14,53 +25,88 @@ export const Library = (store: Store) => {
                 multiple: true,
             });
 
+            let index = 0;
+            const getLoaderText = () => `Title Screens [${index}/${files.length}]`;
+            const loader = Text(getLoaderText());
+            list.update(baseItems.concat(Button(loader, () => { })));
+
             for (const file of files) {
                 try {
                     const bytes = new Uint8Array(await file.arrayBuffer());
-                    const hash = await store.db.rom.insert(file.name, bytes);
+                    const romHash = await store.db.rom.insert(file.name, bytes);
 
                     if (files.length === 1) {
-                        store.set('rom', hash);
+                        store.set('rom', romHash);
                     }
+
+                    events.emit('generateTitleScreenRequest', { hash: romHash });
+
+                    await new Promise<void>(resolve => {
+                        const id = events.on('titleScreenGenerated', ({ hash }) => {
+                            if (hash === romHash) {
+                                resolve();
+                                events.remove(id);
+                            }
+                        });
+                    });
+
                 } catch (error) {
                     console.error(`Failed to load file ${file.name}: ${error}`);
                 }
+
+                index += 1;
+                loader.update(getLoaderText());
             }
 
             await updateList();
+
         } catch (error) {
             console.error(error);
         }
     };
 
-    const baseItems = [
-        Button(Text('Load ROMs...'), loadRomFile),
-    ];
-
-    const list = VMenu(baseItems, 8);
-    let roms: RomEntry[] = [];
-
     const playROM = (rom: RomEntry): void => {
-        if (rom.hash !== store.ref.rom) {
-            store.set('rom', rom.hash);
-        }
+        store.set('rom', rom.hash);
     };
 
     const updateList = async () => {
         roms = (await store.db.rom.list()).sort((a, b) => a.name.localeCompare(b.name));
-        list.update(baseItems.concat(roms.map(rom => Button(Text(rom.name, { maxLength: 22 }), () => playROM(rom)))));
+        list.update(baseItems.concat(roms.map(rom => Button(Text(rom.name, { maxLength: MAX_LENGTH }), () => playROM(rom)))));
     };
+
+    function updateBackground() {
+        const index = list.state.activeIndex;
+        if (index >= baseItems.length) {
+            const hash = roms[index - baseItems.length].hash;
+            events.emit('setBackgroundRequest', { mode: 'titleScreen', hash });
+        } else {
+            events.emit('setBackgroundRequest', { mode: 'current' });
+        }
+    }
+
+    function onSelect() {
+        updateBackground();
+    }
 
     updateList();
 
     const onKeyDown = (key: string): void => {
-        if (list.state.activeIndex !== -1 && key === 'Enter') {
+        if (key === 'Enter') {
             list.state.items[list.state.activeIndex].enter();
+        }
+    };
+
+    const setActive = (isActive: boolean) => {
+        if (!isActive) {
+            events.emit('setBackgroundRequest', { mode: 'current' });
+        } else {
+            updateBackground();
         }
     };
 
     return {
         ...list,
         onKeyDown,
+        setActive,
     };
 };
