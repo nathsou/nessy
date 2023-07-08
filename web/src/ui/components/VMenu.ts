@@ -44,11 +44,11 @@ export const VMenu = <C extends Component<{ active: boolean }>>(
         ...list,
         state,
         next(): void {
-            setActiveIndex(Math.min(state.activeIndex + 1, items.length - 1));
+            setActiveIndex((state.activeIndex + 1) % items.length);
             updateVisibleWindow();
         },
         prev(): void {
-            setActiveIndex(Math.max(state.activeIndex - 1, 0));
+            setActiveIndex(Math.max(state.activeIndex === 0 ? items.length - 1 : state.activeIndex - 1, 0));
             updateVisibleWindow();
         },
         update(newItems: C[]): void {

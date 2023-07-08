@@ -3,7 +3,7 @@ import { RomEntry, Store } from "../store";
 import { VMenu } from "./VMenu";
 import { Text } from "./Text";
 import { Button } from "./Button";
-import { events } from "../events";
+import { hooks } from "../hooks";
 
 const MAX_LENGTH = 22;
 
@@ -39,17 +39,7 @@ export const Library = (store: Store) => {
                         store.set('rom', romHash);
                     }
 
-                    events.emit('generateTitleScreenRequest', { hash: romHash });
-
-                    await new Promise<void>(resolve => {
-                        const id = events.on('titleScreenGenerated', ({ hash }) => {
-                            if (hash === romHash) {
-                                resolve();
-                                events.remove(id);
-                            }
-                        });
-                    });
-
+                    await hooks.call('generateTitleScreen', romHash);
                 } catch (error) {
                     console.error(`Failed to load file ${file.name}: ${error}`);
                 }
@@ -78,9 +68,9 @@ export const Library = (store: Store) => {
         const index = list.state.activeIndex;
         if (index >= baseItems.length) {
             const hash = roms[index - baseItems.length].hash;
-            events.emit('setBackgroundRequest', { mode: 'titleScreen', hash });
+            hooks.call('setBackground', { mode: 'titleScreen', hash });
         } else {
-            events.emit('setBackgroundRequest', { mode: 'current' });
+            hooks.call('setBackground', { mode: 'current' });
         }
     }
 
@@ -101,7 +91,7 @@ export const Library = (store: Store) => {
 
     const setActive = (isActive: boolean) => {
         if (!isActive) {
-            events.emit('setBackgroundRequest', { mode: 'current' });
+            hooks.call('setBackground', { mode: 'current' });
         } else {
             updateBackground();
         }

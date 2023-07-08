@@ -1,5 +1,5 @@
 import { Nes, loadState, resetConsole, setJoypad1 } from "../public/pkg/nessy";
-import { events } from "./ui/events";
+import { hooks } from "./ui/hooks";
 import { Store } from "./ui/store";
 
 type ControlButton = keyof typeof JOYPAD_MAPPING;
@@ -84,7 +84,7 @@ export const createController = (nes: Nes, store: Store) => {
             switch (event.key) {
                 case 's': {
                     event.preventDefault();
-                    events.emit('saveRequest', {});
+                    hooks.call('saveState');
                     return;
                 }
                 case 'r': {

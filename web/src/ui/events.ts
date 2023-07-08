@@ -1,17 +1,7 @@
 
 export type EventMapping = {
     saved: { timestamp: number },
-    loaded: { timestamp: number },
     uiToggled: { visible: boolean },
-    loadRequest: { timestamp: number },
-    saveRequest: {},
-    loadLastRequest: {},
-    setBackgroundRequest:
-    { mode: 'current' } |
-    { mode: 'at', timestamp: number } |
-    { mode: 'titleScreen', hash: string },
-    titleScreenGenerated: { hash: string, data: Uint8Array },
-    generateTitleScreenRequest: { hash: string },
 };
 
 type EventType = keyof EventMapping;
@@ -21,14 +11,7 @@ const createEventEmitter = () => {
     const eventTypeById = new Map<number, EventType>();
     const listeners: { [K in EventType]: Array<{ id: number, handler: (event: EventMapping[K]) => void }> } = {
         saved: [],
-        loaded: [],
         uiToggled: [],
-        loadRequest: [],
-        saveRequest: [],
-        loadLastRequest: [],
-        setBackgroundRequest: [],
-        titleScreenGenerated: [],
-        generateTitleScreenRequest: [],
     };
 
     const emit = <K extends EventType>(type: K, event: EventMapping[K]): void => {

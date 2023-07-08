@@ -3,14 +3,15 @@ import { SaveEntry, Store } from "../store";
 import { Button } from "./Button";
 import { VMenu } from "./VMenu";
 import { Text } from "./Text";
+import { hooks } from "../hooks";
 
 const SAVE_MENU_ITEM_INDEX = 0;
 const LOAD_LAST_MENU_ITEM_INDEX = 1;
 
 export const Saves = (store: Store) => {
     const baseItems: Button[] = [
-        Button(Text('Save (CTRL+S)'), () => events.emit('saveRequest', {})),
-        Button(Text('Load last (CTRL+L)'), () => events.emit('loadLastRequest', {})),
+        Button(Text('Save (CTRL+S)'), () => hooks.call('saveState')),
+        Button(Text('Load last (CTRL+L)'), () => hooks.call('loadLastSave')),
     ];
 
     const list = VMenu<Button>(baseItems, { visibleItems: 8, onSelect });
@@ -24,7 +25,7 @@ export const Saves = (store: Store) => {
             const date = new Date(save.timestamp);
             return Button(
                 Text(`${date.toLocaleDateString()} ${date.toLocaleTimeString()}`),
-                () => events.emit('loadRequest', { timestamp: save.timestamp }),
+                () => hooks.call('loadSave', save.timestamp),
             );
         })));
     };
@@ -33,17 +34,17 @@ export const Saves = (store: Store) => {
         const index = list.state.activeIndex;
         switch (index) {
             case SAVE_MENU_ITEM_INDEX:
-                events.emit('setBackgroundRequest', { mode: 'current' });
+                hooks.call('setBackground', { mode: 'current' });
                 break;
             case LOAD_LAST_MENU_ITEM_INDEX:
                 const lastSave = await store.db.save.getLast(store.ref.rom!);
                 if (lastSave != null) {
-                    events.emit('setBackgroundRequest', { mode: 'at', timestamp: lastSave.timestamp });
+                    hooks.call('setBackground', { mode: 'at', timestamp: lastSave.timestamp });
                 }
                 break;
             default:
-                const timestamp = saves[index - baseItems.length].timestamp;
-                events.emit('setBackgroundRequest', { mode: 'at', timestamp });
+                const { timestamp } = saves[index - baseItems.length];
+                hooks.call('setBackground', { mode: 'at', timestamp });
                 break;
         }
     }
@@ -67,7 +68,7 @@ export const Saves = (store: Store) => {
 
     const setActive = (isActive: boolean) => {
         if (!isActive) {
-            events.emit('setBackgroundRequest', { mode: 'current' });
+            hooks.call('setBackground', { mode: 'current' });
         } else {
             updateBackground();
         }

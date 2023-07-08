@@ -6,6 +6,7 @@ import init, {
 } from '../public/pkg/nessy';
 import { createController } from './controls';
 import { events } from './ui/events';
+import { hooks } from './ui/hooks';
 import { Binary, StoreData, createStore } from './ui/store';
 import { createUI } from './ui/ui';
 const WIDTH = 256; // px
@@ -95,14 +96,13 @@ async function setup() {
         await loadROM(rom);
     });
 
-    events.on('loadRequest', async ({ timestamp }) => {
+    hooks.register('loadSave', async timestamp => {
         const save = await store.db.save.get(timestamp);
         loadState(nes, save.state);
         ui.visible.ref = false;
-        events.emit('loaded', { timestamp });
     });
 
-    events.on('loadLastRequest', async () => {
+    hooks.register('loadLastSave', async () => {
         const save = await store.db.save.getLast(store.ref.rom!);
         if (save != null) {
             loadState(nes, save.state);
@@ -110,10 +110,11 @@ async function setup() {
         }
     });
 
-    events.on('saveRequest', async () => {
+    hooks.register('saveState', async () => {
         const state = saveState(nes);
         const timestamp = await store.db.save.insert(store.ref.rom!, state);
         events.emit('saved', { timestamp });
+        return state;
     });
 
     const renderState = (state: Uint8Array, buffer: Uint8Array): void => {
@@ -123,8 +124,8 @@ async function setup() {
 
     let pausedState: Uint8Array | null = null;
 
-    events.on('setBackgroundRequest', async event => {
-        switch (event.mode) {
+    hooks.register('setBackground', async payload => {
+        switch (payload.mode) {
             case 'current': {
                 if (pausedState != null) {
                     renderState(pausedState, frame);
@@ -134,12 +135,12 @@ async function setup() {
                 break;
             }
             case 'at': {
-                const save = await store.db.save.get(event.timestamp);
+                const save = await store.db.save.get(payload.timestamp);
                 renderState(save.state, frame);
                 break;
             }
             case 'titleScreen': {
-                const titleScreen = await store.db.titleScreen.get(event.hash);
+                const titleScreen = await store.db.titleScreen.get(payload.hash);
                 if (titleScreen != null) {
                     frame.set(titleScreen.data);
                 } else {
@@ -166,8 +167,7 @@ async function setup() {
 
                 ui.visible.ref = true;
                 pausedState = store.ref.lastState;
-
-                events.emit('setBackgroundRequest', { mode: 'current' });
+                hooks.call('setBackground', { mode: 'current' });
             }
         }
 
@@ -177,7 +177,7 @@ async function setup() {
     events.on('uiToggled', ({ visible }) => {
         if (visible) {
             pausedState = saveState(nes);
-            events.emit('setBackgroundRequest', { mode: 'current' });
+            hooks.call('setBackground', { mode: 'current' });
         } else {
             if (pausedState !== null) {
                 loadState(nes, pausedState);
@@ -187,7 +187,7 @@ async function setup() {
 
     const titleScreenFrame = new Uint8Array(256 * 240 * 4);
 
-    events.on('generateTitleScreenRequest', async ({ hash }) => {
+    hooks.register('generateTitleScreen', async hash => {
         try {
             const rom = await store.db.rom.get(hash);
             const titleScreen = await store.db.titleScreen.get(hash);
@@ -201,14 +201,22 @@ async function setup() {
                 }
 
                 await store.db.titleScreen.insert(hash, titleScreenFrame);
-                events.emit('titleScreenGenerated', { hash, data: titleScreenFrame });
+                return titleScreenFrame;
             } else {
-                events.emit('titleScreenGenerated', { hash, data: titleScreen.data });
+                return titleScreen.data;
             }
         } catch (error) {
             console.error(`Failed to generate title screen for ${hash}: ${error}`);
             titleScreenFrame.fill(0);
-            events.emit('titleScreenGenerated', { hash, data: titleScreenFrame });
+            return titleScreenFrame;
+        }
+    });
+
+    hooks.register('toggleFullscreen', () => {
+        if (document.fullscreenElement) {
+            document.exitFullscreen();
+        } else {
+            canvas.requestFullscreen();
         }
     });
 

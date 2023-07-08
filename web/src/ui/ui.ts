@@ -43,10 +43,11 @@ export const createUI = (store: Store) => {
     window.addEventListener('keydown', event => {
         const activeMenuItem = menuItems[menu.state.activeIndex];
 
-        if (event.key === 'Escape') {
+        if (event.key === 'Escape' || event.key === 'Tab') {
             visible.ref = !visible.ref;
             events.emit('uiToggled', { visible: visible.ref });
             event.preventDefault();
+            event.stopPropagation();
         } else if (visible.ref) {
             const captured = subMenuMapping[activeMenuItem].onKeyDown(event.key);
 
