@@ -40,7 +40,18 @@ impl WasmNes {
 
     #[wasm_bindgen(js_name = nextFrame)]
     pub fn next_frame(&mut self, buffer: &mut [u8]) {
-        self.nes.next_frame(buffer);
+        self.nes.next_frame();
+        buffer.copy_from_slice(self.nes.get_frame())
+    }
+
+    #[wasm_bindgen(js_name = nextSamples)]
+    pub fn next_samples(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut [f32]) {
+        self.nes.next_samples(frame_buffer, audio_buffer);
+    }
+
+    #[wasm_bindgen(js_name = fillFrameBuffer)]
+    pub fn fill_frame_buffer(&self, buffer: &mut [u8]) {
+        buffer.copy_from_slice(self.nes.get_frame())
     }
 
     #[wasm_bindgen(js_name = setJoypad1)]

@@ -3,13 +3,14 @@ const CPU_FREQ: f64 = 1789773.0;
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct APU {
-    sample_rate: f64,
+    cycles_per_sample: f64,
     buffer: [f32; APU_BUFFER_SIZE],
     buffer_index: u16,
     cycle: u32,
     frame_counter: u32,
     pulse1: PulseChannel,
     pulse2: PulseChannel,
+    current_sample: Option<f32>,
 }
 
 #[rustfmt::skip]
@@ -27,13 +28,14 @@ const PULSE_LOOKUP: [f32; 32] = [
 impl APU {
     pub fn new(sound_card_sample_rate: f64) -> APU {
         APU {
-            sample_rate: CPU_FREQ / sound_card_sample_rate,
+            cycles_per_sample: CPU_FREQ / sound_card_sample_rate,
             buffer: [0.0; APU_BUFFER_SIZE],
             buffer_index: 0,
             cycle: 0,
             frame_counter: 0,
             pulse1: PulseChannel::new(),
             pulse2: PulseChannel::new(),
+            current_sample: None,
         }
     }
 
@@ -47,12 +49,19 @@ impl APU {
     }
 
     fn push_sample(&mut self) {
+        self.current_sample = Some(self.get_sample());
+
         if self.buffer_index < APU_BUFFER_SIZE as u16 {
             self.buffer[self.buffer_index as usize] = self.get_sample();
             self.buffer_index += 1;
         } else {
             // js::log(&format!("Buffer overflow!"));
         }
+    }
+
+    #[inline]
+    pub fn pull_sample(&mut self) -> Option<f32> {
+        self.current_sample.take()
     }
 
     pub fn write(&mut self, addr: u16, val: u8) {
@@ -97,18 +106,16 @@ impl APU {
     }
 
     pub fn step(&mut self) {
-        let cycle = self.cycle;
-        let new_sample = (cycle as f64 / self.sample_rate) as u32
-            != ((cycle + 1) as f64 / self.sample_rate) as u32;
-
+        let prev_sample_count = (self.cycle as f64 / self.cycles_per_sample) as u32;
         self.cycle += 1;
+        let next_sample_count = (self.cycle as f64 / self.cycles_per_sample) as u32;
 
         if self.cycle & 1 == 0 {
             self.pulse1.step();
             self.pulse2.step();
         }
 
-        if new_sample {
+        if prev_sample_count != next_sample_count {
             self.push_sample();
         }
     }

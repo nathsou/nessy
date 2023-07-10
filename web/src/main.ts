@@ -2,11 +2,20 @@ import init, { Nes } from '../public/pkg/nessy';
 import { createController } from './controls';
 import { events } from './ui/events';
 import { hooks } from './ui/hooks';
-import { Binary, StoreData, createStore } from './ui/store';
+import { StoreData, createStore } from './ui/store';
 import { createUI } from './ui/ui';
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
-const AUDIO_BUFFER_SIZE = 4096; // samples
+
+const SYNC_MODE = {
+    VIDEO: 0,
+    AUDIO: 1,
+};
+
+const AUDIO_BUFFER_SIZE_MAPPING = {
+    [SYNC_MODE.VIDEO]: 4096,
+    [SYNC_MODE.AUDIO]: 512,
+};
 
 const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['style']['imageRendering']> = {
     pixelated: 'pixelated',
@@ -14,6 +23,8 @@ const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['
 };
 
 async function setup() {
+    const syncMode = SYNC_MODE.AUDIO;
+    const audioBufferSize = AUDIO_BUFFER_SIZE_MAPPING[syncMode];
     const store = await createStore();
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
     canvas.width = WIDTH;
@@ -43,15 +54,41 @@ async function setup() {
     const frame: Uint8Array = imageData.data as any;
     const audioCtx = new AudioContext();
     const ui = createUI(store, audioCtx);
+    const samplesPerFrame = audioCtx.sampleRate / 60;
+    const getFrameCount = (samples: number) => Math.floor(samples / samplesPerFrame);
+    let samples = 0;
+    let visibileFrame = 0;
 
     // TODO: use an AudioWorkletNode
-    const scriptProcessor = audioCtx.createScriptProcessor(AUDIO_BUFFER_SIZE, 0, 1);
-    scriptProcessor.onaudioprocess = e => {
-        if (!ui.visible.ref) {
-            const channel = e.outputBuffer.getChannelData(0);
-            nes.fillAudioBuffer(channel);
+    const scriptProcessor = audioCtx.createScriptProcessor(audioBufferSize, 0, 1);
+    scriptProcessor.onaudioprocess = ((): ScriptProcessorNode['onaudioprocess'] => {
+        if (syncMode === SYNC_MODE.AUDIO) {
+            return (event: AudioProcessingEvent) => {
+                if (!ui.visible.ref) {
+                    const channel = event.outputBuffer.getChannelData(0);
+
+                    if (nes !== undefined) {
+                        nes.nextSamples(frame, channel);
+                        samples += channel.length;
+                        const currentFrame = getFrameCount(samples);
+
+                        if (visibileFrame !== currentFrame) {
+                            visibileFrame = currentFrame;
+                            controller.tick();
+                            ctx.putImageData(imageData, 0, 0);
+                        }
+                    }
+                }
+            };
+        } else {
+            return (event: AudioProcessingEvent) => {
+                if (!ui.visible.ref) {
+                    const channel = event.outputBuffer.getChannelData(0);
+                    nes.fillAudioBuffer(channel);
+                }
+            };
         }
-    };
+    })();
 
     scriptProcessor.connect(audioCtx.destination);
 
@@ -233,9 +270,6 @@ async function setup() {
     function onExit() {
         if (nes != null) {
             store.ref.lastState = nes.saveState();
-            Binary.hash(store.ref.lastState).then(hash => {
-                console.log(`onExit: ${hash}`);
-            });
         }
 
         store.save();
@@ -244,16 +278,15 @@ async function setup() {
     function run(): void {
         requestAnimationFrame(run);
 
-        if (!ui.visible.ref) {
-            if (nes !== undefined) {
-                nes.nextFrame(frame);
-                controller.tick();
-            }
-        } else {
+        if (ui.visible.ref) {
             ui.render(imageData);
+            ctx.putImageData(imageData, 0, 0);
+        } else if (nes !== undefined && syncMode === SYNC_MODE.VIDEO) {
+            nes.nextFrame(frame);
+            controller.tick();
+            ctx.putImageData(imageData, 0, 0);
         }
 
-        ctx.putImageData(imageData, 0, 0);
     }
 
     await onInit();

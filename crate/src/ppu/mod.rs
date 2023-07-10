@@ -60,6 +60,7 @@ pub struct PPU {
     pattern_table_high_byte: u8,
     scanline_sprites: [SpriteData; 8],
     visible_sprites_count: u8,
+    frame_buffer: [u8; WIDTH * HEIGHT * 4],
 }
 
 impl PPU {
@@ -93,6 +94,7 @@ impl PPU {
                 chr: [0; 8],
             }; 8],
             visible_sprites_count: 0,
+            frame_buffer: [0; WIDTH * HEIGHT * 4],
         };
 
         ppu.reset();
@@ -134,7 +136,7 @@ impl PPU {
         }
     }
 
-    pub fn step(&mut self, frame: &mut [u8]) {
+    pub fn step(&mut self) {
         self.tick();
 
         let preline = self.scanline == 261;
@@ -147,7 +149,7 @@ impl PPU {
         // background logic
         if self.regs.show_background() {
             if visible_line && visible_cycle {
-                self.render_pixel(frame);
+                self.render_pixel();
             }
 
             if render_line && fetch_cycle {
@@ -197,6 +199,7 @@ impl PPU {
             self.frame_complete = true;
             self.regs.status.insert(Status::VBLANK_STARTED);
             self.detect_nmi_edge();
+            // self.transfer_frame_buffer();
         }
 
         if preline && self.cycle == 1 {
@@ -206,6 +209,12 @@ impl PPU {
             self.detect_nmi_edge();
         }
     }
+
+    // #[inline]
+    // fn transfer_frame_buffer(&mut self) {
+    //     self.complete_frame_buffer
+    //         .copy_from_slice(&self.frame_buffer);
+    // }
 
     fn detect_nmi_edge(&mut self) {
         let nmi = self.regs.ctrl.contains(Ctrl::GENERATE_NMI)
@@ -373,7 +382,7 @@ impl PPU {
         self.visible_sprites_count = count as u8;
     }
 
-    fn render_pixel(&mut self, frame: &mut [u8]) {
+    fn render_pixel(&mut self) {
         let x = self.cycle - 1;
         let y = self.scanline;
         let mut bg = self.get_background_pixel();
@@ -413,7 +422,7 @@ impl PPU {
             }
         }
 
-        Self::set_pixel(frame, x as usize, y as usize, color);
+        Self::set_pixel(&mut self.frame_buffer, x as usize, y as usize, color);
     }
 
     #[inline]
@@ -597,22 +606,9 @@ impl PPU {
         }
     }
 
-    pub fn trace(&self) -> String {
-        format!(
-            "c{}s{}f{}v{:X}t{:X}x{:X}w{:X}f{}-c{:X}m{:X}s{:X}r{:X}",
-            self.cycle,
-            self.scanline,
-            self.frame,
-            self.regs.v,
-            self.regs.t,
-            self.regs.x,
-            if self.regs.w { 1 } else { 0 },
-            if self.regs.f { 1 } else { 0 },
-            self.regs.ctrl.bits(),
-            self.regs.mask.bits(),
-            self.regs.status.bits(),
-            self.open_bus,
-        )
+    #[inline]
+    pub fn get_frame(&self) -> &[u8] {
+        &self.frame_buffer
     }
 }
 
