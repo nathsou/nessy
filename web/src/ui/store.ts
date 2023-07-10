@@ -12,7 +12,7 @@ const getDefaultStore = () => ({
     frameCount: 0,
     rom: union<string | null>(null),
     controls: createControls(),
-    scalingFactor: union<1 | 2 | 3 | 4 | 50>(3),
+    scalingFactor: union<1 | 2 | 3 | 4 | 50>(4),
     scalingMode: union<'pixelated' | 'blurry'>('pixelated'),
     lastState: union<Uint8Array | null>(null),
 });

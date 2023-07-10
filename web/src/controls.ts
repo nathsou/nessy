@@ -1,4 +1,4 @@
-import { Nes, loadState, resetConsole, setJoypad1 } from "../public/pkg/nessy";
+import { Nes } from "../public/pkg/nessy";
 import { hooks } from "./ui/hooks";
 import { Store } from "./ui/store";
 
@@ -34,7 +34,7 @@ const DEFAULT_CONTROLS = {
     b: 'k',
     a: 'l',
     start: 'Enter',
-    select: 'Space',
+    select: ' ',
 };
 
 export const createControls = (controls: Record<ControlButton, string> = DEFAULT_CONTROLS) => {
@@ -89,14 +89,14 @@ export const createController = (nes: Nes, store: Store) => {
                 }
                 case 'r': {
                     event.preventDefault();
-                    resetConsole(nes);
+                    nes.reset();
                     return;
                 }
                 case 'l': {
                     event.preventDefault();
                     const save = await store.db.save.getLast(store.ref.rom!);
                     if (save != null) {
-                        loadState(nes, save.state);
+                        nes.loadState(save.state);
                     }
                     return;
                 }
@@ -123,7 +123,7 @@ export const createController = (nes: Nes, store: Store) => {
                 changed = true;
             }
 
-            setJoypad1(nes, state);
+            nes.setJoypad1(state);
         }
     }
 

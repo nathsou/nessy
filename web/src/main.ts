@@ -1,9 +1,4 @@
-import init, {
-    Nes, createConsole,
-    loadState,
-    nextFrame,
-    saveState
-} from '../public/pkg/nessy';
+import init, { Nes } from '../public/pkg/nessy';
 import { createController } from './controls';
 import { events } from './ui/events';
 import { hooks } from './ui/hooks';
@@ -11,6 +6,7 @@ import { Binary, StoreData, createStore } from './ui/store';
 import { createUI } from './ui/ui';
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
+const AUDIO_BUFFER_SIZE = 4096; // samples
 
 const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['style']['imageRendering']> = {
     pixelated: 'pixelated',
@@ -45,11 +41,23 @@ async function setup() {
     let nes: Nes;
     let controller: ReturnType<typeof createController>;
     const frame: Uint8Array = imageData.data as any;
-    const ui = createUI(store);
+    const audioCtx = new AudioContext();
+    const ui = createUI(store, audioCtx);
 
-    const updateROM = (rom: Uint8Array): void => {
+    // TODO: use an AudioWorkletNode
+    const scriptProcessor = audioCtx.createScriptProcessor(AUDIO_BUFFER_SIZE, 0, 1);
+    scriptProcessor.onaudioprocess = e => {
+        if (!ui.visible.ref) {
+            const channel = e.outputBuffer.getChannelData(0);
+            nes.fillAudioBuffer(channel);
+        }
+    };
+
+    scriptProcessor.connect(audioCtx.destination);
+
+    function updateROM(rom: Uint8Array): void {
         ui.visible.ref = false;
-        nes = createConsole(rom);
+        nes = Nes.new(rom, audioCtx.sampleRate);
 
         const onKeyDown = (event: KeyboardEvent) => {
             if (!ui.visible.ref) {
@@ -78,7 +86,7 @@ async function setup() {
         window.addEventListener('beforeunload', controller.save);
 
         frame.fill(0);
-    };
+    }
 
     async function loadROM(hash: string | null): Promise<void> {
         if (hash != null) {
@@ -98,29 +106,31 @@ async function setup() {
 
     hooks.register('loadSave', async timestamp => {
         const save = await store.db.save.get(timestamp);
-        loadState(nes, save.state);
+        nes.loadState(save.state);
         ui.visible.ref = false;
     });
 
     hooks.register('loadLastSave', async () => {
         const save = await store.db.save.getLast(store.ref.rom!);
         if (save != null) {
-            loadState(nes, save.state);
+            nes.loadState(save.state);
             ui.visible.ref = false;
         }
     });
 
     hooks.register('saveState', async () => {
-        const state = saveState(nes);
+        const state = nes.saveState();
         const timestamp = await store.db.save.insert(store.ref.rom!, state);
         events.emit('saved', { timestamp });
         return state;
     });
 
-    const renderState = (state: Uint8Array, buffer: Uint8Array): void => {
-        loadState(nes, state);
-        nextFrame(nes, buffer);
-    };
+    function renderState(state: Uint8Array, buffer: Uint8Array): void {
+        const prevState = nes.saveState();
+        nes.loadState(state);
+        nes.nextFrame(buffer);
+        nes.loadState(prevState);
+    }
 
     let pausedState: Uint8Array | null = null;
 
@@ -161,9 +171,9 @@ async function setup() {
             await loadROM(store.ref.rom);
 
             if (store.ref.lastState != null) {
-                loadState(nes, store.ref.lastState);
-                nextFrame(nes, frame);
-                loadState(nes, store.ref.lastState);
+                nes.loadState(store.ref.lastState);
+                nes.nextFrame(frame);
+                nes.loadState(store.ref.lastState);
 
                 ui.visible.ref = true;
                 pausedState = store.ref.lastState;
@@ -176,11 +186,11 @@ async function setup() {
 
     events.on('uiToggled', ({ visible }) => {
         if (visible) {
-            pausedState = saveState(nes);
+            pausedState = nes.saveState();
             hooks.call('setBackground', { mode: 'current' });
         } else {
             if (pausedState !== null) {
-                loadState(nes, pausedState);
+                nes.loadState(pausedState);
             }
         }
     });
@@ -193,11 +203,11 @@ async function setup() {
             const titleScreen = await store.db.titleScreen.get(hash);
 
             if (titleScreen == null) {
-                const titleScreenNes = createConsole(rom.data);
+                const titleScreenNes = Nes.new(rom.data, audioCtx.sampleRate);
 
                 // Generate the screenshot after 2 seconds
                 for (let i = 0; i < 120; i++) {
-                    nextFrame(titleScreenNes, titleScreenFrame);
+                    titleScreenNes.nextFrame(titleScreenFrame);
                 }
 
                 await store.db.titleScreen.insert(hash, titleScreenFrame);
@@ -222,7 +232,7 @@ async function setup() {
 
     function onExit() {
         if (nes != null) {
-            store.ref.lastState = saveState(nes);
+            store.ref.lastState = nes.saveState();
             Binary.hash(store.ref.lastState).then(hash => {
                 console.log(`onExit: ${hash}`);
             });
@@ -236,7 +246,7 @@ async function setup() {
 
         if (!ui.visible.ref) {
             if (nes !== undefined) {
-                nextFrame(nes, frame);
+                nes.nextFrame(frame);
                 controller.tick();
             }
         } else {

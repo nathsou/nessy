@@ -1,4 +1,5 @@
 use self::controller::Joypad;
+use super::apu::APU;
 use super::ppu::PPU;
 use crate::{
     cpu::{memory::Memory, rom::ROM},
@@ -37,15 +38,17 @@ pub enum Interrupt {
 pub struct Bus {
     pub ram: RAM,
     pub ppu: PPU,
+    pub apu: APU,
     pub joypad1: Joypad,
     pub dma_transfer: bool,
 }
 
 impl Bus {
-    pub fn new(rom: ROM) -> Bus {
+    pub fn new(rom: ROM, sample_rate: f64) -> Bus {
         Bus {
             ram: RAM { ram: [0; 0x800] },
             ppu: PPU::new(rom),
+            apu: APU::new(sample_rate),
             joypad1: Joypad::new(),
             dma_transfer: false,
         }
@@ -59,11 +62,15 @@ impl Bus {
         }
     }
 
-    pub fn advance_ppu(&mut self, frame: &mut [u8], cpu_cycles: u32) {
+    pub fn advance(&mut self, frame: &mut [u8], cpu_cycles: u32) {
         let ppu_cycles = cpu_cycles * 3;
 
         for _ in 0..ppu_cycles {
             self.ppu.step(frame);
+        }
+
+        for _ in 0..cpu_cycles {
+            self.apu.step();
         }
     }
 }
@@ -79,10 +86,7 @@ impl Memory for Bus {
             0x2000..=0x2007 => self.ppu.read_register(addr),
             0x2008..=0x3fff => self.ppu.read_register(0x2000 + (addr & 7)),
             0x4016 => self.joypad1.read(),
-            0x4000..=0x4017 => {
-                // APU
-                0
-            }
+            0x4000..=0x4017 => self.apu.read(addr),
             0x4018..=0x401F => {
                 // APU and I/O functionality that is normally disabled.
                 0
@@ -108,7 +112,7 @@ impl Memory for Bus {
                 self.dma_transfer = true;
             }
             0x4016 => self.joypad1.write(val),
-            0x4000..=0x4017 => (), // APU
+            0x4000..=0x4017 => self.apu.write(addr, val),
             0x4018..=0x401F => (), // APU and I/O functionality that is normally disabled.
             0x4020..=0xffff => self.ppu.rom.mapper.write(&mut self.ppu.rom.cart, addr, val),
         }

@@ -10,7 +10,7 @@ import { events } from "./events";
 import { createScreen } from "./screen";
 import { Store } from "./store";
 
-export const createUI = (store: Store) => {
+export const createUI = (store: Store, audioContext: AudioContext) => {
     let visible = { ref: true };
     const screen = createScreen();
     const subMenuMapping: Record<string, Component<{ activeIndex: number }> & {
@@ -47,7 +47,7 @@ export const createUI = (store: Store) => {
             visible.ref = !visible.ref;
             events.emit('uiToggled', { visible: visible.ref });
             event.preventDefault();
-            event.stopPropagation();
+            audioContext.resume();
         } else if (visible.ref) {
             const captured = subMenuMapping[activeMenuItem].onKeyDown(event.key);
 

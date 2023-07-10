@@ -1,3 +1,4 @@
+mod apu;
 mod bus;
 mod cpu;
 mod js;
@@ -18,89 +19,50 @@ cfg_if! {
     }
 }
 
-#[wasm_bindgen(js_name = createConsole)]
-pub fn create_console(rom: Vec<u8>) -> Nes {
-    console_error_panic_hook::set_once();
-    let rom = ROM::new(rom).unwrap();
-    Nes::new(rom)
+#[wasm_bindgen(js_name = Nes)]
+pub struct WasmNes {
+    nes: Nes,
 }
 
-#[wasm_bindgen(js_name = resetConsole)]
-pub fn reset_console(console: &mut Nes) {
-    console.reset();
-}
-
-#[wasm_bindgen(js_name = nextFrame)]
-pub fn next_frame(console: &mut Nes, buffer: &mut [u8]) {
-    console.next_frame(buffer);
-}
-
-#[wasm_bindgen(js_name = setJoypad1)]
-pub fn set_joypad1(console: &mut Nes, buttons: u8) {
-    console.joypad1().update(buttons);
-}
-
-#[wasm_bindgen(js_name = saveState)]
-pub fn save_state(console: &mut Nes) -> Vec<u8> {
-    let mut state = SaveState::new();
-    console.save(&mut state);
-    state.get_data()
-}
-
-#[wasm_bindgen(js_name = loadState)]
-pub fn load_state(console: &mut Nes, data: Vec<u8>) {
-    let mut state = SaveState::from(data);
-    console.load(&mut state);
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs::File;
-    use std::io::{self, BufRead};
-    use std::path::Path;
-
-    use crate::cpu::rom::ROM;
-    use crate::nes::Nes;
-
-    fn load_rom(path: &str) -> ROM {
-        let bytes = std::fs::read(path).unwrap();
-        ROM::new(bytes).expect("Failed to load ROM")
+#[wasm_bindgen(js_class = Nes)]
+impl WasmNes {
+    pub fn new(rom: Vec<u8>, sample_rate: f64) -> WasmNes {
+        console_error_panic_hook::set_once();
+        let rom = ROM::new(rom).unwrap();
+        WasmNes {
+            nes: Nes::new(rom, sample_rate),
+        }
     }
 
-    #[test]
-    fn test_dump() {
-        let rom =
-            load_rom("/Users/nathan/Documents/Code/Rust/nessy/web/public/roms/Chessmaster.nes");
-        let path = Path::new("/Users/nathan/Desktop/dump.log");
-        let file = File::open(path).expect("Failed to open dump file");
-        let reader = io::BufReader::new(file);
-        let mut nes = Nes::new(rom);
-        let mut lines = reader.lines().map(|l| l.unwrap()).peekable();
-        let mut frame = [0u8; 256 * 240 * 4];
-        let mut pcs = [0, 0, 0, 0];
+    pub fn reset(&mut self) {
+        self.nes.reset();
+    }
 
-        while let Some(line) = lines.peek() {
-            if let Some(input) = line.strip_prefix('!') {
-                let joypad1 = u8::from_str_radix(input, 2).unwrap();
-                nes.joypad1().update(joypad1);
-                lines.next();
-            } else {
-                nes.step(&mut frame);
-                let pc = nes.get_cpu().pc;
-                let is_loop = pcs.contains(&pc);
+    #[wasm_bindgen(js_name = nextFrame)]
+    pub fn next_frame(&mut self, buffer: &mut [u8]) {
+        self.nes.next_frame(buffer);
+    }
 
-                pcs[3] = pcs[2];
-                pcs[2] = pcs[1];
-                pcs[1] = pcs[0];
-                pcs[0] = pc;
+    #[wasm_bindgen(js_name = setJoypad1)]
+    pub fn set_joypad1(&mut self, buttons: u8) {
+        self.nes.joypad1().update(buttons);
+    }
 
-                if !is_loop {
-                    let trace = nes.trace();
-                    println!("{trace}");
-                    assert_eq!(&trace, line);
-                    lines.next();
-                }
-            }
-        }
+    #[wasm_bindgen(js_name = saveState)]
+    pub fn save_state(&mut self) -> Vec<u8> {
+        let mut state = SaveState::new();
+        self.nes.save(&mut state);
+        state.get_data()
+    }
+
+    #[wasm_bindgen(js_name = loadState)]
+    pub fn load_state(&mut self, data: Vec<u8>) {
+        let mut state = SaveState::from(data);
+        self.nes.load(&mut state);
+    }
+
+    #[wasm_bindgen(js_name = fillAudioBuffer)]
+    pub fn fill_audio_buffer(&mut self, buffer: &mut [f32]) {
+        self.nes.fill_audio_buffer(buffer);
     }
 }
