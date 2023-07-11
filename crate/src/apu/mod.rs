@@ -1,16 +1,20 @@
-const APU_BUFFER_SIZE: usize = 8192;
-const CPU_FREQ: f64 = 1789773.0;
+const APU_BUFFER_SIZE: usize = 1024 * 8;
+const APU_BUFFER_MASK: u16 = APU_BUFFER_SIZE as u16 - 1;
+const CPU_FREQ: f64 = 1789772.5;
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct APU {
     cycles_per_sample: f64,
+    samples_per_frame: f64,
     buffer: [f32; APU_BUFFER_SIZE],
-    buffer_index: u16,
+    buffer_write_index: u16,
+    buffer_read_index: u16,
     cycle: u32,
     frame_counter: u32,
     pulse1: PulseChannel,
     pulse2: PulseChannel,
     current_sample: Option<f32>,
+    samples_pushed: u32,
 }
 
 #[rustfmt::skip]
@@ -29,13 +33,16 @@ impl APU {
     pub fn new(sound_card_sample_rate: f64) -> APU {
         APU {
             cycles_per_sample: CPU_FREQ / sound_card_sample_rate,
+            samples_per_frame: sound_card_sample_rate / 60.0,
             buffer: [0.0; APU_BUFFER_SIZE],
-            buffer_index: 0,
+            buffer_write_index: 0,
+            buffer_read_index: 0,
             cycle: 0,
             frame_counter: 0,
             pulse1: PulseChannel::new(),
             pulse2: PulseChannel::new(),
             current_sample: None,
+            samples_pushed: 0,
         }
     }
 
@@ -49,14 +56,10 @@ impl APU {
     }
 
     fn push_sample(&mut self) {
+        self.samples_pushed += 1;
         self.current_sample = Some(self.get_sample());
-
-        if self.buffer_index < APU_BUFFER_SIZE as u16 {
-            self.buffer[self.buffer_index as usize] = self.get_sample();
-            self.buffer_index += 1;
-        } else {
-            // js::log(&format!("Buffer overflow!"));
-        }
+        self.buffer[self.buffer_write_index as usize] = self.get_sample();
+        self.buffer_write_index = (self.buffer_write_index + 1) & APU_BUFFER_MASK;
     }
 
     #[inline]
@@ -105,26 +108,42 @@ impl APU {
         0
     }
 
+    #[inline]
+    fn get_sample_count(&self) -> u32 {
+        (self.cycle as f64 / self.cycles_per_sample) as u32
+    }
+
     pub fn step(&mut self) {
-        let prev_sample_count = (self.cycle as f64 / self.cycles_per_sample) as u32;
         self.cycle += 1;
-        let next_sample_count = (self.cycle as f64 / self.cycles_per_sample) as u32;
+        let next_sample_count = self.get_sample_count();
 
         if self.cycle & 1 == 0 {
             self.pulse1.step();
             self.pulse2.step();
         }
 
-        if prev_sample_count != next_sample_count {
+        if self.samples_pushed != next_sample_count {
             self.push_sample();
         }
+    }
+
+    pub fn remaining_buffered_samples(&self) -> u16 {
+        if self.buffer_write_index >= self.buffer_read_index {
+            self.buffer_write_index - self.buffer_read_index
+        } else {
+            APU_BUFFER_SIZE as u16 - self.buffer_read_index + self.buffer_write_index
+        }
+    }
+
+    pub fn remaining_samples_in_frame(&self) -> usize {
+        (self.samples_per_frame - (self.samples_pushed as f64 % self.samples_per_frame)) as usize
     }
 
     pub fn fill(&mut self, buffer: &mut [f32]) {
         let client_buffer_size = buffer.len();
 
         for i in 0..client_buffer_size {
-            buffer[i] = if i < self.buffer_index as usize {
+            buffer[i] = if i < self.buffer_write_index as usize {
                 self.buffer[i]
             } else {
                 // js::log(&format!("Buffer underflow!"));
@@ -136,8 +155,8 @@ impl APU {
             self.buffer[i - client_buffer_size] = self.buffer[i];
         }
 
-        self.buffer_index = if self.buffer_index > client_buffer_size as u16 {
-            self.buffer_index - client_buffer_size as u16
+        self.buffer_write_index = if self.buffer_write_index > client_buffer_size as u16 {
+            self.buffer_write_index - client_buffer_size as u16
         } else {
             0
         };

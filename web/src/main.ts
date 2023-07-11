@@ -1,20 +1,22 @@
 import init, { Nes } from '../public/pkg/nessy';
 import { createController } from './controls';
+import { createWebglRenderer } from './render/webgl';
 import { events } from './ui/events';
 import { hooks } from './ui/hooks';
 import { StoreData, createStore } from './ui/store';
 import { createUI } from './ui/ui';
+
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
-
-const SYNC_MODE = {
-    VIDEO: 0,
-    AUDIO: 1,
-};
+type SyncMode = 0 | 1 | 2;
+const SYNC_VIDEO: SyncMode = 0;
+const SYNC_AUDIO: SyncMode = 1;
+const SYNC_BOTH: SyncMode = 2;
 
 const AUDIO_BUFFER_SIZE_MAPPING = {
-    [SYNC_MODE.VIDEO]: 4096,
-    [SYNC_MODE.AUDIO]: 512,
+    [SYNC_VIDEO]: 1024,
+    [SYNC_AUDIO]: 256,
+    [SYNC_BOTH]: 512,
 };
 
 const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['style']['imageRendering']> = {
@@ -23,10 +25,12 @@ const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['
 };
 
 async function setup() {
-    const syncMode = SYNC_MODE.AUDIO;
+    const syncMode = SYNC_VIDEO;
     const audioBufferSize = AUDIO_BUFFER_SIZE_MAPPING[syncMode];
+    const avoidUnderruns = syncMode === SYNC_BOTH;
     const store = await createStore();
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
+    const renderer = createWebglRenderer(canvas);
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
     canvas.style.imageRendering = SCALING_MODE_MAPPING[store.ref.scalingMode];
@@ -45,37 +49,27 @@ async function setup() {
         canvas.style.imageRendering = SCALING_MODE_MAPPING[store.ref.scalingMode];
     });
 
-    const ctx = canvas.getContext('2d')!;
-    const imageData = ctx.createImageData(WIDTH, HEIGHT);
-
     await init();
     let nes: Nes;
     let controller: ReturnType<typeof createController>;
-    const frame: Uint8Array = imageData.data as any;
+    const frame = new Uint8Array(WIDTH * HEIGHT * 3);
     const audioCtx = new AudioContext();
     const ui = createUI(store, audioCtx);
-    const samplesPerFrame = audioCtx.sampleRate / 60;
-    const getFrameCount = (samples: number) => Math.floor(samples / samplesPerFrame);
-    let samples = 0;
-    let visibileFrame = 0;
 
     // TODO: use an AudioWorkletNode
     const scriptProcessor = audioCtx.createScriptProcessor(audioBufferSize, 0, 1);
     scriptProcessor.onaudioprocess = ((): ScriptProcessorNode['onaudioprocess'] => {
-        if (syncMode === SYNC_MODE.AUDIO) {
+        if (syncMode === SYNC_AUDIO) {
             return (event: AudioProcessingEvent) => {
                 if (!ui.visible.ref) {
                     const channel = event.outputBuffer.getChannelData(0);
 
                     if (nes !== undefined) {
-                        nes.nextSamples(frame, channel);
-                        samples += channel.length;
-                        const currentFrame = getFrameCount(samples);
+                        const newFrameReady = nes.nextSamples(channel);
 
-                        if (visibileFrame !== currentFrame) {
-                            visibileFrame = currentFrame;
-                            controller.tick();
-                            ctx.putImageData(imageData, 0, 0);
+                        if (newFrameReady) {
+                            nes.fillFrameBuffer(frame);
+                            renderer.render(frame);
                         }
                     }
                 }
@@ -84,7 +78,7 @@ async function setup() {
             return (event: AudioProcessingEvent) => {
                 if (!ui.visible.ref) {
                     const channel = event.outputBuffer.getChannelData(0);
-                    nes.fillAudioBuffer(channel);
+                    nes.fillAudioBuffer(channel, avoidUnderruns);
                 }
             };
         }
@@ -199,7 +193,7 @@ async function setup() {
         }
 
         ui.screen.setBackground(frame);
-        ctx.putImageData(imageData, 0, 0);
+        renderer.render(frame);
         ui.screen.setBackgroundOpacity(0.2);
     });
 
@@ -232,7 +226,7 @@ async function setup() {
         }
     });
 
-    const titleScreenFrame = new Uint8Array(256 * 240 * 4);
+    const titleScreenFrame = new Uint8Array(WIDTH * HEIGHT * 3);
 
     hooks.register('generateTitleScreen', async hash => {
         try {
@@ -279,14 +273,16 @@ async function setup() {
         requestAnimationFrame(run);
 
         if (ui.visible.ref) {
-            ui.render(imageData);
-            ctx.putImageData(imageData, 0, 0);
-        } else if (nes !== undefined && syncMode === SYNC_MODE.VIDEO) {
-            nes.nextFrame(frame);
+            ui.render(frame);
+            renderer.render(frame);
+        } else if (nes !== undefined) {
             controller.tick();
-            ctx.putImageData(imageData, 0, 0);
-        }
 
+            if (syncMode !== SYNC_AUDIO) {
+                nes.nextFrame(frame);
+                renderer.render(frame);
+            }
+        }
     }
 
     await onInit();

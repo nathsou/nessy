@@ -45,8 +45,8 @@ impl WasmNes {
     }
 
     #[wasm_bindgen(js_name = nextSamples)]
-    pub fn next_samples(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut [f32]) {
-        self.nes.next_samples(frame_buffer, audio_buffer);
+    pub fn next_samples(&mut self, audio_buffer: &mut [f32]) -> bool {
+        self.nes.next_samples(audio_buffer)
     }
 
     #[wasm_bindgen(js_name = fillFrameBuffer)]
@@ -73,7 +73,7 @@ impl WasmNes {
     }
 
     #[wasm_bindgen(js_name = fillAudioBuffer)]
-    pub fn fill_audio_buffer(&mut self, buffer: &mut [f32]) {
-        self.nes.fill_audio_buffer(buffer);
+    pub fn fill_audio_buffer(&mut self, buffer: &mut [f32], avoid_underruns: bool) {
+        self.nes.fill_audio_buffer(buffer, avoid_underruns);
     }
 }

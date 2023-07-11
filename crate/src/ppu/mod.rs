@@ -60,7 +60,8 @@ pub struct PPU {
     pattern_table_high_byte: u8,
     scanline_sprites: [SpriteData; 8],
     visible_sprites_count: u8,
-    frame_buffer: [u8; WIDTH * HEIGHT * 4],
+    frame_buffer: [u8; WIDTH * HEIGHT * 3],
+    frame_buffer_complete: [u8; WIDTH * HEIGHT * 3],
 }
 
 impl PPU {
@@ -94,7 +95,8 @@ impl PPU {
                 chr: [0; 8],
             }; 8],
             visible_sprites_count: 0,
-            frame_buffer: [0; WIDTH * HEIGHT * 4],
+            frame_buffer: [0; WIDTH * HEIGHT * 3],
+            frame_buffer_complete: [0; WIDTH * HEIGHT * 3],
         };
 
         ppu.reset();
@@ -199,7 +201,7 @@ impl PPU {
             self.frame_complete = true;
             self.regs.status.insert(Status::VBLANK_STARTED);
             self.detect_nmi_edge();
-            // self.transfer_frame_buffer();
+            self.transfer_frame_buffer();
         }
 
         if preline && self.cycle == 1 {
@@ -210,11 +212,11 @@ impl PPU {
         }
     }
 
-    // #[inline]
-    // fn transfer_frame_buffer(&mut self) {
-    //     self.complete_frame_buffer
-    //         .copy_from_slice(&self.frame_buffer);
-    // }
+    #[inline]
+    fn transfer_frame_buffer(&mut self) {
+        self.frame_buffer_complete
+            .copy_from_slice(&self.frame_buffer);
+    }
 
     fn detect_nmi_edge(&mut self) {
         let nmi = self.regs.ctrl.contains(Ctrl::GENERATE_NMI)
@@ -432,11 +434,10 @@ impl PPU {
 
     pub fn set_pixel(frame: &mut [u8], x: usize, y: usize, (r, g, b): (u8, u8, u8)) {
         if x < WIDTH && y < HEIGHT {
-            let offset = (y * WIDTH + x) * 4;
+            let offset = (y * WIDTH + x) * 3;
             frame[offset] = r;
             frame[offset + 1] = g;
             frame[offset + 2] = b;
-            frame[offset + 3] = 255;
         }
     }
 
@@ -608,7 +609,7 @@ impl PPU {
 
     #[inline]
     pub fn get_frame(&self) -> &[u8] {
-        &self.frame_buffer
+        &self.frame_buffer_complete
     }
 }
 

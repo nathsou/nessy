@@ -80,11 +80,11 @@ export const createUI = (store: Store, audioContext: AudioContext) => {
         }
     });
 
-    function render(imageData: ImageData): void {
+    function render(buffer: Uint8Array): void {
         screen.clear();
         menu.render(0, 6, screen);
         subMenu.render(0, 9, screen);
-        screen.render(imageData);
+        screen.render(buffer);
     }
 
     return { render, screen, visible };

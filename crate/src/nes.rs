@@ -1,6 +1,7 @@
 use crate::{
     bus::{controller::Joypad, Bus},
     cpu::{rom::ROM, CPU},
+    js,
     savestate::{Save, SaveState},
 };
 
@@ -29,9 +30,9 @@ impl Nes {
     }
 
     /// emulates enough cycles to fill the audio buffer,
-    /// the frame buffer gets updated when a new frame is ready
-    pub fn next_samples(&mut self, frame_buffer: &mut [u8], audio_buffer: &mut [f32]) {
+    pub fn next_samples(&mut self, audio_buffer: &mut [f32]) -> bool {
         let mut count = 0;
+        let mut new_frame = false;
 
         while count < audio_buffer.len() {
             loop {
@@ -41,8 +42,26 @@ impl Nes {
                         count += 1;
                         if self.cpu.bus.ppu.frame_complete {
                             self.cpu.bus.ppu.frame_complete = false;
-                            frame_buffer.copy_from_slice(self.cpu.bus.ppu.get_frame());
+                            new_frame = true;
                         }
+                        break;
+                    }
+                    None => self.step(),
+                }
+            }
+        }
+
+        new_frame
+    }
+
+    pub fn wait_for_samples(&mut self, count: usize) {
+        let mut i = 0;
+
+        while i < count {
+            loop {
+                match self.cpu.bus.apu.pull_sample() {
+                    Some(_) => {
+                        i += 1;
                         break;
                     }
                     None => self.step(),
@@ -51,7 +70,21 @@ impl Nes {
         }
     }
 
-    pub fn fill_audio_buffer(&mut self, buffer: &mut [f32]) {
+    pub fn fill_audio_buffer(&mut self, buffer: &mut [f32], avoid_underruns: bool) {
+        if avoid_underruns {
+            let remaining_samples_in_bufffer =
+                self.cpu.bus.apu.remaining_buffered_samples() as usize;
+
+            // ensure that the buffer is filled with enough samples
+            // wihtout skipping a frame
+            if remaining_samples_in_bufffer < buffer.len() {
+                let remaining_samples_in_frame = self.cpu.bus.apu.remaining_samples_in_frame();
+                let remaining_samples = buffer.len() - remaining_samples_in_bufffer;
+                let wait_for = remaining_samples.min(remaining_samples_in_frame - 1);
+                self.wait_for_samples(wait_for);
+            }
+        }
+
         self.cpu.bus.apu.fill(buffer);
     }
 
