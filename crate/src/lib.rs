@@ -34,8 +34,9 @@ impl WasmNes {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.nes.reset();
+    #[wasm_bindgen(js_name = softReset)]
+    pub fn soft_reset(&mut self) {
+        self.nes.soft_reset();
     }
 
     #[wasm_bindgen(js_name = nextFrame)]
@@ -60,7 +61,7 @@ impl WasmNes {
     }
 
     #[wasm_bindgen(js_name = saveState)]
-    pub fn save_state(&mut self) -> Vec<u8> {
+    pub fn save_state(&self) -> Vec<u8> {
         let mut state = SaveState::new();
         self.nes.save(&mut state);
         state.get_data()

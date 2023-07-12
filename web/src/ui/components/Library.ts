@@ -55,14 +55,14 @@ export const Library = (store: Store) => {
         }
     };
 
-    const playROM = (rom: RomEntry): void => {
+    function playROM(rom: RomEntry): void {
         store.set('rom', rom.hash);
-    };
+    }
 
-    const updateList = async () => {
+    async function updateList(): Promise<void> {
         roms = (await store.db.rom.list()).sort((a, b) => a.name.localeCompare(b.name));
         list.update(baseItems.concat(roms.map(rom => Button(Text(rom.name, { maxLength: MAX_LENGTH }), () => playROM(rom)))));
-    };
+    }
 
     function updateBackground() {
         const index = list.state.activeIndex;
@@ -80,22 +80,22 @@ export const Library = (store: Store) => {
 
     updateList();
 
-    const onKeyDown = (key: string): boolean => {
+    function onKeyDown(key: string): boolean {
         if (key === 'Enter') {
             list.state.items[list.state.activeIndex].enter();
             return true;
         }
 
         return false;
-    };
+    }
 
-    const setActive = (isActive: boolean) => {
+    function setActive(isActive: boolean): void {
         if (!isActive) {
             hooks.call('setBackground', { mode: 'current' });
         } else {
             updateBackground();
         }
-    };
+    }
 
     return {
         ...list,

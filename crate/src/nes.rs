@@ -1,7 +1,6 @@
 use crate::{
     bus::{controller::Joypad, Bus},
     cpu::{rom::ROM, CPU},
-    js,
     savestate::{Save, SaveState},
 };
 
@@ -88,8 +87,8 @@ impl Nes {
         self.cpu.bus.apu.fill(buffer);
     }
 
-    pub fn reset(&mut self) {
-        self.cpu.reset();
+    pub fn soft_reset(&mut self) {
+        self.cpu.soft_reset();
     }
 
     #[inline]

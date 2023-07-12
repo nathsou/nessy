@@ -25,12 +25,20 @@ const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['
 };
 
 async function setup() {
-    const syncMode = SYNC_AUDIO;
+    await init();
+    const store = await createStore();
+    const syncMode = SYNC_VIDEO;
     const audioBufferSize = AUDIO_BUFFER_SIZE_MAPPING[syncMode];
     const avoidUnderruns = syncMode === SYNC_BOTH;
-    const store = await createStore();
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
     const renderer = createWebglRenderer(canvas);
+    let nes: Nes;
+    let controller: ReturnType<typeof createController>;
+    const frame = new Uint8Array(WIDTH * HEIGHT * 3);
+    const audioCtx = new AudioContext();
+    const ui = createUI(store);
+    const backgroundFrame = new Uint8Array(WIDTH * HEIGHT * 3);
+
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
     canvas.style.imageRendering = SCALING_MODE_MAPPING[store.ref.scalingMode];
@@ -44,24 +52,32 @@ async function setup() {
     }
 
     resize();
+    window.addEventListener('resize', resize);
     store.subscribe('scalingFactor', resize);
     store.subscribe('scalingMode', () => {
         canvas.style.imageRendering = SCALING_MODE_MAPPING[store.ref.scalingMode];
     });
 
-    await init();
-    let nes: Nes;
-    let controller: ReturnType<typeof createController>;
-    const frame = new Uint8Array(WIDTH * HEIGHT * 3);
-    const audioCtx = new AudioContext();
-    const ui = createUI(store, audioCtx);
+    hooks.register('toggleUI', async () => {
+        ui.visible = !ui.visible;
+
+        if (!ui.visible) {
+            await audioCtx.resume();
+        } else {
+            backgroundFrame.set(frame);
+            hooks.call('setBackground', { mode: 'current' });
+            await audioCtx.suspend();
+        }
+
+        events.emit('uiToggled', { visible: ui.visible });
+    });
 
     // TODO: use an AudioWorkletNode
     const scriptProcessor = audioCtx.createScriptProcessor(audioBufferSize, 0, 1);
     scriptProcessor.onaudioprocess = ((): ScriptProcessorNode['onaudioprocess'] => {
         if (syncMode === SYNC_AUDIO) {
             return (event: AudioProcessingEvent) => {
-                if (!ui.visible.ref) {
+                if (!ui.visible) {
                     const channel = event.outputBuffer.getChannelData(0);
 
                     if (nes !== undefined) {
@@ -76,7 +92,7 @@ async function setup() {
             };
         } else {
             return (event: AudioProcessingEvent) => {
-                if (!ui.visible.ref) {
+                if (!ui.visible) {
                     const channel = event.outputBuffer.getChannelData(0);
                     nes.fillAudioBuffer(channel, avoidUnderruns);
                 }
@@ -87,65 +103,71 @@ async function setup() {
     scriptProcessor.connect(audioCtx.destination);
 
     function updateROM(rom: Uint8Array): void {
-        ui.visible.ref = false;
         nes = Nes.new(rom, audioCtx.sampleRate);
 
-        const onKeyDown = (event: KeyboardEvent) => {
-            if (!ui.visible.ref) {
-                controller.onKeyDown(event);
-            }
-        };
+        if (controller === undefined) {
+            const onKeyDown = (event: KeyboardEvent) => {
+                const capturedByUI = ui.onKeyDown(event.key);
 
-        const onKeyUp = (event: KeyboardEvent) => {
-            if (!ui.visible.ref) {
-                controller.onKeyUp(event);
-            }
-        };
+                if (!capturedByUI && !ui.visible) {
+                    controller.onKeyDown(event);
+                }
+            };
 
-        if (controller) {
-            window.removeEventListener('resize', resize);
-            window.removeEventListener('keyup', onKeyUp);
-            window.removeEventListener('keydown', onKeyDown);
-            window.removeEventListener('beforeunload', controller.save);
+            const onKeyUp = (event: KeyboardEvent) => {
+                if (!ui.visible) {
+                    controller.onKeyUp(event);
+                }
+            };
+
+            controller = createController(nes, store);
+            window.addEventListener('keyup', onKeyUp);
+            window.addEventListener('keydown', onKeyDown);
+        } else {
+            controller.updateNes(nes);
         }
-
-        controller = createController(nes, store);
-
-        window.addEventListener('resize', resize);
-        window.addEventListener('keyup', onKeyUp);
-        window.addEventListener('keydown', onKeyDown);
-        window.addEventListener('beforeunload', controller.save);
 
         frame.fill(0);
     }
 
-    async function loadROM(hash: string | null): Promise<void> {
+    async function loadROM(hash: string | null): Promise<boolean> {
         if (hash != null) {
             try {
                 const rom = await store.db.rom.get(hash);
                 updateROM(rom.data);
+                return true;
             } catch (e) {
                 console.error(e);
                 store.set('rom', null);
             }
         }
+
+        return false;
     }
 
-    store.subscribe('rom', async (rom) => {
-        await loadROM(rom);
+    store.subscribe('rom', async (rom, prev) => {
+        if (rom != null) {
+            if (rom !== prev) {
+                if (await loadROM(rom)) {
+                    hooks.call('toggleUI');
+                }
+            } else {
+                hooks.call('toggleUI');
+            }
+        }
     });
 
     hooks.register('loadSave', async timestamp => {
         const save = await store.db.save.get(timestamp);
         nes.loadState(save.state);
-        ui.visible.ref = false;
+        hooks.call('toggleUI');
     });
 
     hooks.register('loadLastSave', async () => {
         const save = await store.db.save.getLast(store.ref.rom!);
         if (save != null) {
             nes.loadState(save.state);
-            ui.visible.ref = false;
+            hooks.call('toggleUI');
         }
     });
 
@@ -163,16 +185,10 @@ async function setup() {
         nes.loadState(prevState);
     }
 
-    let pausedState: Uint8Array | null = null;
-
     hooks.register('setBackground', async payload => {
         switch (payload.mode) {
             case 'current': {
-                if (pausedState != null) {
-                    renderState(pausedState, frame);
-                } else {
-                    return;
-                }
+                frame.set(backgroundFrame);
                 break;
             }
             case 'at': {
@@ -181,20 +197,23 @@ async function setup() {
                 break;
             }
             case 'titleScreen': {
-                const titleScreen = await store.db.titleScreen.get(payload.hash);
-                if (titleScreen != null) {
-                    frame.set(titleScreen.data);
+                if (store.ref.rom === payload.hash) {
+                    frame.set(backgroundFrame);
                 } else {
-                    frame.fill(0);
+                    const titleScreen = await store.db.titleScreen.get(payload.hash);
+                    if (titleScreen != null) {
+                        frame.set(titleScreen.data);
+                    } else {
+                        frame.fill(0);
+                    }
                 }
 
                 break;
             }
         }
 
-        ui.screen.setBackground(frame);
+        ui.screen.setBackground(frame, 0.2);
         renderer.render(frame);
-        ui.screen.setBackgroundOpacity(0.2);
     });
 
     async function onInit() {
@@ -203,28 +222,15 @@ async function setup() {
 
             if (store.ref.lastState != null) {
                 nes.loadState(store.ref.lastState);
-                nes.nextFrame(frame);
+                nes.nextFrame(backgroundFrame);
                 nes.loadState(store.ref.lastState);
 
-                ui.visible.ref = true;
-                pausedState = store.ref.lastState;
                 hooks.call('setBackground', { mode: 'current' });
             }
         }
 
         run();
     }
-
-    events.on('uiToggled', ({ visible }) => {
-        if (visible) {
-            pausedState = nes.saveState();
-            hooks.call('setBackground', { mode: 'current' });
-        } else {
-            if (pausedState !== null) {
-                nes.loadState(pausedState);
-            }
-        }
-    });
 
     const titleScreenFrame = new Uint8Array(WIDTH * HEIGHT * 3);
 
@@ -272,7 +278,7 @@ async function setup() {
     function run(): void {
         requestAnimationFrame(run);
 
-        if (ui.visible.ref) {
+        if (ui.visible) {
             ui.render(frame);
             renderer.render(frame);
         } else if (nes !== undefined) {

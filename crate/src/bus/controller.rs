@@ -31,6 +31,12 @@ impl Joypad {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.strobe = false;
+        self.index = 0;
+        self.status = JoypadStatus::empty();
+    }
+
     pub fn read(&mut self) -> u8 {
         if self.index > 7 {
             return 1;

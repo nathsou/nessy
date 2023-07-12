@@ -4,6 +4,10 @@ const createHooks = <Hooks extends Record<string, (...args: any[]) => any>>() =>
 
     return {
         register<H extends keyof Hooks>(hook: H, func: Hooks[H]): void {
+            if (hooks[hook] != null) {
+                throw new Error(`Hook ${String(hook)} is already registered`);
+            }
+
             hooks[hook] = func;
         },
         call<H extends keyof Hooks>(hook: H, ...args: Parameters<Hooks[H]>): ReturnType<Hooks[H]> {
@@ -29,4 +33,5 @@ export const hooks = createHooks<{
             { mode: 'at', timestamp: number } |
             { mode: 'titleScreen', hash: string }
     ): void,
+    toggleUI(): void,
 }>();

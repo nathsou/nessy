@@ -49,8 +49,9 @@ export const createScreen = () => {
         }
     }
 
-    function setBackground(data: Uint8Array): void {
+    function setBackground(data: Uint8Array, newOpacity = 0.2): void {
         background.set(data);
+        opacity = newOpacity;
     }
 
     const mix = (a: number, b: number) => {
@@ -81,8 +82,5 @@ export const createScreen = () => {
         clear,
         render,
         setBackground,
-        setBackgroundOpacity: (alpha: number) => {
-            opacity = alpha;
-        },
     };
 };

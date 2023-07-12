@@ -9,9 +9,9 @@ import { Text } from "./components/Text";
 import { events } from "./events";
 import { createScreen } from "./screen";
 import { Store } from "./store";
+import { hooks } from "./hooks";
 
-export const createUI = (store: Store, audioContext: AudioContext) => {
-    let visible = { ref: true };
+export const createUI = (store: Store) => {
     const screen = createScreen();
     const subMenuMapping: Record<string, Component<{ activeIndex: number }> & {
         prev(): void,
@@ -40,45 +40,52 @@ export const createUI = (store: Store, audioContext: AudioContext) => {
         subMenuMapping[menuItems[menu.state.activeIndex]].setActive(visible);
     });
 
-    window.addEventListener('keydown', event => {
+    const ret = { render, screen, onKeyDown, visible: true };
+
+    function onKeyDown(key: string): boolean {
         const activeMenuItem = menuItems[menu.state.activeIndex];
 
-        if (event.key === 'Escape' || event.key === 'Tab') {
-            visible.ref = !visible.ref;
-            events.emit('uiToggled', { visible: visible.ref });
-            event.preventDefault();
-            audioContext.resume();
-        } else if (visible.ref) {
-            const captured = subMenuMapping[activeMenuItem].onKeyDown(event.key);
+        if (key === 'Escape' || key === 'Tab') {
+            hooks.call('toggleUI');
+        } else if (ret.visible) {
+            const captured = subMenuMapping[activeMenuItem].onKeyDown(key);
 
-            if (!captured) {
-                switch (event.key) {
-                    case 'ArrowLeft':
-                        if (visible.ref) {
-                            menu.prev();
-                            subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
-                        }
-                        break;
-                    case 'ArrowRight':
-                        if (visible.ref) {
-                            menu.next();
-                            subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
-                        }
-                        break;
-                    case 'ArrowDown':
-                        if (visible.ref) {
-                            subMenuMapping[activeMenuItem].next();
-                        }
-                        break;
-                    case 'ArrowUp':
-                        if (visible.ref) {
-                            subMenuMapping[activeMenuItem].prev();
-                        }
-                        break;
-                }
+            if (captured) {
+                return true;
+            }
+
+            switch (key) {
+                case 'ArrowLeft':
+                    if (ret.visible) {
+                        menu.prev();
+                        subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
+                        return true;
+                    }
+                    break;
+                case 'ArrowRight':
+                    if (ret.visible) {
+                        menu.next();
+                        subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
+                        return true;
+                    }
+                    break;
+                case 'ArrowDown':
+                    if (ret.visible) {
+                        subMenuMapping[activeMenuItem].next();
+                        return true;
+                    }
+                    break;
+                case 'ArrowUp':
+                    if (ret.visible) {
+                        subMenuMapping[activeMenuItem].prev();
+                        return true;
+                    }
+                    break;
             }
         }
-    });
+
+        return false;
+    }
 
     function render(buffer: Uint8Array): void {
         screen.clear();
@@ -87,5 +94,5 @@ export const createUI = (store: Store, audioContext: AudioContext) => {
         screen.render(buffer);
     }
 
-    return { render, screen, visible };
+    return ret;
 };

@@ -1,4 +1,5 @@
 import { Nes } from "../public/pkg/nessy";
+import { events } from "./ui/events";
 import { hooks } from "./ui/hooks";
 import { Store } from "./ui/store";
 
@@ -74,7 +75,7 @@ export const createController = (nes: Nes, store: Store) => {
     const history: number[] = [];
     let isMetaDown = false;
 
-    async function handleInput(nes: Nes, event: KeyboardEvent, pressed: boolean): Promise<void> {
+    async function handleInput(event: KeyboardEvent, pressed: boolean): Promise<void> {
         if (event.key === 'Meta') {
             isMetaDown = pressed;
             event.preventDefault();
@@ -88,8 +89,8 @@ export const createController = (nes: Nes, store: Store) => {
                     return;
                 }
                 case 'r': {
+                    nes.softReset();
                     event.preventDefault();
-                    nes.reset();
                     return;
                 }
                 case 'l': {
@@ -127,8 +128,8 @@ export const createController = (nes: Nes, store: Store) => {
         }
     }
 
-    const onKeyDown = (event: KeyboardEvent) => handleInput(nes, event, true);
-    const onKeyUp = (event: KeyboardEvent) => handleInput(nes, event, false);
+    const onKeyDown = (event: KeyboardEvent) => handleInput(event, true);
+    const onKeyUp = (event: KeyboardEvent) => handleInput(event, false);
 
     function tick(): void {
         currentFrame += 1;
@@ -145,11 +146,16 @@ export const createController = (nes: Nes, store: Store) => {
         }
     }
 
+    function updateNes(newNes: Nes): void {
+        nes = newNes;
+    }
+
     return {
         onKeyDown,
         onKeyUp,
         history,
         tick,
         save,
+        updateNes,
     };
 };

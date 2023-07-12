@@ -68,6 +68,7 @@ pub struct CPU {
     status: Status,
     pub bus: Bus,
     stall: u32,
+    reset: bool,
 }
 
 impl CPU {
@@ -85,17 +86,18 @@ impl CPU {
             status: Status::new(),
             bus,
             stall: 0,
+            reset: false,
         }
     }
 
-    pub fn reset(&mut self) {
-        self.a = 0;
-        self.x = 0;
-        self.y = 0;
+    pub fn soft_reset(&mut self) {
+        self.pc = self.bus.read_word(RESET_VECTOR);
         self.sp = STACK_TOP;
         self.instr_cycles = 0;
-        self.status.update(DEFAULT_STATUS_STATE);
-        self.pc = self.bus.read_word(RESET_VECTOR);
+        self.total_cycles = 0;
+        self.status = Status::new();
+        self.stall = 0;
+        self.reset = true;
     }
 
     // Stack utils

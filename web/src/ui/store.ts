@@ -70,8 +70,6 @@ const createDatabase = async () => {
             const titleScreens = db.createObjectStore('titleScreens', { keyPath: 'romHash' });
             titleScreens.createIndex('romHash', 'romHash', { unique: true });
             titleScreens.createIndex('data', 'data', { unique: false });
-
-            resolve(db);
         };
 
         request.onsuccess = () => {
@@ -79,7 +77,7 @@ const createDatabase = async () => {
         };
     });
 
-    const insertROM = async (name: string, data: Uint8Array): Promise<string> => {
+    async function insertROM(name: string, data: Uint8Array): Promise<string> {
         const entry: RomEntry = {
             hash: await Binary.hash(data),
             name: name.endsWith('.nes') ? name.slice(0, -4) : name,
@@ -98,12 +96,12 @@ const createDatabase = async () => {
         });
     };
 
-    const getROM = async (hash: string): Promise<RomEntry> => {
-        const transaction = db.transaction(['roms'], 'readonly');
-        const roms = transaction.objectStore('roms');
-        const request = roms.get(hash);
-
+    async function getROM(hash: string): Promise<RomEntry> {
         return new Promise<RomEntry>((resolve, reject) => {
+            const transaction = db.transaction(['roms'], 'readonly');
+            const roms = transaction.objectStore('roms');
+            const request = roms.get(hash);
+
             request.onerror = reject;
             request.onsuccess = () => {
                 if (request.result == null) {
@@ -113,14 +111,14 @@ const createDatabase = async () => {
                 }
             };
         });
-    };
+    }
 
-    const listROMs = async (): Promise<RomEntry[]> => {
-        const transaction = db.transaction(['roms'], 'readonly');
-        const roms = transaction.objectStore('roms');
-        const request = roms.getAll();
-
+    async function listROMs(): Promise<RomEntry[]> {
         return new Promise<RomEntry[]>((resolve, _reject) => {
+            const transaction = db.transaction(['roms'], 'readonly');
+            const roms = transaction.objectStore('roms');
+            const request = roms.getAll();
+
             request.onerror = () => {
                 resolve([]);
             };
@@ -128,33 +126,33 @@ const createDatabase = async () => {
                 resolve(request.result);
             };
         });
-    };
+    }
 
-    const insertSave = async (romHash: string, state: Uint8Array): Promise<number> => {
-        const entry: SaveEntry = {
-            timestamp: Date.now(),
-            romHash,
-            state,
-        };
-
-        const transaction = db.transaction(['saves'], 'readwrite');
-        const saves = transaction.objectStore('saves');
-        const request = saves.put(entry);
-
+    async function insertSave(romHash: string, state: Uint8Array): Promise<number> {
         return new Promise<number>((resolve, reject) => {
+            const entry: SaveEntry = {
+                timestamp: Date.now(),
+                romHash,
+                state,
+            };
+
+            const transaction = db.transaction(['saves'], 'readwrite');
+            const saves = transaction.objectStore('saves');
+            const request = saves.put(entry);
+
             request.onerror = reject;
             request.onsuccess = () => {
                 resolve(entry.timestamp);
             };
         });
-    };
+    }
 
-    const getSave = async (timestamp: number): Promise<SaveEntry> => {
-        const transaction = db.transaction(['saves'], 'readonly');
-        const saves = transaction.objectStore('saves');
-        const request = saves.get(timestamp);
-
+    async function getSave(timestamp: number): Promise<SaveEntry> {
         return new Promise<SaveEntry>((resolve, reject) => {
+            const transaction = db.transaction(['saves'], 'readonly');
+            const saves = transaction.objectStore('saves');
+            const request = saves.get(timestamp);
+
             request.onerror = reject;
             request.onsuccess = () => {
                 if (request.result == null) {
@@ -164,15 +162,15 @@ const createDatabase = async () => {
                 }
             };
         });
-    };
+    }
 
-    const getLastSave = async (romHash: string): Promise<SaveEntry | null> => {
-        const transaction = db.transaction(['saves'], 'readonly');
-        const saves = transaction.objectStore('saves');
-        const index = saves.index('romHash');
-        const request = index.openCursor(IDBKeyRange.only(romHash), 'prev');
-
+    async function getLastSave(romHash: string): Promise<SaveEntry | null> {
         return new Promise<SaveEntry | null>((resolve, reject) => {
+            const transaction = db.transaction(['saves'], 'readonly');
+            const saves = transaction.objectStore('saves');
+            const index = saves.index('romHash');
+            const request = index.openCursor(IDBKeyRange.only(romHash), 'prev');
+
             request.onerror = reject;
             request.onsuccess = () => {
                 if (request.result == null) {
@@ -182,15 +180,15 @@ const createDatabase = async () => {
                 }
             };
         });
-    };
+    }
 
-    const listSaves = async (romHash: string): Promise<SaveEntry[]> => {
-        const transaction = db.transaction(['saves'], 'readonly');
-        const saves = transaction.objectStore('saves');
-        const index = saves.index('romHash');
-        const request = index.getAll(romHash);
-
+    async function listSaves(romHash: string): Promise<SaveEntry[]> {
         return new Promise<SaveEntry[]>((resolve, _reject) => {
+            const transaction = db.transaction(['saves'], 'readonly');
+            const saves = transaction.objectStore('saves');
+            const index = saves.index('romHash');
+            const request = index.getAll(romHash);
+
             request.onerror = () => {
                 resolve([]);
             };
@@ -199,32 +197,32 @@ const createDatabase = async () => {
                 resolve(request.result);
             };
         });
-    };
+    }
 
-    const insertTitleScreen = async (romHash: string, data: Uint8Array): Promise<void> => {
-        const entry: TitleScreenEntry = {
-            romHash,
-            data,
-        };
-
-        const transaction = db.transaction(['titleScreens'], 'readwrite');
-        const titleScreens = transaction.objectStore('titleScreens');
-        const request = titleScreens.put(entry);
-
+    async function insertTitleScreen(romHash: string, data: Uint8Array): Promise<void> {
         return new Promise<void>((resolve, reject) => {
+            const entry: TitleScreenEntry = {
+                romHash,
+                data,
+            };
+
+            const transaction = db.transaction(['titleScreens'], 'readwrite');
+            const titleScreens = transaction.objectStore('titleScreens');
+            const request = titleScreens.put(entry);
+
             request.onerror = reject;
             request.onsuccess = () => {
                 resolve();
             };
         });
-    };
+    }
 
-    const getTitleScreen = async (romHash: string): Promise<TitleScreenEntry | null> => {
-        const transaction = db.transaction(['titleScreens'], 'readonly');
-        const titleScreens = transaction.objectStore('titleScreens');
-        const request = titleScreens.get(romHash);
-
+    async function getTitleScreen(romHash: string): Promise<TitleScreenEntry | null> {
         return new Promise<TitleScreenEntry | null>((resolve, reject) => {
+            const transaction = db.transaction(['titleScreens'], 'readonly');
+            const titleScreens = transaction.objectStore('titleScreens');
+            const request = titleScreens.get(romHash);
+
             request.onerror = reject;
             request.onsuccess = () => {
                 if (request.result == null) {
@@ -234,14 +232,14 @@ const createDatabase = async () => {
                 }
             };
         });
-    };
+    }
 
-    const listTitleScreens = async (): Promise<TitleScreenEntry[]> => {
-        const transaction = db.transaction(['titleScreens'], 'readonly');
-        const titleScreens = transaction.objectStore('titleScreens');
-        const request = titleScreens.getAll();
-
+    async function listTitleScreens(): Promise<TitleScreenEntry[]> {
         return new Promise<TitleScreenEntry[]>((resolve, _reject) => {
+            const transaction = db.transaction(['titleScreens'], 'readonly');
+            const titleScreens = transaction.objectStore('titleScreens');
+            const request = titleScreens.getAll();
+
             request.onerror = () => {
                 resolve([]);
             };
@@ -250,7 +248,7 @@ const createDatabase = async () => {
                 resolve(request.result);
             };
         });
-    };
+    }
 
     return {
         rom: { get: getROM, insert: insertROM, list: listROMs },
@@ -260,6 +258,8 @@ const createDatabase = async () => {
 };
 
 export const createStore = async () => {
+    const db = await createDatabase();
+
     const serialize = (store: StoreData): string => {
         return JSON.stringify({
             ...store,
@@ -288,23 +288,24 @@ export const createStore = async () => {
         }
     })();
 
-    const listeners = array<{ key: keyof StoreData, handler: (value: any) => void }>();
+    const listeners = array<{ key: keyof StoreData, handler: (value: any, previous: any) => void }>();
 
     const get = <K extends keyof StoreData>(key: K): StoreData[K] => {
         return store[key];
     };
 
     const set = <K extends keyof StoreData>(key: K, value: StoreData[K]): void => {
+        const prev = store[key];
         store[key] = value;
 
         listeners.forEach(({ key: listenerKey, handler }) => {
             if (listenerKey === key) {
-                handler(value);
+                handler(value, prev);
             }
         });
     };
 
-    const subscribe = <K extends keyof StoreData>(key: K, handler: (value: StoreData[K]) => void): void => {
+    const subscribe = <K extends keyof StoreData>(key: K, handler: (value: StoreData[K], previous: StoreData[K]) => void): void => {
         listeners.push({ key, handler });
     };
 
@@ -312,7 +313,6 @@ export const createStore = async () => {
         localStorage.setItem(LOCAL_STORAGE_STORE_KEY, serialize(store));
     };
 
-    const db = await createDatabase();
 
     return {
         ref: store,

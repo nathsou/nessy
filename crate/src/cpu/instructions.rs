@@ -3,6 +3,7 @@ use super::opcodes::{INST_ADDR_MODES, INST_CYCLES, INST_LENGTHS, INST_NAMES};
 use super::{Status, CPU};
 use crate::bus::Interrupt;
 use crate::cpu::opcodes::AddressingMode;
+use crate::js;
 
 const NMI_VECTOR: u16 = 0xfffa;
 const IRQ_VECTOR: u16 = 0xfffe;
@@ -25,6 +26,10 @@ impl CPU {
             Interrupt::None => {}
             Interrupt::IRQ => self.irq(),
             Interrupt::NMI => self.nmi(),
+        }
+
+        if self.reset {
+            // js::log(&format!("pc: {:06x}", self.pc));
         }
 
         let op_code = self.next_byte();

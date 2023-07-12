@@ -253,12 +253,12 @@ impl PPU {
         self.pattern_table_high_byte = self.read_chr(offset + 8);
     }
 
-    pub fn reset(&mut self) {
+    fn reset(&mut self) {
         self.cycle = 340;
         self.scanline = 240;
+        self.frame = 0;
         self.regs.write_ctrl(0);
         self.regs.write_mask(0);
-        self.regs.oam_addr = 0;
     }
 
     fn store_background_tile_data(&mut self) {
@@ -543,7 +543,7 @@ impl PPU {
             0x2000..=0x2fff => {
                 self.vram[self.nametable_mirrored_addr(addr) as usize] = data;
             }
-            0x3000..=0x3eff => unreachable!(),
+            // 0x3000..=0x3eff => unreachable!(),
             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => {
                 self.palette[((addr - 0x3f10) & 31) as usize] = data;
             }

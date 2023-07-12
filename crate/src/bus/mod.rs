@@ -8,9 +8,7 @@ use crate::{
 pub mod controller;
 
 #[allow(clippy::upper_case_acronyms)]
-pub struct RAM {
-    pub ram: [u8; 0x800],
-}
+pub struct RAM([u8; 0x800]);
 
 impl RAM {
     #[inline]
@@ -21,11 +19,11 @@ impl RAM {
 
 impl Memory for RAM {
     fn read_byte(&mut self, addr: u16) -> u8 {
-        self.ram[RAM::mirrored_addr(addr) as usize]
+        self.0[RAM::mirrored_addr(addr) as usize]
     }
 
     fn write_byte(&mut self, addr: u16, val: u8) {
-        self.ram[RAM::mirrored_addr(addr) as usize] = val;
+        self.0[RAM::mirrored_addr(addr) as usize] = val;
     }
 }
 
@@ -46,7 +44,7 @@ pub struct Bus {
 impl Bus {
     pub fn new(rom: ROM, sample_rate: f64) -> Bus {
         Bus {
-            ram: RAM { ram: [0; 0x800] },
+            ram: RAM([0; 0x800]),
             ppu: PPU::new(rom),
             apu: APU::new(sample_rate),
             joypad1: Joypad::new(),
@@ -121,14 +119,14 @@ impl Memory for Bus {
 
 impl Save for Bus {
     fn save(&self, s: &mut SaveState) {
-        s.write_slice(&self.ram.ram);
+        s.write_slice(&self.ram.0);
         self.ppu.save(s);
         self.joypad1.save(s);
         s.write_bool(self.dma_transfer);
     }
 
     fn load(&mut self, s: &mut SaveState) {
-        s.read_slice(&mut self.ram.ram);
+        s.read_slice(&mut self.ram.0);
         self.ppu.load(s);
         self.joypad1.load(s);
         self.dma_transfer = s.read_bool();
