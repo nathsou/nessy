@@ -1,4 +1,4 @@
-use super::LENGTH_LOOKUP;
+use super::common::LengthCounter;
 
 const DUTY_TABLE: [[u8; 8]; 4] = [
     [0, 1, 0, 0, 0, 0, 0, 0],
@@ -10,12 +10,11 @@ const DUTY_TABLE: [[u8; 8]; 4] = [
 #[derive(Default)]
 pub struct PulseChannel {
     enabled: bool,
+    length_counter: LengthCounter,
     duty_mode: u8,
     duty_cycle: u8,
     timer: u16,
     timer_period: u16,
-    length_counter: u8,
-    halt_length_counter: bool,
     envelope_constant_mode: bool,
     envelope_constant_volume: u8,
     envelope_loop: bool,
@@ -29,7 +28,6 @@ pub struct PulseChannel {
     sweep_shift: u8,
     sweep_reload: bool,
     sweep_divider: u8,
-    sweep_target_period: u16,
     sweep_mute: bool,
 }
 
@@ -38,7 +36,7 @@ impl PulseChannel {
         Self::default()
     }
 
-    pub fn step(&mut self) {
+    pub fn step_timer(&mut self) {
         if self.timer == 0 {
             self.timer = self.timer_period;
             self.duty_cycle = (self.duty_cycle + 1) & 7;
@@ -47,10 +45,9 @@ impl PulseChannel {
         }
     }
 
+    #[inline]
     pub fn step_length_counter(&mut self) {
-        if self.length_counter > 0 && !self.halt_length_counter {
-            self.length_counter -= 1;
-        }
+        self.length_counter.step();
     }
 
     pub fn step_envelope(&mut self) {
@@ -75,14 +72,15 @@ impl PulseChannel {
         self.enabled = enabled;
 
         if !enabled {
-            self.length_counter = 0;
+            self.length_counter.reset_to_zero();
         }
     }
 
     pub fn write_control(&mut self, val: u8) {
         self.duty_mode = (val >> 6) & 0b11;
-        self.halt_length_counter = val & 0b0010_0000 != 0;
-        self.envelope_loop = self.halt_length_counter;
+        let halt_length_counter = val & 0b0010_0000 != 0;
+        self.length_counter.set_enabled(!halt_length_counter);
+        self.envelope_loop = halt_length_counter;
         self.envelope_constant_mode = val & 0b0001_0000 != 0;
         self.envelope_period = val & 0b1111;
         self.envelope_constant_volume = val & 0b1111;
@@ -98,7 +96,7 @@ impl PulseChannel {
         self.timer_period = (self.timer_period & 0x00FF) | (((val & 7) as u16) << 8);
         self.duty_cycle = 0;
         self.envelope_start = true;
-        self.length_counter = LENGTH_LOOKUP[val as usize >> 3];
+        self.length_counter.set(val >> 3);
     }
 
     pub fn write_sweep(&mut self, val: u8) {
@@ -112,6 +110,8 @@ impl PulseChannel {
     fn sweep_target_period(&self) -> u16 {
         let change_amount = self.timer_period >> self.sweep_shift;
 
+        // TODO: Handle difference between pulse 1 and 2
+
         if self.sweep_negate {
             if change_amount > self.timer_period {
                 0
@@ -124,14 +124,6 @@ impl PulseChannel {
     }
 
     pub fn step_sweep(&mut self) {
-        // When the frame counter sends a half-frame clock (at 120 or 96 Hz), two things happen:
-        // If the divider's counter is zero, the sweep is enabled, and the sweep unit is not muting the channel: The pulse's period is set to the target period.
-
-        // If the divider's counter is zero or the reload flag is true: The divider counter is set to P and the reload flag is cleared. Otherwise, the divider counter is decremented.
-
-        // When the sweep unit is muting a pulse channel, the channel's current period remains unchanged, but the sweep unit's divider continues to count down and reload the divider's period as normal. Otherwise, if the enable flag is set and the shift count is non-zero, when the divider outputs a clock, the pulse channel's period is updated to the target period.
-        // If the shift count is zero, the pulse channel's period is never updated, but muting logic still applies.
-
         let target_period = self.sweep_target_period();
         self.sweep_mute = self.timer_period < 8 || target_period > 0x7FF;
 
@@ -150,7 +142,7 @@ impl PulseChannel {
     pub fn output(&self) -> u8 {
         if !self.enabled
             || self.sweep_mute
-            || self.length_counter == 0
+            || self.length_counter.is_zero()
             || DUTY_TABLE[self.duty_mode as usize][self.duty_cycle as usize] == 0
         {
             return 0;
