@@ -2,7 +2,7 @@ use self::pulse::PulseChannel;
 
 mod pulse;
 
-const APU_BUFFER_SIZE: usize = 1024 * 8;
+const APU_BUFFER_SIZE: usize = 8 * 1024;
 const APU_BUFFER_MASK: u16 = APU_BUFFER_SIZE as u16 - 1;
 const CPU_FREQ: f64 = 1789772.5;
 
@@ -118,16 +118,8 @@ impl APU {
             0x4013 => {}
             // Control
             0x4015 => {
-                self.pulse1.enabled = val & 1 != 0;
-                self.pulse2.enabled = val & 2 != 0;
-
-                if !self.pulse1.enabled {
-                    self.pulse1.length_counter = 0;
-                }
-
-                if !self.pulse2.enabled {
-                    self.pulse2.length_counter = 0;
-                }
+                self.pulse1.set_enabled(val & 1 != 0);
+                self.pulse2.set_enabled(val & 2 != 0);
             }
             // Frame Counter
             0x4017 => {
@@ -204,6 +196,8 @@ impl APU {
             if half_frame {
                 self.pulse1.step_length_counter();
                 self.pulse2.step_length_counter();
+                self.pulse1.step_sweep();
+                self.pulse2.step_sweep();
             }
         }
 

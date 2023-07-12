@@ -27,7 +27,7 @@ const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['
 async function setup() {
     await init();
     const store = await createStore();
-    const syncMode = SYNC_VIDEO;
+    const syncMode = SYNC_AUDIO;
     const audioBufferSize = AUDIO_BUFFER_SIZE_MAPPING[syncMode];
     const avoidUnderruns = syncMode === SYNC_BOTH;
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
