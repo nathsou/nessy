@@ -95,10 +95,7 @@ export const createController = (nes: Nes, store: Store) => {
                 }
                 case 'l': {
                     event.preventDefault();
-                    const save = await store.db.save.getLast(store.ref.rom!);
-                    if (save != null) {
-                        nes.loadState(save.state);
-                    }
+                    await hooks.call('loadLastSave');
                     return;
                 }
                 default:

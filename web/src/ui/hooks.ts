@@ -33,5 +33,6 @@ export const hooks = createHooks<{
             { mode: 'at', timestamp: number } |
             { mode: 'titleScreen', hash: string }
     ): void,
-    toggleUI(): void,
+    toggleUI(visible?: boolean): void,
+    softReset(): void,
 }>();

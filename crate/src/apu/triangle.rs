@@ -1,4 +1,4 @@
-use super::common::LengthCounter;
+use super::common::{LengthCounter, Timer};
 
 #[rustfmt::skip]
 const SEQUENCER_LOOKUP: [u8; 32] = [
@@ -11,8 +11,7 @@ pub struct TriangleChannel {
     enabled: bool,
     control_flag: bool,
     counter_reload: u8,
-    timer_period: u16,
-    timer: u16,
+    timer: Timer,
     length_counter: LengthCounter,
     linear_counter: u8,
     linear_counter_reload: bool,
@@ -24,20 +23,23 @@ impl TriangleChannel {
         Self::default()
     }
 
-    pub fn write_setup(&mut self, val: u8) {
-        self.control_flag = val & 0b1000_0000 != 0;
-        self.counter_reload = val & 0b0111_1111;
-    }
-
-    pub fn write_timer_low(&mut self, val: u8) {
-        self.timer_period = (self.timer_period & 0xFF00) | (val as u16);
-    }
-
-    pub fn write_timer_high(&mut self, val: u8) {
-        self.timer_period = (self.timer_period & 0x00FF) | (((val & 0b111) as u16) << 8);
-        self.timer = self.timer_period;
-        self.length_counter.set(val >> 3);
-        self.linear_counter_reload = true;
+    pub fn write(&mut self, addr: u16, val: u8) {
+        match addr {
+            0x4008 => {
+                self.control_flag = val & 0b1000_0000 != 0;
+                self.counter_reload = val & 0b0111_1111;
+            }
+            0x400A => {
+                self.timer.period = (self.timer.period & 0xFF00) | (val as u16);
+            }
+            0x400B => {
+                self.timer.period = (self.timer.period & 0x00FF) | (((val & 0b111) as u16) << 8);
+                self.timer.counter = self.timer.period;
+                self.length_counter.set(val >> 3);
+                self.linear_counter_reload = true;
+            }
+            _ => {}
+        }
     }
 
     pub fn step_linear_counter(&mut self) {
@@ -58,13 +60,8 @@ impl TriangleChannel {
     }
 
     pub fn step_timer(&mut self) {
-        if self.timer == 0 {
-            self.timer = self.timer_period;
-            if self.linear_counter > 0 && !self.length_counter.is_zero() {
-                self.duty_cycle = (self.duty_cycle + 1) & 31;
-            }
-        } else {
-            self.timer -= 1;
+        if self.timer.step() && self.linear_counter > 0 && !self.length_counter.is_zero() {
+            self.duty_cycle = (self.duty_cycle + 1) & 31;
         }
     }
 
@@ -80,7 +77,7 @@ impl TriangleChannel {
         if !self.enabled
             || self.length_counter.is_zero()
             || self.linear_counter == 0
-            || self.timer_period <= 2
+            || self.timer.period <= 2
         {
             0
         } else {

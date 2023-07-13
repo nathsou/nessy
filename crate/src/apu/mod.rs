@@ -1,6 +1,7 @@
-use self::{pulse::PulseChannel, triangle::TriangleChannel};
+use self::{noise::NoiseChannel, pulse::PulseChannel, triangle::TriangleChannel};
 
 mod common;
+mod noise;
 mod pulse;
 mod triangle;
 
@@ -27,6 +28,7 @@ pub struct APU {
     pulse1: PulseChannel,
     pulse2: PulseChannel,
     triangle: TriangleChannel,
+    noise: NoiseChannel,
     current_sample: Option<f32>,
     samples_pushed: u32,
 }
@@ -88,6 +90,7 @@ impl APU {
             pulse1: PulseChannel::new(),
             pulse2: PulseChannel::new(),
             triangle: TriangleChannel::new(),
+            noise: NoiseChannel::new(),
             current_sample: None,
             samples_pushed: 0,
         }
@@ -99,9 +102,10 @@ impl APU {
         let p1 = self.pulse1.output();
         let p2 = self.pulse2.output();
         let t = self.triangle.output();
+        let n = self.noise.output();
 
         let pulse_out = PULSE_MIXER_LOOKUP[(p1 + p2) as usize];
-        let tnd_out = TRIANGLE_MIXER_LOOKUP[(t * 3) as usize];
+        let tnd_out = TRIANGLE_MIXER_LOOKUP[(3 * t + 2 * n) as usize];
 
         pulse_out + tnd_out
     }
@@ -121,40 +125,18 @@ impl APU {
 
     pub fn write(&mut self, addr: u16, val: u8) {
         match addr {
-            // Pulse 1
-            0x4000 => self.pulse1.write_control(val),
-            0x4001 => self.pulse1.write_sweep(val),
-            0x4002 => self.pulse1.write_reload_low(val),
-            0x4003 => self.pulse1.write_reload_high(val),
-
-            // Pulse 2
-            0x4004 => self.pulse2.write_control(val),
-            0x4005 => self.pulse2.write_sweep(val),
-            0x4006 => self.pulse2.write_reload_low(val),
-            0x4007 => self.pulse2.write_reload_high(val),
-
-            // Triangle
-            0x4008 => self.triangle.write_setup(val),
-            0x4009 => {}
-            0x400A => self.triangle.write_timer_low(val),
-            0x400B => self.triangle.write_timer_high(val),
-
-            // Noise
-            0x400C => {}
-            0x400E => {}
-            0x400F => {}
-
-            // DMC
-            0x4010 => {}
-            0x4011 => {}
-            0x4012 => {}
-            0x4013 => {}
+            0x4000..=0x4003 => self.pulse1.write(addr, val),
+            0x4004..=0x4007 => self.pulse2.write(addr, val),
+            0x4008..=0x400B => self.triangle.write(addr, val),
+            0x400C..=0x400F => self.noise.write(addr, val),
+            0x4010..=0x4013 => {} // DMC
 
             // Control
             0x4015 => {
                 self.pulse1.set_enabled(val & 1 != 0);
                 self.pulse2.set_enabled(val & 2 != 0);
                 self.triangle.set_enabled(val & 4 != 0);
+                self.noise.set_enabled(val & 8 != 0);
             }
 
             // Frame Counter
@@ -197,6 +179,7 @@ impl APU {
         if self.cycle & 1 == 0 {
             self.pulse1.step_timer();
             self.pulse2.step_timer();
+            self.noise.step_timer();
             self.frame_counter += 1;
 
             let mut quarter_frame = false;
@@ -230,12 +213,14 @@ impl APU {
                 self.pulse1.step_envelope();
                 self.pulse2.step_envelope();
                 self.triangle.step_linear_counter();
+                self.noise.step_envelope();
             }
 
             if half_frame {
                 self.pulse1.step_length_counter();
                 self.pulse2.step_length_counter();
                 self.triangle.step_length_counter();
+                self.noise.step_length_counter();
                 self.pulse1.step_sweep();
                 self.pulse2.step_sweep();
             }

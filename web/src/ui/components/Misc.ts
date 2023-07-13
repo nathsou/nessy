@@ -54,11 +54,30 @@ const FullScreen = () => ({
     },
 });
 
+const SoftReset = () => ({
+    ...Button(
+        Text('Soft Reset (CTRL+R)'),
+        () => {
+            hooks.call('softReset');
+            hooks.call('toggleUI', false);
+        },
+    ),
+    onKeyDown(key: string) {
+        if (key === 'Enter') {
+            this.enter();
+            return true;
+        }
+
+        return false;
+    },
+});
+
 export const Misc = (store: Store) => {
     const list = VMenu([
         ScalingFactor(store),
         ScalingMode(store),
         FullScreen(),
+        SoftReset(),
     ]);
 
     const onKeyDown = (key: string): boolean => {

@@ -58,8 +58,12 @@ async function setup() {
         canvas.style.imageRendering = SCALING_MODE_MAPPING[store.ref.scalingMode];
     });
 
-    hooks.register('toggleUI', async () => {
-        ui.visible = !ui.visible;
+    hooks.register('toggleUI', async visible => {
+        if (visible !== undefined) {
+            ui.visible = visible;
+        } else {
+            ui.visible = !ui.visible;
+        }
 
         if (!ui.visible) {
             await audioCtx.resume();
@@ -70,6 +74,12 @@ async function setup() {
         }
 
         events.emit('uiToggled', { visible: ui.visible });
+    });
+
+    window.addEventListener('blur', () => {
+        if (!ui.visible) {
+            hooks.call('toggleUI');
+        }
     });
 
     // TODO: use an AudioWorkletNode
@@ -160,14 +170,14 @@ async function setup() {
     hooks.register('loadSave', async timestamp => {
         const save = await store.db.save.get(timestamp);
         nes.loadState(save.state);
-        hooks.call('toggleUI');
+        hooks.call('toggleUI', false);
     });
 
     hooks.register('loadLastSave', async () => {
         const save = await store.db.save.getLast(store.ref.rom!);
         if (save != null) {
             nes.loadState(save.state);
-            hooks.call('toggleUI');
+            hooks.call('toggleUI', false);
         }
     });
 
@@ -265,6 +275,10 @@ async function setup() {
         } else {
             canvas.requestFullscreen();
         }
+    });
+
+    hooks.register('softReset', () => {
+        nes?.softReset();
     });
 
     function onExit() {
