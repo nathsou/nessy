@@ -52,9 +52,11 @@ impl Bus {
         }
     }
 
-    pub fn pull_interrupt_status(&mut self) -> Interrupt {
-        if self.ppu.pull_nmi_status() {
+    pub fn pull_interrupt(&mut self) -> Interrupt {
+        if self.ppu.is_asserting_nmi() {
             Interrupt::NMI
+        } else if self.apu.is_asserting_irq() {
+            Interrupt::IRQ
         } else {
             Interrupt::None
         }
@@ -69,6 +71,11 @@ impl Bus {
 
         for _ in 0..cpu_cycles {
             self.apu.step();
+
+            if let Some(addr) = self.apu.pull_memory_read_request() {
+                let val = self.read_byte(addr);
+                self.apu.push_memory_read_response(val);
+            }
         }
     }
 }

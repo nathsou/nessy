@@ -68,7 +68,6 @@ pub struct CPU {
     status: Status,
     pub bus: Bus,
     stall: u32,
-    reset: bool,
 }
 
 impl CPU {
@@ -86,7 +85,6 @@ impl CPU {
             status: Status::new(),
             bus,
             stall: 0,
-            reset: false,
         }
     }
 
@@ -97,7 +95,6 @@ impl CPU {
         self.total_cycles = 0;
         self.status = Status::new();
         self.stall = 0;
-        self.reset = true;
     }
 
     // Stack utils
@@ -295,19 +292,6 @@ impl CPU {
     fn toggle_nz(&mut self, val: u8) {
         self.toggle_neg_flag(val);
         self.toggle_zero_flag(val);
-    }
-
-    pub fn trace(&self) -> String {
-        format!(
-            "{:4X}a{:02X}x{:02X}y{:02X}p{:02X}s{:02X}c{}",
-            self.pc,
-            self.a,
-            self.x,
-            self.y,
-            self.status.bits(),
-            self.sp,
-            self.total_cycles,
-        )
     }
 }
 

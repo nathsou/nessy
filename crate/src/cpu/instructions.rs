@@ -1,8 +1,7 @@
 use super::memory::Memory;
-use super::opcodes::{INST_ADDR_MODES, INST_CYCLES, INST_LENGTHS, INST_NAMES};
+use super::opcodes::INST_CYCLES;
 use super::{Status, CPU};
 use crate::bus::Interrupt;
-use crate::cpu::opcodes::AddressingMode;
 use crate::js;
 
 const NMI_VECTOR: u16 = 0xfffa;
@@ -17,19 +16,23 @@ impl CPU {
             self.stall += 513 + (self.total_cycles & 1);
         }
 
+        if self.bus.apu.is_stalling_cpu() {
+            return 1;
+        }
+
         if self.stall > 0 {
             self.stall -= 1;
             return 1;
         }
 
-        match self.bus.pull_interrupt_status() {
+        match self.bus.pull_interrupt() {
             Interrupt::None => {}
-            Interrupt::IRQ => self.irq(),
+            Interrupt::IRQ => {
+                if !self.status.contains(Status::INTERRUPT_DISABLE) {
+                    self.irq();
+                }
+            }
             Interrupt::NMI => self.nmi(),
-        }
-
-        if self.reset {
-            // js::log(&format!("pc: {:06x}", self.pc));
         }
 
         let op_code = self.next_byte();
@@ -227,59 +230,6 @@ impl CPU {
         instr_cycles
     }
 
-    #[allow(dead_code)]
-    pub fn trace_step(&mut self) -> (u32, String) {
-        let op_code = self.bus.read_byte(self.pc) as usize;
-        let inst_name = INST_NAMES[op_code].unwrap_or("???");
-        let addr_mode = AddressingMode::from(INST_ADDR_MODES[op_code]);
-        let mut args: Vec<String> = vec![];
-
-        for pc in
-            (self.pc + 1)..(self.pc + (INST_LENGTHS[self.bus.read_byte(self.pc) as usize]) as u16)
-        {
-            args.push(format!("{:02X}", self.bus.read_byte(pc)));
-        }
-
-        let formatted_args = args.join(" ");
-
-        let args = {
-            use AddressingMode::*;
-            match addr_mode {
-                Immediate => format!("#${}", args[0]),
-                ZeroPage => format!("${}", args[0]),
-                ZeroPageX => format!("${},X", args[0]),
-                ZeroPageY => format!("${},Y", args[0]),
-                Absolute => format!("${}{}", args[1], args[0]),
-                AbsoluteX => format!("${}{},X", args[1], args[0]),
-                AbsoluteY => format!("${}{},Y", args[1], args[0]),
-                Indirect => format!("(${})", args[0]),
-                IndirectX => format!("(${},X)", args[0]),
-                IndirectY => format!("(${}),Y", args[0]),
-                Implied => "".to_string(),
-                Relative => format!("${}", args[0]),
-            }
-        };
-
-        let raw_inst = format!("{op_code:02X} {formatted_args}");
-        let disasm_inst = format!("{inst_name} {args}");
-
-        let regs = format!(
-            "A:{:02X} X:{:02X} Y:{:02X} P:{:02X} SP:{:02X}",
-            self.a,
-            self.x,
-            self.y,
-            self.status.bits(),
-            self.sp
-        );
-
-        let trace = format!(
-            "{:04X}  {raw_inst: <8}  {disasm_inst: <12}  {regs}",
-            self.pc
-        );
-
-        (self.step(), trace)
-    }
-
     // interrupts
     fn brk(&mut self) {
         self.push_word(self.pc);
@@ -302,6 +252,7 @@ impl CPU {
     }
 
     // NOP: No Operation
+    #[inline]
     fn nop(&self) {}
 
     // LDA

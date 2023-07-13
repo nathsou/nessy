@@ -35,20 +35,6 @@ impl Registers {
     pub fn fine_y(&self) -> u8 {
         ((self.v >> 12) & 0b111) as u8
     }
-
-    #[inline]
-    pub fn coarse_x(&self) -> u8 {
-        (self.v & 0b11111) as u8
-    }
-
-    #[inline]
-    pub fn coarse_y(&self) -> u8 {
-        ((self.v >> 5) & 0b11111) as u8
-    }
-
-    pub fn nametable_select(&self) -> u8 {
-        ((self.v >> 10) & 0b11) as u8
-    }
 }
 
 // 7  bit  0

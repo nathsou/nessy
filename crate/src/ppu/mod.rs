@@ -424,20 +424,15 @@ impl PPU {
             }
         }
 
-        Self::set_pixel(&mut self.frame_buffer, x as usize, y as usize, color);
+        self.set_pixel(x as usize, y as usize, color);
     }
 
-    #[inline]
-    pub fn vblank_started(&self) -> bool {
-        self.regs.status.contains(Status::VBLANK_STARTED)
-    }
-
-    pub fn set_pixel(frame: &mut [u8], x: usize, y: usize, (r, g, b): (u8, u8, u8)) {
+    fn set_pixel(&mut self, x: usize, y: usize, (r, g, b): (u8, u8, u8)) {
         if x < WIDTH && y < HEIGHT {
             let offset = (y * WIDTH + x) * 3;
-            frame[offset] = r;
-            frame[offset + 1] = g;
-            frame[offset + 2] = b;
+            self.frame_buffer[offset] = r;
+            self.frame_buffer[offset + 1] = g;
+            self.frame_buffer[offset + 2] = b;
         }
     }
 
@@ -454,7 +449,8 @@ impl PPU {
         }
     }
 
-    pub fn pull_nmi_status(&mut self) -> bool {
+    #[inline]
+    pub fn is_asserting_nmi(&mut self) -> bool {
         let triggered = self.nmi_triggered;
         self.nmi_triggered = false;
         triggered

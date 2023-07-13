@@ -112,27 +112,28 @@ async function setup() {
 
     scriptProcessor.connect(audioCtx.destination);
 
+    const onKeyDown = (event: KeyboardEvent) => {
+        const capturedByUI = ui.onKeyDown(event.key);
+
+        if (!capturedByUI && !ui.visible) {
+            controller?.onKeyDown(event);
+        }
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+        if (!ui.visible) {
+            controller?.onKeyUp(event);
+        }
+    };
+
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('keydown', onKeyDown);
+
     function updateROM(rom: Uint8Array): void {
         nes = Nes.new(rom, audioCtx.sampleRate);
 
         if (controller === undefined) {
-            const onKeyDown = (event: KeyboardEvent) => {
-                const capturedByUI = ui.onKeyDown(event.key);
-
-                if (!capturedByUI && !ui.visible) {
-                    controller.onKeyDown(event);
-                }
-            };
-
-            const onKeyUp = (event: KeyboardEvent) => {
-                if (!ui.visible) {
-                    controller.onKeyUp(event);
-                }
-            };
-
             controller = createController(nes, store);
-            window.addEventListener('keyup', onKeyUp);
-            window.addEventListener('keydown', onKeyDown);
         } else {
             controller.updateNes(nes);
         }

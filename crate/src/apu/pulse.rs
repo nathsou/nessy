@@ -116,6 +116,11 @@ impl PulseChannel {
         }
     }
 
+    #[inline]
+    pub fn is_length_counter_active(&self) -> bool {
+        !self.length_counter.is_zero()
+    }
+
     pub fn output(&self) -> u8 {
         if !self.enabled
             || self.sweep_mute

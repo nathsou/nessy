@@ -1,6 +1,10 @@
-use self::{noise::NoiseChannel, pulse::PulseChannel, triangle::TriangleChannel};
+use self::{
+    dmc::DeltaModulationChannel, noise::NoiseChannel, pulse::PulseChannel,
+    triangle::TriangleChannel,
+};
 
 mod common;
+mod dmc;
 mod noise;
 mod pulse;
 mod triangle;
@@ -29,8 +33,10 @@ pub struct APU {
     pulse2: PulseChannel,
     triangle: TriangleChannel,
     noise: NoiseChannel,
+    dmc: DeltaModulationChannel,
     current_sample: Option<f32>,
     samples_pushed: u32,
+    irq_inhibit: bool,
 }
 
 #[rustfmt::skip]
@@ -91,8 +97,10 @@ impl APU {
             pulse2: PulseChannel::new(),
             triangle: TriangleChannel::new(),
             noise: NoiseChannel::new(),
+            dmc: DeltaModulationChannel::new(),
             current_sample: None,
             samples_pushed: 0,
+            irq_inhibit: false,
         }
     }
 
@@ -103,9 +111,10 @@ impl APU {
         let p2 = self.pulse2.output();
         let t = self.triangle.output();
         let n = self.noise.output();
+        let dmc = self.dmc.output();
 
         let pulse_out = PULSE_MIXER_LOOKUP[(p1 + p2) as usize];
-        let tnd_out = TRIANGLE_MIXER_LOOKUP[(3 * t + 2 * n) as usize];
+        let tnd_out = TRIANGLE_MIXER_LOOKUP[(3 * t + 2 * n + dmc) as usize];
 
         pulse_out + tnd_out
     }
@@ -129,7 +138,7 @@ impl APU {
             0x4004..=0x4007 => self.pulse2.write(addr, val),
             0x4008..=0x400B => self.triangle.write(addr, val),
             0x400C..=0x400F => self.noise.write(addr, val),
-            0x4010..=0x4013 => {} // DMC
+            0x4010..=0x4013 => self.dmc.write(addr, val),
 
             // Control
             0x4015 => {
@@ -137,17 +146,22 @@ impl APU {
                 self.pulse2.set_enabled(val & 2 != 0);
                 self.triangle.set_enabled(val & 4 != 0);
                 self.noise.set_enabled(val & 8 != 0);
+                self.dmc.set_enabled(val & 16 != 0);
+                self.dmc.clear_interrupt_flag();
             }
 
             // Frame Counter
             0x4017 => {
+                self.frame_counter = 0;
                 self.frame_mode = if val & 0b1000_0000 == 0 {
                     FrameMode::FourStep
                 } else {
                     FrameMode::FiveStep
                 };
 
-                if val & 0b0100_0000 != 0 {
+                self.irq_inhibit = val & 0b0100_0000 != 0;
+
+                if self.irq_inhibit {
                     self.frame_interrupt = false;
                 }
             }
@@ -158,8 +172,38 @@ impl APU {
     pub fn read(&mut self, addr: u16) -> u8 {
         match addr {
             0x4015 => {
+                let mut val = 0;
+                if self.pulse1.is_length_counter_active() {
+                    val |= 1;
+                }
+
+                if self.pulse2.is_length_counter_active() {
+                    val |= 2;
+                }
+
+                if self.triangle.is_length_counter_active() {
+                    val |= 4;
+                }
+
+                if self.noise.is_length_counter_active() {
+                    val |= 8;
+                }
+
+                if self.dmc.is_active() {
+                    val |= 16;
+                }
+
+                if self.frame_interrupt {
+                    val |= 64;
+                }
+
+                if self.dmc.interrupt_flag {
+                    val |= 128;
+                }
+
                 self.frame_interrupt = false;
-                0
+
+                val
             }
             _ => 0,
         }
@@ -176,10 +220,11 @@ impl APU {
 
         self.triangle.step_timer();
 
-        if self.cycle & 1 == 0 {
+        if self.cycle & 1 == 1 {
             self.pulse1.step_timer();
             self.pulse2.step_timer();
             self.noise.step_timer();
+            self.dmc.step_timer();
             self.frame_counter += 1;
 
             let mut quarter_frame = false;
@@ -197,6 +242,9 @@ impl APU {
                         quarter_frame = true;
                         half_frame = true;
                         self.frame_counter = 0;
+                        if !self.irq_inhibit {
+                            self.frame_interrupt = true;
+                        }
                     }
                 }
                 18641 => {
@@ -264,5 +312,32 @@ impl APU {
         } else {
             0
         };
+    }
+
+    #[inline]
+    pub fn is_asserting_irq(&self) -> bool {
+        self.frame_interrupt || self.dmc.interrupt_flag
+    }
+
+    #[inline]
+    pub fn is_stalling_cpu(&mut self) -> bool {
+        if self.dmc.cpu_stall > 0 {
+            self.dmc.cpu_stall -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    // hack to avoid having to pass a mutable reference of the bus to the DMC
+    // when it needs to read from memory
+    #[inline]
+    pub fn pull_memory_read_request(&mut self) -> Option<u16> {
+        self.dmc.memory_read_request.take()
+    }
+
+    #[inline]
+    pub fn push_memory_read_response(&mut self, val: u8) {
+        self.dmc.set_memory_read_response(val);
     }
 }
