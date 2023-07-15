@@ -3,7 +3,7 @@ use super::apu::APU;
 use super::ppu::PPU;
 use crate::{
     cpu::{memory::Memory, rom::ROM},
-    savestate::{Save, SaveState},
+    savestate::{self, SaveStateError},
 };
 pub mod controller;
 
@@ -38,6 +38,7 @@ pub struct Bus {
     pub ppu: PPU,
     pub apu: APU,
     pub joypad1: Joypad,
+    pub joypad2: Joypad,
     pub dma_transfer: bool,
 }
 
@@ -48,6 +49,7 @@ impl Bus {
             ppu: PPU::new(rom),
             apu: APU::new(sample_rate),
             joypad1: Joypad::new(),
+            joypad2: Joypad::new(),
             dma_transfer: false,
         }
     }
@@ -124,18 +126,36 @@ impl Memory for Bus {
     }
 }
 
-impl Save for Bus {
-    fn save(&self, s: &mut SaveState) {
-        s.write_slice(&self.ram.0);
+const BUS_SECTION_NAME: &str = "bus";
+const JOYPADS_SECTION_NAME: &str = "joypads";
+
+impl savestate::Save for Bus {
+    fn save(&self, parent: &mut savestate::Section) {
+        let s = parent.create_child(BUS_SECTION_NAME);
+
+        s.data.write_slice(&self.ram.0);
+        s.data.write_bool(self.dma_transfer);
+
         self.ppu.save(s);
+
+        let s = parent.create_child(JOYPADS_SECTION_NAME);
+
         self.joypad1.save(s);
-        s.write_bool(self.dma_transfer);
+        self.joypad2.save(s);
     }
 
-    fn load(&mut self, s: &mut SaveState) {
-        s.read_slice(&mut self.ram.0);
-        self.ppu.load(s);
-        self.joypad1.load(s);
-        self.dma_transfer = s.read_bool();
+    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
+        let s = parent.get(BUS_SECTION_NAME)?;
+
+        s.data.read_slice(&mut self.ram.0)?;
+        self.dma_transfer = s.data.read_bool()?;
+
+        self.ppu.load(s)?;
+
+        let s = parent.get(JOYPADS_SECTION_NAME)?;
+        self.joypad1.load(s)?;
+        self.joypad2.load(s)?;
+
+        Ok(())
     }
 }

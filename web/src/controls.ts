@@ -89,8 +89,8 @@ export const createController = (nes: Nes, store: Store) => {
                     return;
                 }
                 case 'r': {
-                    nes.softReset();
                     event.preventDefault();
+                    nes.softReset();
                     return;
                 }
                 case 'l': {

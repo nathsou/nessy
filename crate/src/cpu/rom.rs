@@ -1,15 +1,15 @@
-use crate::savestate::Save;
+use sha2::{Digest, Sha256};
 
 use super::mappers::mmc1::MMC1;
 use super::mappers::nrom::NROM;
 use super::mappers::unrom::UNROM;
 use super::mappers::Mapper;
-use std::io;
 
 const PRG_ROM_PAGE_SIZE: usize = 16384;
 
 pub struct Cart {
     pub bytes: Vec<u8>,
+    pub hash: [u8; 32],
     pub prg_rom_size: u8, // 16kb units
     pub chr_rom_size: u8, // 8kb units
     pub mirroring: Mirroring,
@@ -29,8 +29,8 @@ pub struct ROM {
 #[derive(Debug)]
 pub enum RomError {
     InvalidiNesHeader,
+    InvalidSaveStateHeader,
     UnsupportedMapper(u8),
-    IOError(io::Error),
 }
 
 #[derive(Debug, PartialEq)]
@@ -54,6 +54,10 @@ impl ROM {
             return Err(RomError::InvalidiNesHeader);
         }
 
+        let mut hasher = Sha256::new();
+        hasher.update(&bytes);
+        let hash = hasher.finalize().into();
+
         let four_screen = bytes[6] & 0b1000 != 0;
         let vertical_mirroring = bytes[6] & 0b1 != 0;
         let mirroring = match (four_screen, vertical_mirroring) {
@@ -71,13 +75,14 @@ impl ROM {
         let chr_rom_start = prg_rom_start + (prg_rom_size as usize) * PRG_ROM_PAGE_SIZE;
         let mapper = ROM::get_mapper(mapper_id)?;
         let cart = Cart {
+            bytes,
+            hash,
             prg_rom_size,
             chr_rom_size,
             mirroring,
             mapper_id,
             battery,
             trainer,
-            bytes,
             prg_rom_start,
             chr_rom_start,
         };

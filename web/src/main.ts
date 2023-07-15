@@ -16,7 +16,7 @@ const SYNC_BOTH: SyncMode = 2;
 const AUDIO_BUFFER_SIZE_MAPPING = {
     [SYNC_VIDEO]: 1024,
     [SYNC_AUDIO]: 512,
-    [SYNC_BOTH]: 512,
+    [SYNC_BOTH]: 1024,
 };
 
 const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['style']['imageRendering']> = {
@@ -26,7 +26,9 @@ const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['
 
 async function setup() {
     await init();
+    Nes.initPanicHook();
     const store = await createStore();
+    const ui = createUI(store);
     const syncMode = SYNC_VIDEO;
     const audioBufferSize = AUDIO_BUFFER_SIZE_MAPPING[syncMode];
     const avoidUnderruns = syncMode === SYNC_BOTH;
@@ -36,8 +38,21 @@ async function setup() {
     let controller: ReturnType<typeof createController>;
     const frame = new Uint8Array(WIDTH * HEIGHT * 3);
     const audioCtx = new AudioContext();
-    const ui = createUI(store);
     const backgroundFrame = new Uint8Array(WIDTH * HEIGHT * 3);
+
+    function attempt<T>(fn: () => T): T {
+        try {
+            return fn();
+        } catch (error) {
+            ui.alert({
+                text: `${error}`,
+                type: 'error',
+                frames: 2.5 * 60,
+            });
+
+            throw error;
+        }
+    }
 
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
@@ -66,7 +81,9 @@ async function setup() {
         }
 
         if (!ui.visible) {
-            await audioCtx.resume();
+            if (nes !== undefined) {
+                await audioCtx.resume();
+            }
         } else {
             backgroundFrame.set(frame);
             hooks.call('setBackground', { mode: 'current' });
@@ -147,8 +164,15 @@ async function setup() {
                 const rom = await store.db.rom.get(hash);
                 updateROM(rom.data);
                 return true;
-            } catch (e) {
-                console.error(e);
+            } catch (error) {
+                console.error('Could not load ROM:', error);
+
+                ui.alert({
+                    text: `${error}`,
+                    type: 'error',
+                    frames: 2.5 * 60,
+                });
+
                 store.set('rom', null);
             }
         }
@@ -170,15 +194,19 @@ async function setup() {
 
     hooks.register('loadSave', async timestamp => {
         const save = await store.db.save.get(timestamp);
-        nes.loadState(save.state);
-        hooks.call('toggleUI', false);
+        attempt(() => {
+            nes.loadState(save.state);
+            hooks.call('toggleUI', false);
+        });
     });
 
     hooks.register('loadLastSave', async () => {
         const save = await store.db.save.getLast(store.ref.rom!);
         if (save != null) {
-            nes.loadState(save.state);
-            hooks.call('toggleUI', false);
+            attempt(() => {
+                nes.loadState(save.state);
+                hooks.call('toggleUI', false);
+            });
         }
     });
 
@@ -231,7 +259,7 @@ async function setup() {
         if (store.ref.rom != null) {
             await loadROM(store.ref.rom);
 
-            if (store.ref.lastState != null) {
+            if (nes && store.ref.lastState != null) {
                 nes.loadState(store.ref.lastState);
                 nes.nextFrame(backgroundFrame);
                 nes.loadState(store.ref.lastState);
@@ -307,8 +335,7 @@ async function setup() {
     }
 
     await onInit();
-
-    window.addEventListener('beforeunload', onExit);
+    // window.addEventListener('beforeunload', onExit);
 }
 
 window.addEventListener('DOMContentLoaded', setup);

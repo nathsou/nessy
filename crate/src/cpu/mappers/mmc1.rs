@@ -1,6 +1,6 @@
 use crate::{
     cpu::rom::{Cart, Mirroring},
-    savestate::{Save, SaveState},
+    savestate::{self, SaveStateError},
 };
 
 use super::Mapper;
@@ -161,28 +161,36 @@ impl MMC1 {
     }
 }
 
-impl Save for MMC1 {
-    fn save(&self, s: &mut SaveState) {
-        s.write_slice(&self.prg_ram);
-        s.write_slice(&self.chr_ram);
-        s.write_u8(self.shift_reg);
-        s.write_u8(self.control);
-        s.write_u8(self.prg_mode);
-        s.write_u8(self.chr_mode);
-        s.write_u8(self.chr_bank0);
-        s.write_u8(self.chr_bank1);
-        s.write_u8(self.prg_bank);
+const MMC1_SECTION_NAME: &str = "MMC1";
+
+impl savestate::Save for MMC1 {
+    fn save(&self, parent: &mut savestate::Section) {
+        let s = parent.create_child(MMC1_SECTION_NAME);
+
+        s.data.write_slice(&self.prg_ram);
+        s.data.write_slice(&self.chr_ram);
+        s.data.write_u8(self.shift_reg);
+        s.data.write_u8(self.control);
+        s.data.write_u8(self.prg_mode);
+        s.data.write_u8(self.chr_mode);
+        s.data.write_u8(self.chr_bank0);
+        s.data.write_u8(self.chr_bank1);
+        s.data.write_u8(self.prg_bank);
     }
 
-    fn load(&mut self, s: &mut SaveState) {
-        s.read_slice(&mut self.prg_ram);
-        s.read_slice(&mut self.chr_ram);
-        self.shift_reg = s.read_u8();
-        self.control = s.read_u8();
-        self.prg_mode = s.read_u8();
-        self.chr_mode = s.read_u8();
-        self.chr_bank0 = s.read_u8();
-        self.chr_bank1 = s.read_u8();
-        self.prg_bank = s.read_u8();
+    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
+        let s = parent.get(MMC1_SECTION_NAME)?;
+
+        s.data.read_slice(&mut self.prg_ram)?;
+        s.data.read_slice(&mut self.chr_ram)?;
+        self.shift_reg = s.data.read_u8()?;
+        self.control = s.data.read_u8()?;
+        self.prg_mode = s.data.read_u8()?;
+        self.chr_mode = s.data.read_u8()?;
+        self.chr_bank0 = s.data.read_u8()?;
+        self.chr_bank1 = s.data.read_u8()?;
+        self.prg_bank = s.data.read_u8()?;
+
+        Ok(())
     }
 }

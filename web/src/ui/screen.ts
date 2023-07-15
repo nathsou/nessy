@@ -54,9 +54,9 @@ export const createScreen = () => {
         opacity = newOpacity;
     }
 
-    const mix = (a: number, b: number) => {
+    function mix(a: number, b: number): number {
         return Math.round(a * (1 - opacity) + b * opacity);
-    };
+    }
 
     function render(buffer: Uint8Array): void {
         for (let y = 0; y < TILES_PER_COL; y += 1) {

@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 
-use crate::savestate::{Save, SaveState};
+use crate::savestate::{self, Save, SaveState, SaveStateError};
 
 // https://wiki.nesdev.com/w/index.php/PPU_registers
 pub struct Registers {
@@ -328,28 +328,36 @@ impl Registers {
     }
 }
 
-impl Save for Registers {
-    fn save(&self, s: &mut SaveState) {
-        s.write_u16(self.v);
-        s.write_u16(self.t);
-        s.write_u8(self.x);
-        s.write_bool(self.w);
-        s.write_bool(self.f);
-        s.write_u8(self.ctrl.bits());
-        s.write_u8(self.mask.bits());
-        s.write_u8(self.status.bits());
-        s.write_u8(self.oam_addr);
+const PPU_REGS_SECTION_NAME: &str = "ppu_regs";
+
+impl savestate::Save for Registers {
+    fn save(&self, parent: &mut savestate::Section) {
+        let s = parent.create_child(PPU_REGS_SECTION_NAME);
+
+        s.data.write_u16(self.v);
+        s.data.write_u16(self.t);
+        s.data.write_u8(self.x);
+        s.data.write_bool(self.w);
+        s.data.write_bool(self.f);
+        s.data.write_u8(self.ctrl.bits());
+        s.data.write_u8(self.mask.bits());
+        s.data.write_u8(self.status.bits());
+        s.data.write_u8(self.oam_addr);
     }
 
-    fn load(&mut self, s: &mut SaveState) {
-        self.v = s.read_u16();
-        self.t = s.read_u16();
-        self.x = s.read_u8();
-        self.w = s.read_bool();
-        self.f = s.read_bool();
-        *self.ctrl.0.bits_mut() = s.read_u8();
-        *self.mask.0.bits_mut() = s.read_u8();
-        *self.status.0.bits_mut() = s.read_u8();
-        self.oam_addr = s.read_u8();
+    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
+        let s = parent.get(PPU_REGS_SECTION_NAME)?;
+
+        self.v = s.data.read_u16()?;
+        self.t = s.data.read_u16()?;
+        self.x = s.data.read_u8()?;
+        self.w = s.data.read_bool()?;
+        self.f = s.data.read_bool()?;
+        *self.ctrl.0.bits_mut() = s.data.read_u8()?;
+        *self.mask.0.bits_mut() = s.data.read_u8()?;
+        *self.status.0.bits_mut() = s.data.read_u8()?;
+        self.oam_addr = s.data.read_u8()?;
+
+        Ok(())
     }
 }

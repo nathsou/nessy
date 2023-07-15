@@ -20,14 +20,18 @@ export const Saves = (store: Store) => {
     let saves: SaveEntry[] = [];
 
     const updateList = async () => {
-        saves = (await store.db.save.list(store.ref.rom!)).sort((a, b) => b.timestamp - a.timestamp);
-        list.update(baseItems.concat(saves.map(save => {
-            const date = new Date(save.timestamp);
-            return Button(
-                Text(`${date.toLocaleDateString()} ${date.toLocaleTimeString()}`),
-                () => hooks.call('loadSave', save.timestamp),
-            );
-        })));
+        if (store.ref.rom == null) {
+            list.update(baseItems);
+        } else {
+            saves = (await store.db.save.list(store.ref.rom)).sort((a, b) => b.timestamp - a.timestamp);
+            list.update(baseItems.concat(saves.map(save => {
+                const date = new Date(save.timestamp);
+                return Button(
+                    Text(`${date.toLocaleDateString()} ${date.toLocaleTimeString()}`),
+                    () => hooks.call('loadSave', save.timestamp),
+                );
+            })));
+        }
     };
 
     async function updateBackground() {
@@ -37,9 +41,11 @@ export const Saves = (store: Store) => {
                 hooks.call('setBackground', { mode: 'current' });
                 break;
             case LOAD_LAST_MENU_ITEM_INDEX:
-                const lastSave = await store.db.save.getLast(store.ref.rom!);
-                if (lastSave != null) {
-                    hooks.call('setBackground', { mode: 'at', timestamp: lastSave.timestamp });
+                if (store.ref.rom != null) {
+                    const lastSave = await store.db.save.getLast(store.ref.rom);
+                    if (lastSave != null) {
+                        hooks.call('setBackground', { mode: 'at', timestamp: lastSave.timestamp });
+                    }
                 }
                 break;
             default:

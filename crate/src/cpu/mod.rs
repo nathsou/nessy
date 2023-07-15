@@ -7,7 +7,7 @@ pub mod rom;
 
 use bitflags::bitflags;
 
-use crate::savestate::{Save, SaveState};
+use crate::savestate::{self, SaveStateError};
 
 use self::memory::Memory;
 use super::bus::Bus;
@@ -309,30 +309,40 @@ impl fmt::Debug for CPU {
     }
 }
 
-impl Save for CPU {
-    fn save(&self, s: &mut SaveState) {
-        s.write_u8(self.a);
-        s.write_u8(self.x);
-        s.write_u8(self.y);
-        s.write_u16(self.pc);
-        s.write_u8(self.sp);
-        s.write_u32(self.instr_cycles);
-        s.write_u32(self.total_cycles);
-        s.write_u8(self.status.bits());
-        s.write_u32(self.stall);
+const CPU_SECTION_NAME: &str = "cpu";
+
+impl savestate::Save for CPU {
+    fn save(&self, parent: &mut savestate::Section) {
+        let s = parent.create_child(CPU_SECTION_NAME);
+
+        s.data.write_u8(self.a);
+        s.data.write_u8(self.x);
+        s.data.write_u8(self.y);
+        s.data.write_u16(self.pc);
+        s.data.write_u8(self.sp);
+        s.data.write_u32(self.instr_cycles);
+        s.data.write_u32(self.total_cycles);
+        s.data.write_u8(self.status.bits());
+        s.data.write_u32(self.stall);
+
         self.bus.save(s);
     }
 
-    fn load(&mut self, s: &mut SaveState) {
-        self.a = s.read_u8();
-        self.x = s.read_u8();
-        self.y = s.read_u8();
-        self.pc = s.read_u16();
-        self.sp = s.read_u8();
-        self.instr_cycles = s.read_u32();
-        self.total_cycles = s.read_u32();
-        *self.status.0.bits_mut() = s.read_u8();
-        self.stall = s.read_u32();
-        self.bus.load(s);
+    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
+        let s = parent.get(CPU_SECTION_NAME)?;
+
+        self.a = s.data.read_u8()?;
+        self.x = s.data.read_u8()?;
+        self.y = s.data.read_u8()?;
+        self.pc = s.data.read_u16()?;
+        self.sp = s.data.read_u8()?;
+        self.instr_cycles = s.data.read_u32()?;
+        self.total_cycles = s.data.read_u32()?;
+        *self.status.0.bits_mut() = s.data.read_u8()?;
+        self.stall = s.data.read_u32()?;
+
+        self.bus.load(s)?;
+
+        Ok(())
     }
 }

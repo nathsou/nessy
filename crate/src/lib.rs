@@ -4,18 +4,40 @@ mod cpu;
 mod js;
 mod nes;
 mod ppu;
-use cfg_if::cfg_if;
-use cpu::rom::ROM;
+use cpu::rom::{RomError, ROM};
 use nes::Nes;
 mod savestate;
 extern crate console_error_panic_hook;
-use savestate::{Save, SaveState};
-use wasm_bindgen::prelude::wasm_bindgen;
+use savestate::SaveStateError;
+use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 
-cfg_if! {
-    if #[cfg(feature = "wee_alloc")] {
-        #[global_allocator]
-        static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+impl Into<JsValue> for RomError {
+    fn into(self) -> JsValue {
+        match self {
+            RomError::InvalidiNesHeader => JsValue::from_str("Invalid iNES header"),
+            RomError::InvalidSaveStateHeader => JsValue::from_str("Invalid save state header"),
+            RomError::UnsupportedMapper(mapper_id) => {
+                JsValue::from_str(&format!("Unsupported mapper: {}", mapper_id))
+            }
+        }
+    }
+}
+
+impl Into<JsValue> for SaveStateError {
+    fn into(self) -> JsValue {
+        match self {
+            SaveStateError::InvalidHeader => JsValue::from_str("Invalid savestate header"),
+            SaveStateError::InvalidVersion(v) => {
+                JsValue::from_str(&format!("Invalid savestate version: {}", v))
+            }
+            SaveStateError::IncoherentRomHash { .. } => {
+                JsValue::from_str("Incoherent savestate hash")
+            }
+            SaveStateError::InvalidData => JsValue::from_str("Invalid save state data"),
+            SaveStateError::MissingSection(name) => {
+                JsValue::from_str(&format!("Missing savestate section: {:?}", name))
+            }
+        }
     }
 }
 
@@ -26,12 +48,17 @@ pub struct WasmNes {
 
 #[wasm_bindgen(js_class = Nes)]
 impl WasmNes {
-    pub fn new(rom: Vec<u8>, sample_rate: f64) -> WasmNes {
+    #[wasm_bindgen(js_name = initPanicHook)]
+    pub fn init_panic_hook() {
         console_error_panic_hook::set_once();
-        let rom = ROM::new(rom).unwrap();
-        WasmNes {
+    }
+
+    pub fn new(rom: Vec<u8>, sample_rate: f64) -> Result<WasmNes, RomError> {
+        let rom = ROM::new(rom)?;
+
+        Ok(WasmNes {
             nes: Nes::new(rom, sample_rate),
-        }
+        })
     }
 
     #[wasm_bindgen(js_name = softReset)]
@@ -62,19 +89,35 @@ impl WasmNes {
 
     #[wasm_bindgen(js_name = saveState)]
     pub fn save_state(&self) -> Vec<u8> {
-        let mut state = SaveState::new();
-        self.nes.save(&mut state);
-        state.get_data()
+        self.nes.save_state().encode()
     }
 
     #[wasm_bindgen(js_name = loadState)]
-    pub fn load_state(&mut self, data: Vec<u8>) {
-        let mut state = SaveState::from(data);
-        self.nes.load(&mut state);
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), SaveStateError> {
+        self.nes.load_state(data)
     }
 
     #[wasm_bindgen(js_name = fillAudioBuffer)]
     pub fn fill_audio_buffer(&mut self, buffer: &mut [f32], avoid_underruns: bool) {
         self.nes.fill_audio_buffer(buffer, avoid_underruns);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::WasmNes;
+
+    #[test]
+    fn test_rom_loading() {
+        let bytes =
+            include_bytes!("/Users/nathan/Documents/roms/nes/Super Mario Bros.nes").to_vec();
+
+        let mut nes = WasmNes::new(bytes, 44100.0).unwrap();
+        let save = nes.save_state();
+        let mut frame_buffer = [0; 256 * 240 * 3];
+
+        nes.next_frame(&mut frame_buffer);
+
+        nes.load_state(&save).unwrap();
     }
 }

@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 
-use crate::savestate::{Save, SaveState};
+use crate::savestate::{self, Save, SaveState, SaveStateError};
 
 bitflags! {
     #[derive(Copy, Clone)]
@@ -72,16 +72,18 @@ impl Joypad {
     }
 }
 
-impl Save for Joypad {
-    fn save(&self, s: &mut SaveState) {
-        s.write_bool(self.strobe);
-        s.write_u8(self.index);
-        s.write_u8(self.status.bits());
+impl savestate::Save for Joypad {
+    fn save(&self, parent: &mut savestate::Section) {
+        parent.data.write_bool(self.strobe);
+        parent.data.write_u8(self.index);
+        parent.data.write_u8(self.status.bits());
     }
 
-    fn load(&mut self, s: &mut SaveState) {
-        self.strobe = s.read_bool();
-        self.index = s.read_u8();
-        self.update(s.read_u8());
+    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
+        self.strobe = parent.data.read_bool()?;
+        self.index = parent.data.read_u8()?;
+        self.update(parent.data.read_u8()?);
+
+        Ok(())
     }
 }

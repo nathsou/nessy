@@ -3,7 +3,7 @@ mod registers;
 use self::registers::{Ctrl, Registers, SpriteSize, Status};
 use crate::{
     cpu::rom::{Mirroring, ROM},
-    savestate::{Save, SaveState},
+    savestate::{self, Save, SaveState, SaveStateError},
 };
 
 const BYTES_PER_PALLETE: usize = 4;
@@ -442,9 +442,9 @@ impl PPU {
 
         match color_idx {
             0 => None,
-            1 => Some(COLOR_PALETTE[self.palette[palette_offset] as usize]),
-            2 => Some(COLOR_PALETTE[self.palette[palette_offset + 1] as usize]),
-            3 => Some(COLOR_PALETTE[self.palette[palette_offset + 2] as usize]),
+            1 => Some(COLOR_PALETTE[(self.palette[palette_offset] & 63) as usize]),
+            2 => Some(COLOR_PALETTE[(self.palette[palette_offset + 1] & 63) as usize]),
+            3 => Some(COLOR_PALETTE[(self.palette[palette_offset + 2] & 63) as usize]),
             _ => unreachable!(),
         }
     }
@@ -609,68 +609,80 @@ impl PPU {
     }
 }
 
-impl Save for SpriteData {
-    fn save(&self, s: &mut SaveState) {
-        s.write_u16(self.x);
-        s.write_u8(self.idx);
-        s.write_u8(self.palette_idx);
-        s.write_bool(self.behind_background);
+impl savestate::Save for SpriteData {
+    fn save(&self, s: &mut savestate::Section) {
+        s.data.write_u16(self.x);
+        s.data.write_u8(self.idx);
+        s.data.write_u8(self.palette_idx);
+        s.data.write_bool(self.behind_background);
     }
 
-    fn load(&mut self, s: &mut SaveState) {
-        self.x = s.read_u16();
-        self.idx = s.read_u8();
-        self.palette_idx = s.read_u8();
-        self.behind_background = s.read_bool();
+    fn load(&mut self, s: &mut savestate::Section) -> Result<(), SaveStateError> {
+        self.x = s.data.read_u16()?;
+        self.idx = s.data.read_u8()?;
+        self.palette_idx = s.data.read_u8()?;
+        self.behind_background = s.data.read_bool()?;
+
+        Ok(())
     }
 }
 
-impl Save for PPU {
-    fn save(&self, s: &mut SaveState) {
-        self.rom.mapper.save(s);
-        self.regs.save(s);
-        s.write_u8(self.open_bus);
-        s.write_slice(&self.vram);
-        s.write_slice(&self.palette);
-        s.write_slice(&self.attributes);
-        s.write_u16(self.cycle);
-        s.write_u16(self.scanline);
-        s.write_u64(self.frame);
-        s.write_u8(self.data_buffer);
-        s.write_bool(self.nmi_triggered);
-        s.write_bool(self.nmi_edge_detector);
-        s.write_bool(self.should_trigger_nmi);
-        s.write_bool(self.frame_complete);
-        s.write_u64(self.tile_data);
-        s.write_u8(self.nametable_byte);
-        s.write_u8(self.attribute_table_byte);
-        s.write_u8(self.pattern_table_low_byte);
-        s.write_u8(self.pattern_table_high_byte);
+const PPU_SECTION_NAME: &str = "ppu";
+
+impl savestate::Save for PPU {
+    fn save(&self, parent: &mut savestate::Section) {
+        let s = parent.create_child(PPU_SECTION_NAME);
+
+        s.data.write_u8(self.open_bus);
+        s.data.write_slice(&self.vram);
+        s.data.write_slice(&self.palette);
+        s.data.write_slice(&self.attributes);
+        s.data.write_u16(self.cycle);
+        s.data.write_u16(self.scanline);
+        s.data.write_u64(self.frame);
+        s.data.write_u8(self.data_buffer);
+        s.data.write_bool(self.nmi_triggered);
+        s.data.write_bool(self.nmi_edge_detector);
+        s.data.write_bool(self.should_trigger_nmi);
+        s.data.write_bool(self.frame_complete);
+        s.data.write_u64(self.tile_data);
+        s.data.write_u8(self.nametable_byte);
+        s.data.write_u8(self.attribute_table_byte);
+        s.data.write_u8(self.pattern_table_low_byte);
+        s.data.write_u8(self.pattern_table_high_byte);
+        s.data.write_u8(self.visible_sprites_count);
         s.write_all(&self.scanline_sprites);
-        s.write_u8(self.visible_sprites_count);
+
+        self.regs.save(s);
+        self.rom.mapper.save(s);
     }
 
-    fn load(&mut self, s: &mut SaveState) {
-        self.rom.mapper.load(s);
-        self.regs.load(s);
-        self.open_bus = s.read_u8();
-        s.read_slice(&mut self.vram);
-        s.read_slice(&mut self.palette);
-        s.read_slice(&mut self.attributes);
-        self.cycle = s.read_u16();
-        self.scanline = s.read_u16();
-        self.frame = s.read_u64();
-        self.data_buffer = s.read_u8();
-        self.nmi_triggered = s.read_bool();
-        self.nmi_edge_detector = s.read_bool();
-        self.should_trigger_nmi = s.read_bool();
-        self.frame_complete = s.read_bool();
-        self.tile_data = s.read_u64();
-        self.nametable_byte = s.read_u8();
-        self.attribute_table_byte = s.read_u8();
-        self.pattern_table_low_byte = s.read_u8();
-        self.pattern_table_high_byte = s.read_u8();
-        s.read_all(&mut self.scanline_sprites);
-        self.visible_sprites_count = s.read_u8();
+    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
+        let s = parent.get(PPU_SECTION_NAME)?;
+
+        self.open_bus = s.data.read_u8()?;
+        s.data.read_slice(&mut self.vram)?;
+        s.data.read_slice(&mut self.palette)?;
+        s.data.read_slice(&mut self.attributes)?;
+        self.cycle = s.data.read_u16()?;
+        self.scanline = s.data.read_u16()?;
+        self.frame = s.data.read_u64()?;
+        self.data_buffer = s.data.read_u8()?;
+        self.nmi_triggered = s.data.read_bool()?;
+        self.nmi_edge_detector = s.data.read_bool()?;
+        self.should_trigger_nmi = s.data.read_bool()?;
+        self.frame_complete = s.data.read_bool()?;
+        self.tile_data = s.data.read_u64()?;
+        self.nametable_byte = s.data.read_u8()?;
+        self.attribute_table_byte = s.data.read_u8()?;
+        self.pattern_table_low_byte = s.data.read_u8()?;
+        self.pattern_table_high_byte = s.data.read_u8()?;
+        self.visible_sprites_count = s.data.read_u8()?;
+        s.read_all(&mut self.scanline_sprites)?;
+
+        self.regs.load(s)?;
+        self.rom.mapper.load(s)?;
+
+        Ok(())
     }
 }

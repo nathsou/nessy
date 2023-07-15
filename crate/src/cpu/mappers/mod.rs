@@ -1,4 +1,4 @@
-use crate::savestate::Save;
+use crate::savestate::{self};
 
 use super::rom::Cart;
 
@@ -6,7 +6,7 @@ pub mod mmc1;
 pub mod nrom;
 pub mod unrom;
 
-pub trait Mapper: Save {
+pub trait Mapper: savestate::Save {
     fn read(&mut self, cart: &mut Cart, addr: u16) -> u8;
     fn write(&mut self, cart: &mut Cart, addr: u16, val: u8);
 

@@ -1,7 +1,7 @@
 use crate::{
     bus::{controller::Joypad, Bus},
     cpu::{rom::ROM, CPU},
-    savestate::{Save, SaveState},
+    savestate::{self, Save, SaveState, SaveStateError},
 };
 
 pub struct Nes {
@@ -100,14 +100,40 @@ impl Nes {
     pub fn get_frame(&self) -> &[u8] {
         self.cpu.bus.ppu.get_frame()
     }
+
+    pub fn save_state(&self) -> SaveState {
+        let mut state = SaveState::new(&self.cpu.bus.ppu.rom.cart.hash);
+        self.save(state.get_root_mut());
+        state
+    }
+
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), SaveStateError> {
+        let mut state = SaveState::decode(data)?;
+
+        let save_state_rom_hash = state.get_rom_hash();
+        let cart_rom_hash = self.cpu.bus.ppu.rom.cart.hash;
+
+        if cart_rom_hash != save_state_rom_hash {
+            return Err(SaveStateError::IncoherentRomHash {
+                save_state_rom_hash,
+                cart_rom_hash,
+            });
+        }
+
+        self.load(state.get_root_mut())?;
+
+        Ok(())
+    }
 }
 
-impl Save for Nes {
-    fn save(&self, s: &mut SaveState) {
+impl savestate::Save for Nes {
+    fn save(&self, s: &mut savestate::Section) {
         self.cpu.save(s);
     }
 
-    fn load(&mut self, s: &mut SaveState) {
-        self.cpu.load(s);
+    fn load(&mut self, s: &mut savestate::Section) -> Result<(), SaveStateError> {
+        self.cpu.load(s)?;
+
+        Ok(())
     }
 }
