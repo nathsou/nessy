@@ -19,6 +19,7 @@ jobs:
       - name: Install and Build 🔧
         run: |
           cd web
+          npm install -g wasm-pack
           npm install
           npm run wasm
           npm run copy
