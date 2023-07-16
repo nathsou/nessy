@@ -1,6 +1,6 @@
 import init, { Nes } from '../public/pkg/nessy';
 import { createController } from './controls';
-import { createWebglRenderer } from './render/webgl';
+import { createWebglRenderer } from './webgl';
 import { events } from './ui/events';
 import { hooks } from './ui/hooks';
 import { StoreData, createStore } from './ui/store';
@@ -35,7 +35,7 @@ async function setup() {
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
     const renderer = createWebglRenderer(canvas);
     let nes: Nes;
-    let controller: ReturnType<typeof createController>;
+    const controller = createController(store);
     const frame = new Uint8Array(WIDTH * HEIGHT * 3);
     const audioCtx = new AudioContext();
     const backgroundFrame = new Uint8Array(WIDTH * HEIGHT * 3);
@@ -134,6 +134,8 @@ async function setup() {
 
         if (!capturedByUI && !ui.visible) {
             controller?.onKeyDown(event);
+        } else {
+            event.preventDefault();
         }
     };
 
@@ -148,13 +150,6 @@ async function setup() {
 
     function updateROM(rom: Uint8Array): void {
         nes = Nes.new(rom, audioCtx.sampleRate);
-
-        if (controller === undefined) {
-            controller = createController(nes, store);
-        } else {
-            controller.updateNes(nes);
-        }
-
         frame.fill(0);
     }
 
@@ -308,6 +303,10 @@ async function setup() {
 
     hooks.register('softReset', () => {
         nes?.softReset();
+    });
+
+    hooks.register('setJoypad1', state => {
+        nes?.setJoypad1(state);
     });
 
     function onExit() {

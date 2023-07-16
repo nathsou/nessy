@@ -1,7 +1,4 @@
-use crate::{
-    js,
-    savestate::{self, SaveStateError},
-};
+use crate::savestate::{self, SaveStateError};
 
 use self::{
     dmc::DeltaModulationChannel,
@@ -105,7 +102,7 @@ const TRIANGLE_MIXER_LOOKUP: [f32; 204] = [
     0.6870166, 0.6892762, 0.69152504, 0.6937633, 0.6959909, 0.69820803, 0.7004148, 0.7026111, 
     0.7047972, 0.7069731, 0.7091388, 0.7112945, 0.7134401, 0.7155759, 0.7177018, 0.7198179, 
     0.72192425, 0.72402096, 0.726108, 0.72818565, 0.7302538, 0.73231256, 0.73436195, 0.7364021, 
-    0.7384331, 0.7404549, 0.7424676, 0.7444713, 
+    0.7384331, 0.7404549, 0.7424676, 0.7444713,
 ];
 
 impl APU {
@@ -321,12 +318,12 @@ impl APU {
     pub fn fill(&mut self, buffer: &mut [f32]) {
         let client_buffer_size = buffer.len();
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..client_buffer_size {
             buffer[i] = if i < self.buffer_write_index as usize {
                 self.buffer[i]
             } else {
-                // js::log(&format!("Buffer underflow!"));
-                0.0
+                0.0 // Buffer underflow
             };
         }
 

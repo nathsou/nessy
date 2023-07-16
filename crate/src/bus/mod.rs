@@ -29,8 +29,8 @@ impl Memory for RAM {
 
 pub enum Interrupt {
     None,
-    NMI,
-    IRQ,
+    Nmi,
+    Irq,
 }
 
 pub struct Bus {
@@ -56,9 +56,9 @@ impl Bus {
 
     pub fn pull_interrupt(&mut self) -> Interrupt {
         if self.ppu.is_asserting_nmi() {
-            Interrupt::NMI
+            Interrupt::Nmi
         } else if self.apu.is_asserting_irq() {
-            Interrupt::IRQ
+            Interrupt::Irq
         } else {
             Interrupt::None
         }

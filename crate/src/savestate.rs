@@ -1,8 +1,8 @@
-const NESSIE: &[u8; 6] = b"NESSIE";
+const NESSY: &[u8; 5] = b"NESSY";
 const HASH_SIZE: usize = 32; // bytes
-const NESSIE_SAVE_VERSION: u8 = 0;
+const SAVE_VERSION: u8 = 0;
 const VERSION_SIZE: usize = 1; // bytes
-const HEADER_SIZE: usize = NESSIE.len() + VERSION_SIZE + HASH_SIZE; // bytes
+const HEADER_SIZE: usize = NESSY.len() + VERSION_SIZE + HASH_SIZE; // bytes
 
 pub trait Save {
     fn save(&self, parent: &mut Section);
@@ -163,9 +163,9 @@ impl SaveState {
     #[allow(clippy::new_without_default)]
     pub fn new(cart_rom_hash: &[u8; HASH_SIZE]) -> Self {
         let mut header = [0; HEADER_SIZE];
-        header[..NESSIE.len()].copy_from_slice(NESSIE);
-        header[NESSIE.len()] = NESSIE_SAVE_VERSION;
-        header[NESSIE.len() + VERSION_SIZE..].copy_from_slice(cart_rom_hash);
+        header[..NESSY.len()].copy_from_slice(NESSY);
+        header[NESSY.len()] = SAVE_VERSION;
+        header[NESSY.len() + VERSION_SIZE..].copy_from_slice(cart_rom_hash);
 
         SaveState {
             header,
@@ -182,17 +182,17 @@ impl SaveState {
         header.copy_from_slice(&data[..HEADER_SIZE]);
         let mut offset = 0;
 
-        let magic_number = &header[..NESSIE.len()];
-        offset += NESSIE.len();
+        let magic_number = &header[..NESSY.len()];
+        offset += NESSY.len();
 
-        if magic_number != NESSIE {
+        if magic_number != NESSY {
             return Err(SaveStateError::InvalidHeader);
         }
 
         let version = header[offset];
         offset += 1;
 
-        if version > NESSIE_SAVE_VERSION {
+        if version > SAVE_VERSION {
             return Err(SaveStateError::InvalidVersion(version));
         }
 

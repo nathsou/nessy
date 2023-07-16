@@ -2,7 +2,6 @@ use super::memory::Memory;
 use super::opcodes::INST_CYCLES;
 use super::{Status, CPU};
 use crate::bus::Interrupt;
-use crate::js;
 
 const NMI_VECTOR: u16 = 0xfffa;
 const IRQ_VECTOR: u16 = 0xfffe;
@@ -27,12 +26,12 @@ impl CPU {
 
         match self.bus.pull_interrupt() {
             Interrupt::None => {}
-            Interrupt::IRQ => {
+            Interrupt::Irq => {
                 if !self.status.contains(Status::INTERRUPT_DISABLE) {
                     self.irq();
                 }
             }
-            Interrupt::NMI => self.nmi(),
+            Interrupt::Nmi => self.nmi(),
         }
 
         let op_code = self.next_byte();

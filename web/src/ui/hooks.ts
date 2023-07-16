@@ -35,4 +35,5 @@ export const hooks = createHooks<{
     ): void,
     toggleUI(visible?: boolean): void,
     softReset(): void,
+    setJoypad1(state: number): void,
 }>();

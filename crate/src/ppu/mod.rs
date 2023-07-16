@@ -349,13 +349,14 @@ impl PPU {
                     }
                 };
 
-                let tile_offset = chr_bank + tile_idx * 16 + row as u16;
+                let tile_offset = chr_bank + tile_idx * 16 + row;
 
                 if count < 8 {
                     let chr_low = self.read_chr(tile_offset);
                     let chr_high = self.read_chr(tile_offset + 8);
                     let mut chr = [0u8; 8];
 
+                    #[allow(clippy::needless_range_loop)]
                     for i in 0..8 {
                         let mask = 1 << if flip_horizontally { i } else { 7 - i };
                         let p1: u8 = (chr_low & mask != 0).into();

@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 
-use crate::savestate::{self, Save, SaveState, SaveStateError};
+use crate::savestate::{self, SaveStateError};
 
 bitflags! {
     #[derive(Copy, Clone)]
@@ -31,12 +31,6 @@ impl Joypad {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.strobe = false;
-        self.index = 0;
-        self.status = JoypadStatus::empty();
-    }
-
     pub fn read(&mut self) -> u8 {
         if self.index > 7 {
             return 1;
@@ -61,10 +55,6 @@ impl Joypad {
         if self.strobe {
             self.index = 0;
         }
-    }
-
-    pub fn update_button_state(&mut self, button: JoypadStatus, pressed: bool) {
-        self.status.set(button, pressed);
     }
 
     pub fn update(&mut self, val: u8) {

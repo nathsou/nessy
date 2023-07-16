@@ -11,9 +11,9 @@ extern crate console_error_panic_hook;
 use savestate::SaveStateError;
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 
-impl Into<JsValue> for RomError {
-    fn into(self) -> JsValue {
-        match self {
+impl From<RomError> for JsValue {
+    fn from(err: RomError) -> JsValue {
+        match err {
             RomError::InvalidiNesHeader => JsValue::from_str("Invalid iNES header"),
             RomError::InvalidSaveStateHeader => JsValue::from_str("Invalid save state header"),
             RomError::UnsupportedMapper(mapper_id) => {
@@ -23,9 +23,9 @@ impl Into<JsValue> for RomError {
     }
 }
 
-impl Into<JsValue> for SaveStateError {
-    fn into(self) -> JsValue {
-        match self {
+impl From<SaveStateError> for JsValue {
+    fn from(err: SaveStateError) -> JsValue {
+        match err {
             SaveStateError::InvalidHeader => JsValue::from_str("Invalid savestate header"),
             SaveStateError::InvalidVersion(v) => {
                 JsValue::from_str(&format!("Invalid savestate version: {}", v))
@@ -100,24 +100,5 @@ impl WasmNes {
     #[wasm_bindgen(js_name = fillAudioBuffer)]
     pub fn fill_audio_buffer(&mut self, buffer: &mut [f32], avoid_underruns: bool) {
         self.nes.fill_audio_buffer(buffer, avoid_underruns);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::WasmNes;
-
-    #[test]
-    fn test_rom_loading() {
-        let bytes =
-            include_bytes!("/Users/nathan/Documents/roms/nes/Super Mario Bros.nes").to_vec();
-
-        let mut nes = WasmNes::new(bytes, 44100.0).unwrap();
-        let save = nes.save_state();
-        let mut frame_buffer = [0; 256 * 240 * 3];
-
-        nes.next_frame(&mut frame_buffer);
-
-        nes.load_state(&save).unwrap();
     }
 }

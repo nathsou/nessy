@@ -1,5 +1,3 @@
-import { Nes } from "../public/pkg/nessy";
-import { events } from "./ui/events";
 import { hooks } from "./ui/hooks";
 import { Store } from "./ui/store";
 
@@ -68,7 +66,7 @@ export const createControls = (controls: Record<ControlButton, string> = DEFAULT
     };
 };
 
-export const createController = (nes: Nes, store: Store) => {
+export const createController = (store: Store) => {
     let currentFrame = 0;
     let state = 0;
     let changed = false;
@@ -90,7 +88,7 @@ export const createController = (nes: Nes, store: Store) => {
                 }
                 case 'r': {
                     event.preventDefault();
-                    nes.softReset();
+                    hooks.call('softReset');
                     return;
                 }
                 case 'l': {
@@ -121,7 +119,7 @@ export const createController = (nes: Nes, store: Store) => {
                 changed = true;
             }
 
-            nes.setJoypad1(state);
+            hooks.call('setJoypad1', state);
         }
     }
 
@@ -143,16 +141,11 @@ export const createController = (nes: Nes, store: Store) => {
         }
     }
 
-    function updateNes(newNes: Nes): void {
-        nes = newNes;
-    }
-
     return {
         onKeyDown,
         onKeyUp,
         history,
         tick,
         save,
-        updateNes,
     };
 };

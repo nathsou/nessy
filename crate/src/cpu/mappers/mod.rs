@@ -19,6 +19,7 @@ pub trait Mapper: savestate::Save {
     ) {
         let offset = chr_bank_offset + (nth * 16) as u16;
 
+        #[allow(clippy::needless_range_loop)]
         for i in 0..16 {
             buffer[i] = self.read(cart, offset + i as u16);
         }

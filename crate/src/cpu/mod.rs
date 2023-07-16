@@ -1,4 +1,3 @@
-pub mod assembler;
 mod instructions;
 pub mod mappers;
 pub mod memory;
