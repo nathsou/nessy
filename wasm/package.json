@@ -1,0 +1,17 @@
+{
+  "name": "nessy",
+  "collaborators": [
+    "nathsou <nathsou@users.noreply.github.com>"
+  ],
+  "version": "0.1.0",
+  "files": [
+    "nessy_bg.wasm",
+    "nessy.js",
+    "nessy.d.ts"
+  ],
+  "module": "nessy.js",
+  "types": "nessy.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
