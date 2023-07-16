@@ -1,4 +1,4 @@
-import init, { Nes } from '../public/pkg/nessy';
+import init, { Nes } from '../public/wasm/nessy';
 import { createController } from './controls';
 import { createWebglRenderer } from './webgl';
 import { events } from './ui/events';

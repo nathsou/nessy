@@ -24,15 +24,13 @@ jobs:
           npm run wasm
           npm run copy
           npm run build
-          mkdir build
-          cp -rf dist build
-          cp -rf ../crate/pkg build
-          ls build
-          ls build/pkg
+          ls -la dist
+          echo "wasm dir contents"
+          ls -la dist/wasm
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages # The branch the action should deploy to.
-          folder: web/build # The folder the action should deploy.
+          folder: web/dist # The folder the action should deploy.
           clean: false

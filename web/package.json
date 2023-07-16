@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "wasm": "wasm-pack build ../crate --target web",
-    "copy": "mkdir -p ./public && rm -rf ./public/pkg && cp -rf ../crate/pkg ./public/pkg",
+    "copy": "mkdir -p ./public && rm -rf ./public/wasm && cp -rf ../crate/pkg ./public/wasm",
     "dev": "npm run wasm && npm run copy && vite",
     "build": "vite build --base=/nessy/"
   },
