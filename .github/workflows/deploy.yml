@@ -24,6 +24,7 @@ jobs:
           npm run wasm
           npm run copy
           npm run build
+          cp -rf ../crate/pkg ../web/dist
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@v4

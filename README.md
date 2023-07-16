@@ -4,6 +4,8 @@
 
 **A Nintendo Entertainment System (NES) emulator for the web**
 
+[Play it online](https://nathsou.github.io/nessy/)
+
 ## Screenshots
 
 ![Library](resources/metroid.png)
