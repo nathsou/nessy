@@ -64,13 +64,13 @@ impl savestate::Save for NROM {
     fn save(&self, parent: &mut savestate::Section) {
         let s = parent.create_child(NROM_SECTION_NAME);
 
-        s.data.write_slice(&self.ram);
+        s.data.write_u8_slice(&self.ram);
     }
 
     fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
         let s = parent.get(NROM_SECTION_NAME)?;
 
-        s.data.read_slice(&mut self.ram)?;
+        s.data.read_u8_slice(&mut self.ram)?;
 
         Ok(())
     }

@@ -335,7 +335,7 @@ async function setup() {
     }
 
     await onInit();
-    // window.addEventListener('beforeunload', onExit);
+    window.addEventListener('beforeunload', onExit);
 }
 
 window.addEventListener('DOMContentLoaded', setup);

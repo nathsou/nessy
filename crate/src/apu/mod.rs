@@ -1,5 +1,12 @@
+use crate::{
+    js,
+    savestate::{self, SaveStateError},
+};
+
 use self::{
-    dmc::DeltaModulationChannel, noise::NoiseChannel, pulse::PulseChannel,
+    dmc::DeltaModulationChannel,
+    noise::NoiseChannel,
+    pulse::{PulseChannel, PulseChannelId},
     triangle::TriangleChannel,
 };
 
@@ -13,9 +20,29 @@ const APU_BUFFER_SIZE: usize = 8 * 1024;
 const APU_BUFFER_MASK: u16 = APU_BUFFER_SIZE as u16 - 1;
 const CPU_FREQ: f64 = 1789772.5;
 
+#[derive(Clone, Copy)]
 enum FrameMode {
     FourStep,
     FiveStep,
+}
+
+impl From<u8> for FrameMode {
+    fn from(val: u8) -> Self {
+        match val {
+            0 => FrameMode::FourStep,
+            1 => FrameMode::FiveStep,
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl From<FrameMode> for u8 {
+    fn from(val: FrameMode) -> Self {
+        match val {
+            FrameMode::FourStep => 0,
+            FrameMode::FiveStep => 1,
+        }
+    }
 }
 
 #[allow(clippy::upper_case_acronyms)]
@@ -29,14 +56,14 @@ pub struct APU {
     frame_counter: u32,
     frame_interrupt: bool,
     frame_mode: FrameMode,
+    current_sample: Option<f32>,
+    samples_pushed: u32,
+    irq_inhibit: bool,
     pulse1: PulseChannel,
     pulse2: PulseChannel,
     triangle: TriangleChannel,
     noise: NoiseChannel,
     dmc: DeltaModulationChannel,
-    current_sample: Option<f32>,
-    samples_pushed: u32,
-    irq_inhibit: bool,
 }
 
 #[rustfmt::skip]
@@ -93,8 +120,8 @@ impl APU {
             frame_counter: 0,
             frame_interrupt: false,
             frame_mode: FrameMode::FourStep,
-            pulse1: PulseChannel::new(),
-            pulse2: PulseChannel::new(),
+            pulse1: PulseChannel::new(PulseChannelId::Pulse1),
+            pulse2: PulseChannel::new(PulseChannelId::Pulse2),
             triangle: TriangleChannel::new(),
             noise: NoiseChannel::new(),
             dmc: DeltaModulationChannel::new(),
@@ -339,5 +366,54 @@ impl APU {
     #[inline]
     pub fn push_memory_read_response(&mut self, val: u8) {
         self.dmc.set_memory_read_response(val);
+    }
+}
+
+impl savestate::Save for APU {
+    fn save(&self, parent: &mut savestate::Section) {
+        let s = parent.create_child("apu");
+
+        // ignore cycles_per_sample and samples_per_frame
+        // as they depend on the sample rate
+
+        s.data.write_f32_slice(&self.buffer);
+        s.data.write_u16(self.buffer_write_index);
+        s.data.write_u16(self.buffer_read_index);
+        s.data.write_u32(self.cycle);
+        s.data.write_u32(self.frame_counter);
+        s.data.write_bool(self.frame_interrupt);
+        s.data.write_u8(self.frame_mode.into());
+        // ignore current_sample
+        s.data.write_u32(self.samples_pushed);
+        s.data.write_bool(self.irq_inhibit);
+
+        self.pulse1.save(s);
+        self.pulse2.save(s);
+        self.triangle.save(s);
+        self.noise.save(s);
+        self.dmc.save(s);
+    }
+
+    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
+        let s = parent.get("apu")?;
+
+        s.data.read_f32_slice(&mut self.buffer)?;
+        self.buffer_write_index = s.data.read_u16()?;
+        self.buffer_read_index = s.data.read_u16()?;
+        self.cycle = s.data.read_u32()?;
+        self.frame_counter = s.data.read_u32()?;
+        self.frame_interrupt = s.data.read_bool()?;
+        self.frame_mode = s.data.read_u8()?.into();
+        // ignore current_sample
+        self.samples_pushed = s.data.read_u32()?;
+        self.irq_inhibit = s.data.read_bool()?;
+
+        self.pulse1.load(s)?;
+        self.pulse2.load(s)?;
+        self.triangle.load(s)?;
+        self.noise.load(s)?;
+        self.dmc.load(s)?;
+
+        Ok(())
     }
 }

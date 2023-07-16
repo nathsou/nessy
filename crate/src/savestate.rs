@@ -247,8 +247,14 @@ impl ByteBuffer {
         &self.data
     }
 
-    pub fn write_slice(&mut self, data: &[u8]) {
+    pub fn write_u8_slice(&mut self, data: &[u8]) {
         self.data.extend_from_slice(data);
+    }
+
+    pub fn write_f32_slice(&mut self, data: &[f32]) {
+        for value in data {
+            self.write_f32(*value);
+        }
     }
 
     pub fn write_bool(&mut self, data: bool) {
@@ -260,21 +266,22 @@ impl ByteBuffer {
     }
 
     pub fn write_u16(&mut self, data: u16) {
-        self.data.push((data >> 8) as u8);
-        self.data.push((data & 0xff) as u8);
+        self.write_u8_slice(&data.to_le_bytes());
     }
 
     pub fn write_u32(&mut self, data: u32) {
-        self.write_u16((data >> 16) as u16);
-        self.write_u16((data & 0xffff) as u16);
+        self.write_u8_slice(&data.to_le_bytes());
     }
 
     pub fn write_u64(&mut self, data: u64) {
-        self.write_u32((data >> 32) as u32);
-        self.write_u32((data & 0xffff_ffff) as u32);
+        self.write_u8_slice(&data.to_le_bytes());
     }
 
-    pub fn read_slice(&mut self, dst: &mut [u8]) -> Result<(), SaveStateError> {
+    pub fn write_f32(&mut self, data: f32) {
+        self.write_u32(data.to_bits());
+    }
+
+    pub fn read_u8_slice(&mut self, dst: &mut [u8]) -> Result<(), SaveStateError> {
         if self.read_index + dst.len() > self.data.len() {
             return Err(SaveStateError::InvalidData);
         }
@@ -282,6 +289,14 @@ impl ByteBuffer {
         let slice = &self.data[self.read_index..self.read_index + dst.len()];
         dst.copy_from_slice(slice);
         self.read_index += dst.len();
+
+        Ok(())
+    }
+
+    pub fn read_f32_slice(&mut self, dst: &mut [f32]) -> Result<(), SaveStateError> {
+        for value in dst {
+            *value = self.read_f32()?;
+        }
 
         Ok(())
     }
@@ -302,23 +317,24 @@ impl ByteBuffer {
     }
 
     pub fn read_u16(&mut self) -> Result<u16, SaveStateError> {
-        let hi = self.read_u8()? as u16;
-        let lo = self.read_u8()? as u16;
-
-        Ok(hi << 8 | lo)
+        let mut buf = [0; 2];
+        self.read_u8_slice(&mut buf)?;
+        Ok(u16::from_le_bytes(buf))
     }
 
     pub fn read_u32(&mut self) -> Result<u32, SaveStateError> {
-        let hi = self.read_u16()? as u32;
-        let lo = self.read_u16()? as u32;
-
-        Ok(hi << 16 | lo)
+        let mut buf = [0; 4];
+        self.read_u8_slice(&mut buf)?;
+        Ok(u32::from_le_bytes(buf))
     }
 
     pub fn read_u64(&mut self) -> Result<u64, SaveStateError> {
-        let hi = self.read_u32()? as u64;
-        let lo = self.read_u32()? as u64;
+        let mut buf = [0; 8];
+        self.read_u8_slice(&mut buf)?;
+        Ok(u64::from_le_bytes(buf))
+    }
 
-        Ok(hi << 32 | lo)
+    pub fn read_f32(&mut self) -> Result<f32, SaveStateError> {
+        Ok(f32::from_bits(self.read_u32()?))
     }
 }

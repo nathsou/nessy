@@ -133,10 +133,11 @@ impl savestate::Save for Bus {
     fn save(&self, parent: &mut savestate::Section) {
         let s = parent.create_child(BUS_SECTION_NAME);
 
-        s.data.write_slice(&self.ram.0);
+        s.data.write_u8_slice(&self.ram.0);
         s.data.write_bool(self.dma_transfer);
 
         self.ppu.save(s);
+        self.apu.save(s);
 
         let s = parent.create_child(JOYPADS_SECTION_NAME);
 
@@ -147,10 +148,11 @@ impl savestate::Save for Bus {
     fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
         let s = parent.get(BUS_SECTION_NAME)?;
 
-        s.data.read_slice(&mut self.ram.0)?;
+        s.data.read_u8_slice(&mut self.ram.0)?;
         self.dma_transfer = s.data.read_bool()?;
 
         self.ppu.load(s)?;
+        self.apu.load(s)?;
 
         let s = parent.get(JOYPADS_SECTION_NAME)?;
         self.joypad1.load(s)?;

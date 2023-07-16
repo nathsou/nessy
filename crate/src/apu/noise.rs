@@ -1,3 +1,5 @@
+use crate::savestate::{self, SaveStateError};
+
 use super::common::{Envelope, LengthCounter, Timer};
 
 const NOISE_PERIOD_TABLE: [u16; 16] = [
@@ -6,11 +8,11 @@ const NOISE_PERIOD_TABLE: [u16; 16] = [
 
 pub struct NoiseChannel {
     enabled: bool,
+    shift_register: u16,
+    mode: bool,
     length_counter: LengthCounter,
     envelope: Envelope,
     timer: Timer,
-    shift_register: u16,
-    mode: bool,
 }
 
 impl NoiseChannel {
@@ -87,5 +89,35 @@ impl NoiseChannel {
         } else {
             self.envelope.output()
         }
+    }
+}
+
+const NOISE_SECTION_NAME: &str = "noise";
+
+impl savestate::Save for NoiseChannel {
+    fn save(&self, parent: &mut savestate::Section) {
+        let s = parent.create_child(NOISE_SECTION_NAME);
+
+        s.data.write_bool(self.enabled);
+        s.data.write_u16(self.shift_register);
+        s.data.write_bool(self.mode);
+
+        self.length_counter.save(s);
+        self.envelope.save(s);
+        self.timer.save(s);
+    }
+
+    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
+        let s = parent.get(NOISE_SECTION_NAME)?;
+
+        self.enabled = s.data.read_bool()?;
+        self.shift_register = s.data.read_u16()?;
+        self.mode = s.data.read_bool()?;
+
+        self.length_counter.load(s)?;
+        self.envelope.load(s)?;
+        self.timer.load(s)?;
+
+        Ok(())
     }
 }

@@ -3,7 +3,7 @@ mod registers;
 use self::registers::{Ctrl, Registers, SpriteSize, Status};
 use crate::{
     cpu::rom::{Mirroring, ROM},
-    savestate::{self, Save, SaveState, SaveStateError},
+    savestate::{self, SaveStateError},
 };
 
 const BYTES_PER_PALLETE: usize = 4;
@@ -634,9 +634,9 @@ impl savestate::Save for PPU {
         let s = parent.create_child(PPU_SECTION_NAME);
 
         s.data.write_u8(self.open_bus);
-        s.data.write_slice(&self.vram);
-        s.data.write_slice(&self.palette);
-        s.data.write_slice(&self.attributes);
+        s.data.write_u8_slice(&self.vram);
+        s.data.write_u8_slice(&self.palette);
+        s.data.write_u8_slice(&self.attributes);
         s.data.write_u16(self.cycle);
         s.data.write_u16(self.scanline);
         s.data.write_u64(self.frame);
@@ -661,9 +661,9 @@ impl savestate::Save for PPU {
         let s = parent.get(PPU_SECTION_NAME)?;
 
         self.open_bus = s.data.read_u8()?;
-        s.data.read_slice(&mut self.vram)?;
-        s.data.read_slice(&mut self.palette)?;
-        s.data.read_slice(&mut self.attributes)?;
+        s.data.read_u8_slice(&mut self.vram)?;
+        s.data.read_u8_slice(&mut self.palette)?;
+        s.data.read_u8_slice(&mut self.attributes)?;
         self.cycle = s.data.read_u16()?;
         self.scanline = s.data.read_u16()?;
         self.frame = s.data.read_u64()?;

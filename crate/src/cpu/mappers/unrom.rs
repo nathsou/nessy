@@ -78,16 +78,16 @@ impl savestate::Save for UNROM {
     fn save(&self, parent: &mut savestate::Section) {
         let s = parent.create_child(UNROM_SECTION_NAME);
 
-        s.data.write_slice(&self.prg_ram);
-        s.data.write_slice(&self.chr_ram);
+        s.data.write_u8_slice(&self.prg_ram);
+        s.data.write_u8_slice(&self.chr_ram);
         s.data.write_u8(self.bank);
     }
 
     fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
         let s = parent.get(UNROM_SECTION_NAME)?;
 
-        s.data.read_slice(&mut self.prg_ram)?;
-        s.data.read_slice(&mut self.chr_ram)?;
+        s.data.read_u8_slice(&mut self.prg_ram)?;
+        s.data.read_u8_slice(&mut self.chr_ram)?;
         self.bank = s.data.read_u8()?;
 
         Ok(())

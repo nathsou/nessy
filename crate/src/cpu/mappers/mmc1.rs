@@ -167,8 +167,8 @@ impl savestate::Save for MMC1 {
     fn save(&self, parent: &mut savestate::Section) {
         let s = parent.create_child(MMC1_SECTION_NAME);
 
-        s.data.write_slice(&self.prg_ram);
-        s.data.write_slice(&self.chr_ram);
+        s.data.write_u8_slice(&self.prg_ram);
+        s.data.write_u8_slice(&self.chr_ram);
         s.data.write_u8(self.shift_reg);
         s.data.write_u8(self.control);
         s.data.write_u8(self.prg_mode);
@@ -181,8 +181,8 @@ impl savestate::Save for MMC1 {
     fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
         let s = parent.get(MMC1_SECTION_NAME)?;
 
-        s.data.read_slice(&mut self.prg_ram)?;
-        s.data.read_slice(&mut self.chr_ram)?;
+        s.data.read_u8_slice(&mut self.prg_ram)?;
+        s.data.read_u8_slice(&mut self.chr_ram)?;
         self.shift_reg = s.data.read_u8()?;
         self.control = s.data.read_u8()?;
         self.prg_mode = s.data.read_u8()?;

@@ -1,3 +1,5 @@
+use crate::savestate::{self, SaveStateError};
+
 use super::common::{Envelope, LengthCounter, Timer};
 
 const DUTY_TABLE: [[u8; 8]; 4] = [
@@ -7,14 +9,26 @@ const DUTY_TABLE: [[u8; 8]; 4] = [
     [1, 0, 0, 1, 1, 1, 1, 1],
 ];
 
-#[derive(Default)]
+#[derive(Copy, Clone)]
+pub enum PulseChannelId {
+    Pulse1,
+    Pulse2,
+}
+
+impl PulseChannelId {
+    fn section_name(self) -> &'static str {
+        match self {
+            PulseChannelId::Pulse1 => "pulse1",
+            PulseChannelId::Pulse2 => "pulse2",
+        }
+    }
+}
+
 pub struct PulseChannel {
+    id: PulseChannelId,
     enabled: bool,
-    length_counter: LengthCounter,
-    envelope: Envelope,
     duty_mode: u8,
     duty_cycle: u8,
-    timer: Timer,
     sweep_enabled: bool,
     sweep_period: u8,
     sweep_negate: bool,
@@ -22,11 +36,29 @@ pub struct PulseChannel {
     sweep_reload: bool,
     sweep_divider: u8,
     sweep_mute: bool,
+    length_counter: LengthCounter,
+    envelope: Envelope,
+    timer: Timer,
 }
 
 impl PulseChannel {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(id: PulseChannelId) -> Self {
+        PulseChannel {
+            id,
+            enabled: false,
+            length_counter: LengthCounter::default(),
+            envelope: Envelope::default(),
+            duty_mode: 0,
+            duty_cycle: 0,
+            timer: Timer::default(),
+            sweep_enabled: false,
+            sweep_period: 0,
+            sweep_negate: false,
+            sweep_shift: 0,
+            sweep_reload: false,
+            sweep_divider: 0,
+            sweep_mute: false,
+        }
     }
 
     pub fn step_timer(&mut self) {
@@ -131,5 +163,47 @@ impl PulseChannel {
         }
 
         self.envelope.output()
+    }
+}
+
+impl savestate::Save for PulseChannel {
+    fn save(&self, parent: &mut savestate::Section) {
+        let s = parent.create_child(self.id.section_name());
+
+        s.data.write_bool(self.enabled);
+        s.data.write_u8(self.duty_mode);
+        s.data.write_u8(self.duty_cycle);
+        s.data.write_bool(self.sweep_enabled);
+        s.data.write_u8(self.sweep_period);
+        s.data.write_bool(self.sweep_negate);
+        s.data.write_u8(self.sweep_shift);
+        s.data.write_bool(self.sweep_reload);
+        s.data.write_u8(self.sweep_divider);
+        s.data.write_bool(self.sweep_mute);
+
+        self.length_counter.save(s);
+        self.envelope.save(s);
+        self.timer.save(s);
+    }
+
+    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
+        let s = parent.get(self.id.section_name())?;
+
+        self.enabled = s.data.read_bool()?;
+        self.duty_mode = s.data.read_u8()?;
+        self.duty_cycle = s.data.read_u8()?;
+        self.sweep_enabled = s.data.read_bool()?;
+        self.sweep_period = s.data.read_u8()?;
+        self.sweep_negate = s.data.read_bool()?;
+        self.sweep_shift = s.data.read_u8()?;
+        self.sweep_reload = s.data.read_bool()?;
+        self.sweep_divider = s.data.read_u8()?;
+        self.sweep_mute = s.data.read_bool()?;
+
+        self.length_counter.load(s)?;
+        self.envelope.load(s)?;
+        self.timer.load(s)?;
+
+        Ok(())
     }
 }

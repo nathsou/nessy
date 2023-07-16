@@ -1,6 +1,6 @@
 use bitflags::bitflags;
 
-use crate::savestate::{self, Save, SaveState, SaveStateError};
+use crate::savestate::{self, SaveStateError};
 
 // https://wiki.nesdev.com/w/index.php/PPU_registers
 pub struct Registers {
@@ -328,7 +328,7 @@ impl Registers {
     }
 }
 
-const PPU_REGS_SECTION_NAME: &str = "ppu_regs";
+const PPU_REGS_SECTION_NAME: &str = "regs";
 
 impl savestate::Save for Registers {
     fn save(&self, parent: &mut savestate::Section) {

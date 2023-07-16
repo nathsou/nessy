@@ -1,3 +1,5 @@
+use crate::savestate::{self, SaveStateError};
+
 use super::common::Timer;
 
 const DELTA_MODULATION_RATES: [u16; 16] = [
@@ -9,7 +11,6 @@ pub struct DeltaModulationChannel {
     enabled: bool,
     pub interrupt_flag: bool,
     loop_flag: bool,
-    timer: Timer,
     output_level: u8,
     sample_addr: u16,
     sample_len: u16,
@@ -21,6 +22,7 @@ pub struct DeltaModulationChannel {
     irq_enabled: bool,
     pub cpu_stall: u32,
     pub memory_read_request: Option<u16>,
+    timer: Timer,
 }
 
 impl DeltaModulationChannel {
@@ -144,5 +146,53 @@ impl DeltaModulationChannel {
     #[inline]
     pub fn output(&self) -> u8 {
         self.output_level
+    }
+}
+
+const DMC_SECTION_NAME: &str = "dmc";
+
+impl savestate::Save for DeltaModulationChannel {
+    fn save(&self, parent: &mut savestate::Section) {
+        let s = parent.create_child(DMC_SECTION_NAME);
+
+        s.data.write_bool(self.enabled);
+        s.data.write_bool(self.interrupt_flag);
+        s.data.write_bool(self.loop_flag);
+        s.data.write_u8(self.output_level);
+        s.data.write_u16(self.sample_addr);
+        s.data.write_u16(self.sample_len);
+        s.data.write_u16(self.current_addr);
+        s.data.write_u16(self.bytes_remaining);
+        s.data.write_u8(self.shift_register);
+        s.data.write_bool(self.silence_flag);
+        s.data.write_u8(self.output_bits_remaining);
+        s.data.write_bool(self.irq_enabled);
+        s.data.write_u32(self.cpu_stall);
+        // ignore memory_read_request
+
+        self.timer.save(s);
+    }
+
+    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
+        let s = parent.get(DMC_SECTION_NAME)?;
+
+        self.enabled = s.data.read_bool()?;
+        self.interrupt_flag = s.data.read_bool()?;
+        self.loop_flag = s.data.read_bool()?;
+        self.output_level = s.data.read_u8()?;
+        self.sample_addr = s.data.read_u16()?;
+        self.sample_len = s.data.read_u16()?;
+        self.current_addr = s.data.read_u16()?;
+        self.bytes_remaining = s.data.read_u16()?;
+        self.shift_register = s.data.read_u8()?;
+        self.silence_flag = s.data.read_bool()?;
+        self.output_bits_remaining = s.data.read_u8()?;
+        self.irq_enabled = s.data.read_bool()?;
+        self.cpu_stall = s.data.read_u32()?;
+        // ignore memory_read_request
+
+        self.timer.load(s)?;
+
+        Ok(())
     }
 }
