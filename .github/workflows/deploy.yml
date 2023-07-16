@@ -24,9 +24,7 @@ jobs:
           npm run wasm
           npm run copy
           npm run build
-          ls -la dist
-          echo "wasm dir contents"
-          ls -la dist/wasm
+          rm dist/wasm/.gitignore
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@v4
