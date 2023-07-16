@@ -1,0 +1,31 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  
+jobs:
+  build-playground:
+    name: build and deploy the playground
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+
+      - name: Install and Build 🔧
+        run: |
+          cd web
+          npm install
+          npm run wasm
+          npm run copy
+          npm run build
+
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages # The branch the action should deploy to.
+          folder: dist # The folder the action should deploy.

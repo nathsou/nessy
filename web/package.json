@@ -13,7 +13,7 @@
     "wasm": "wasm-pack build ../crate --target web",
     "copy": "mkdir -p ./public && rm -rf ./public/pkg && cp -rf ../crate/pkg ./public/pkg",
     "dev": "npm run wasm && npm run copy && vite",
-    "build": "vite build"
+    "build": "vite build --base=/nessy/ --outDir=/dist"
   },
   "module": "nessy.js",
   "types": "nessy.d.ts",

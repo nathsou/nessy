@@ -1,12 +1,8 @@
 # NESSY
 
-<center>
-    <img alt="logo" src="resources/logo.png" width="256px" style="image-rendering: pixelated;" />
+![Logo](resources/logo.png)
 
 **A Nintendo Entertainment System (NES) emulator for the web**
-
-</center>
-
 
 ## Screenshots
 
@@ -30,12 +26,14 @@
 - Working audio
 - Auto generated ROM backgrounds in the library
 - Save state preview in the saves menu
+- Supported mappers: NROM (0), MMC1 (1), UNROM (2)
 
 ## Todo / Ideas
 
 - Support more mappers (3, 4, 118, ...)
 - Reduce audio clicks (blip buffer?)
 - Use an AudioWorkletNode instead of a scriptProcessor
+- Support iNes 2.0 roms
 - Time travel mode (Save states recorded at regular intervals)
 - Replay mode (Replay all inputs from the start)
 - Different color palettes
