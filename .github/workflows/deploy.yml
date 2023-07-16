@@ -19,12 +19,14 @@ jobs:
       - name: Install and Build 🔧
         run: |
           cd web
-          npm install -g wasm-pack
+          npm install -g wasm-pack@0.12.1
           npm install
           npm run wasm
           npm run copy
           npm run build
-          cp -rf ../crate/pkg ../web/dist
+          cp -rf ../crate/pkg dist
+          ls dist
+          ls dist/pkg
 
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@v4
