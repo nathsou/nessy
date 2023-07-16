@@ -8,7 +8,7 @@ on:
   
 jobs:
   build-playground:
-    name: build and deploy the playground
+    name: build and deploy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout 🛎️
@@ -33,3 +33,4 @@ jobs:
         with:
           branch: gh-pages # The branch the action should deploy to.
           folder: web/dist # The folder the action should deploy.
+          clean: false
