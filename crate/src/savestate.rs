@@ -251,6 +251,12 @@ impl ByteBuffer {
         self.data.extend_from_slice(data);
     }
 
+    pub fn write_u32_slice(&mut self, data: &[u32]) {
+        for value in data {
+            self.write_u32(*value);
+        }
+    }
+
     pub fn write_f32_slice(&mut self, data: &[f32]) {
         for value in data {
             self.write_f32(*value);
@@ -289,6 +295,14 @@ impl ByteBuffer {
         let slice = &self.data[self.read_index..self.read_index + dst.len()];
         dst.copy_from_slice(slice);
         self.read_index += dst.len();
+
+        Ok(())
+    }
+
+    pub fn read_u32_slice(&mut self, dst: &mut [u32]) -> Result<(), SaveStateError> {
+        for value in dst {
+            *value = self.read_u32()?;
+        }
 
         Ok(())
     }

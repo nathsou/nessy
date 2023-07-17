@@ -66,23 +66,3 @@ impl From<AddressingMode> for u8 {
         }
     }
 }
-
-impl std::fmt::Display for AddressingMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use AddressingMode::*;
-        match self {
-            Immediate => write!(f, "Immediate"),
-            ZeroPage => write!(f, "ZeroPage"),
-            ZeroPageX => write!(f, "ZeroPageX"),
-            ZeroPageY => write!(f, "ZeroPageY"),
-            Absolute => write!(f, "Absolute"),
-            AbsoluteX => write!(f, "AbsoluteX"),
-            AbsoluteY => write!(f, "AbsoluteY"),
-            Indirect => write!(f, "Indirect"),
-            IndirectX => write!(f, "IndirectX"),
-            IndirectY => write!(f, "IndirectY"),
-            Implied => write!(f, "Implied"),
-            Relative => write!(f, "Relative"),
-        }
-    }
-}

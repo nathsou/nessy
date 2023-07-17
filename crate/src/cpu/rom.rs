@@ -1,6 +1,7 @@
 use sha2::{Digest, Sha256};
 
 use super::mappers::mmc1::MMC1;
+use super::mappers::mmc3::MMC3;
 use super::mappers::nrom::NROM;
 use super::mappers::unrom::UNROM;
 use super::mappers::Mapper;
@@ -73,7 +74,6 @@ impl ROM {
         let chr_rom_size = bytes[5];
         let prg_rom_start = 16 + if trainer { 512 } else { 0 };
         let chr_rom_start = prg_rom_start + (prg_rom_size as usize) * PRG_ROM_PAGE_SIZE;
-        let mapper = ROM::get_mapper(mapper_id)?;
         let cart = Cart {
             bytes,
             hash,
@@ -87,14 +87,17 @@ impl ROM {
             chr_rom_start,
         };
 
+        let mapper = ROM::get_mapper(mapper_id, &cart)?;
+
         Ok(ROM { mapper, cart })
     }
 
-    fn get_mapper(mapper_id: u8) -> Result<Box<dyn Mapper>, RomError> {
+    fn get_mapper(mapper_id: u8, cart: &Cart) -> Result<Box<dyn Mapper>, RomError> {
         match mapper_id {
             0 => Ok(Box::new(NROM::new())),
             1 => Ok(Box::new(MMC1::new())),
             2 => Ok(Box::new(UNROM::new())),
+            4 => Ok(Box::new(MMC3::new(cart))),
             _ => Err(RomError::UnsupportedMapper(mapper_id)),
         }
     }

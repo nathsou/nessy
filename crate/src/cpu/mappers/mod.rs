@@ -3,12 +3,21 @@ use crate::savestate::{self};
 use super::rom::Cart;
 
 pub mod mmc1;
+pub mod mmc3;
 pub mod nrom;
 pub mod unrom;
 
 pub trait Mapper: savestate::Save {
     fn read(&mut self, cart: &mut Cart, addr: u16) -> u8;
     fn write(&mut self, cart: &mut Cart, addr: u16, val: u8);
+
+    #[inline]
+    fn step_scanline(&mut self) {}
+
+    #[inline]
+    fn is_asserting_irq(&mut self) -> bool {
+        false
+    }
 
     fn get_tile<'a>(
         &'a mut self,

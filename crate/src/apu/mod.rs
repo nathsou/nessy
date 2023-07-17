@@ -56,6 +56,7 @@ pub struct APU {
     current_sample: Option<f32>,
     samples_pushed: u32,
     irq_inhibit: bool,
+    prev_irq: bool,
     pulse1: PulseChannel,
     pulse2: PulseChannel,
     triangle: TriangleChannel,
@@ -125,6 +126,7 @@ impl APU {
             current_sample: None,
             samples_pushed: 0,
             irq_inhibit: false,
+            prev_irq: false,
         }
     }
 
@@ -339,8 +341,12 @@ impl APU {
     }
 
     #[inline]
-    pub fn is_asserting_irq(&self) -> bool {
-        self.frame_interrupt || self.dmc.interrupt_flag
+    pub fn is_asserting_irq(&mut self) -> bool {
+        let irq = self.frame_interrupt || self.dmc.interrupt_flag;
+        let edge = irq && !self.prev_irq;
+        self.prev_irq = irq;
+
+        edge
     }
 
     #[inline]
@@ -383,6 +389,7 @@ impl savestate::Save for APU {
         // ignore current_sample
         s.data.write_u32(self.samples_pushed);
         s.data.write_bool(self.irq_inhibit);
+        s.data.write_bool(self.prev_irq);
 
         self.pulse1.save(s);
         self.pulse2.save(s);
@@ -404,6 +411,7 @@ impl savestate::Save for APU {
         // ignore current_sample
         self.samples_pushed = s.data.read_u32()?;
         self.irq_inhibit = s.data.read_bool()?;
+        self.prev_irq = s.data.read_bool()?;
 
         self.pulse1.load(s)?;
         self.pulse2.load(s)?;

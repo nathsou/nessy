@@ -136,6 +136,10 @@ impl PPU {
                 self.frame += 1;
             }
         }
+
+        if self.regs.rendering_enabled() && self.cycle == 260 && self.scanline < 240 {
+            self.rom.mapper.step_scanline();
+        }
     }
 
     pub fn step(&mut self) {
@@ -548,7 +552,7 @@ impl PPU {
                 self.palette[((addr - 0x3f00) & 31) as usize] = data;
             }
             _ => {
-                println!("ignoring write to {addr:04X}");
+                // ignoring write to {addr:04X}
             }
         }
 

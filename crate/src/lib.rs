@@ -84,7 +84,12 @@ impl WasmNes {
 
     #[wasm_bindgen(js_name = setJoypad1)]
     pub fn set_joypad1(&mut self, buttons: u8) {
-        self.nes.joypad1().update(buttons);
+        self.nes.get_joypad1_mut().update(buttons);
+    }
+
+    #[wasm_bindgen(js_name = setJoypad2)]
+    pub fn set_joypad2(&mut self, buttons: u8) {
+        self.nes.get_joypad2_mut().update(buttons);
     }
 
     #[wasm_bindgen(js_name = saveState)]

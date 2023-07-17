@@ -54,13 +54,19 @@ impl Bus {
         }
     }
 
+    #[inline]
     pub fn pull_interrupt(&mut self) -> Interrupt {
         if self.ppu.is_asserting_nmi() {
             Interrupt::Nmi
-        } else if self.apu.is_asserting_irq() {
-            Interrupt::Irq
         } else {
-            Interrupt::None
+            let is_mapper_irq = self.ppu.rom.mapper.is_asserting_irq();
+            let is_apu_irq = self.apu.is_asserting_irq();
+
+            if is_mapper_irq || is_apu_irq {
+                Interrupt::Irq
+            } else {
+                Interrupt::None
+            }
         }
     }
 

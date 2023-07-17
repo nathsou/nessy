@@ -92,8 +92,13 @@ impl Nes {
     }
 
     #[inline]
-    pub fn joypad1(&mut self) -> &mut Joypad {
+    pub fn get_joypad1_mut(&mut self) -> &mut Joypad {
         &mut self.cpu.bus.joypad1
+    }
+
+    #[inline]
+    pub fn get_joypad2_mut(&mut self) -> &mut Joypad {
+        &mut self.cpu.bus.joypad2
     }
 
     #[inline]
