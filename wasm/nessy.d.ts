@@ -34,6 +34,10 @@ export class Nes {
 */
   setJoypad1(buttons: number): void;
 /**
+* @param {number} buttons
+*/
+  setJoypad2(buttons: number): void;
+/**
 * @returns {Uint8Array}
 */
   saveState(): Uint8Array;
@@ -59,6 +63,7 @@ export interface InitOutput {
   readonly nes_nextSamples: (a: number, b: number, c: number, d: number) => number;
   readonly nes_fillFrameBuffer: (a: number, b: number, c: number, d: number) => void;
   readonly nes_setJoypad1: (a: number, b: number) => void;
+  readonly nes_setJoypad2: (a: number, b: number) => void;
   readonly nes_saveState: (a: number, b: number) => void;
   readonly nes_loadState: (a: number, b: number, c: number, d: number) => void;
   readonly nes_fillAudioBuffer: (a: number, b: number, c: number, d: number, e: number) => void;

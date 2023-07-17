@@ -226,6 +226,12 @@ export class Nes {
         wasm.nes_setJoypad1(this.__wbg_ptr, buttons);
     }
     /**
+    * @param {number} buttons
+    */
+    setJoypad2(buttons) {
+        wasm.nes_setJoypad2(this.__wbg_ptr, buttons);
+    }
+    /**
     * @returns {Uint8Array}
     */
     saveState() {

@@ -8,6 +8,7 @@ export function nes_nextFrame(a: number, b: number, c: number, d: number): void;
 export function nes_nextSamples(a: number, b: number, c: number, d: number): number;
 export function nes_fillFrameBuffer(a: number, b: number, c: number, d: number): void;
 export function nes_setJoypad1(a: number, b: number): void;
+export function nes_setJoypad2(a: number, b: number): void;
 export function nes_saveState(a: number, b: number): void;
 export function nes_loadState(a: number, b: number, c: number, d: number): void;
 export function nes_fillAudioBuffer(a: number, b: number, c: number, d: number, e: number): void;
