@@ -1,3 +1,4 @@
+import { Action } from "../ui";
 import { Text, TextSettings } from "./Text";
 
 type SelectSettings<Opt extends string> = {
@@ -22,13 +23,14 @@ export const Select = <Opt extends string>({ name, options, onChange, initialOpt
 
     return {
         ...comp,
-        onKeyDown(key: string): boolean {
+        onAction(action: Action): boolean {
             if (comp.state.active) {
-                switch (key) {
-                    case ' ':
+                switch (action) {
+                    case 'select':
                         setActiveIndex(activeIndex === 0 ? options.length - 1 : activeIndex - 1);
                         return true;
-                    case 'Enter':
+                    case 'start':
+                    case 'a':
                         setActiveIndex((activeIndex + 1) % options.length);
                         return true;
                 }

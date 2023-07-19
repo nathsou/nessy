@@ -4,6 +4,7 @@ import { VMenu } from "./VMenu";
 import { Text } from "./Text";
 import { Button } from "./Button";
 import { hooks } from "../hooks";
+import { Action } from "../ui";
 
 const MAX_LENGTH = 22;
 
@@ -80,8 +81,8 @@ export const Library = (store: Store) => {
 
     updateList();
 
-    function onKeyDown(key: string): boolean {
-        if (key === 'Enter') {
+    function onAction(action: Action): boolean {
+        if (action === 'start' || action === 'a') {
             list.state.items[list.state.activeIndex].enter();
             return true;
         }
@@ -99,7 +100,7 @@ export const Library = (store: Store) => {
 
     return {
         ...list,
-        onKeyDown,
+        onAction,
         setActive,
     };
 };

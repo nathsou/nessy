@@ -129,10 +129,16 @@ async function setup() {
 
     scriptProcessor.connect(audioCtx.destination);
 
+    hooks.register('input', (action, pressed) => {
+        if (pressed) {
+            ui.onAction(action);
+        }
+    });
+
     const onKeyDown = (event: KeyboardEvent) => {
         const capturedByUI = ui.onKeyDown(event.key);
 
-        if (!capturedByUI && !ui.visible) {
+        if (!capturedByUI) {
             controller?.onKeyDown(event);
         } else {
             event.preventDefault();
@@ -140,13 +146,13 @@ async function setup() {
     };
 
     const onKeyUp = (event: KeyboardEvent) => {
-        if (!ui.visible) {
-            controller?.onKeyUp(event);
-        }
+        controller?.onKeyUp(event);
     };
 
-    window.addEventListener('keyup', onKeyUp);
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('gamepadconnected', controller.onGamepadConnected);
+    window.addEventListener('gamepaddisconnected', controller.onGamepadDisconnected);
 
     function updateROM(rom: Uint8Array): void {
         nes = Nes.new(rom, audioCtx.sampleRate);
@@ -306,7 +312,9 @@ async function setup() {
     });
 
     hooks.register('setJoypad1', state => {
-        nes?.setJoypad1(state);
+        if (!ui.visible) {
+            nes?.setJoypad1(state);
+        }
     });
 
     function onExit() {
@@ -319,13 +327,12 @@ async function setup() {
 
     function run(): void {
         requestAnimationFrame(run);
+        controller.tick();
 
         if (ui.visible) {
             ui.render(frame);
             renderer.render(frame);
         } else if (nes !== undefined) {
-            controller.tick();
-
             if (syncMode !== SYNC_AUDIO) {
                 nes.nextFrame(frame);
                 renderer.render(frame);

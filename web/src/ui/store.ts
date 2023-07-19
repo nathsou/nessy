@@ -7,9 +7,10 @@ export type StoreData = ReturnType<typeof getDefaultStore>;
 export type Store = Awaited<ReturnType<typeof createStore>>;
 export const LOCAL_STORAGE_STORE_KEY = 'nessy.store';
 
+const STORE_VERSION = 2;
+
 const getDefaultStore = () => ({
-    version: 1,
-    frameCount: 0,
+    version: STORE_VERSION,
     rom: union<string | null>(null),
     controls: createControls(),
     scalingFactor: union<1 | 2 | 3 | 4 | 50>(4),
@@ -269,11 +270,16 @@ export const createStore = async () => {
     };
 
     const deserialize = (string: string): StoreData => {
-        const store = JSON.parse(string);
-        const controls = createControls();
-        controls.update(store.controls);
-        store.controls = controls;
-        store.lastState = store.lastState != null ? Binary.deserialize(store.lastState) : null;
+        let store = JSON.parse(string);
+
+        if ('version' in store && store.version !== STORE_VERSION) {
+            store = getDefaultStore();
+        } else {
+            const controls = createControls();
+            controls.update(store.controls);
+            store.controls = controls;
+            store.lastState = store.lastState != null ? Binary.deserialize(store.lastState) : null;
+        }
 
         return store;
     };

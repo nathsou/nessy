@@ -29,6 +29,18 @@ const ALERT_TEXT = {
     error: 0x30,
 };
 
+export type Action = 'toggle_ui' | 'start' | 'select' | 'left' | 'right' | 'up' | 'down' | 'a' | 'b';
+
+const UI_ACTION_MAPPING: Record<string, Action> = {
+    // Escape: 'toggle_ui',
+    // Tab: 'toggle_ui',
+    ArrowLeft: 'left',
+    ArrowRight: 'right',
+    ArrowUp: 'up',
+    ArrowDown: 'down',
+    Enter: 'start',
+    ' ': 'select',
+};
 
 export const createUI = (store: Store) => {
     const screen = createScreen();
@@ -36,7 +48,9 @@ export const createUI = (store: Store) => {
     const subMenuMapping: Record<string, Component<{ activeIndex: number }> & {
         prev(): void,
         next(): void,
-        onKeyDown(key: string): boolean,
+        onKeyDown?(key: string): void,
+        onGamePad?(id: number): void,
+        onAction?(action: Action): boolean,
         setActive(isActive: boolean): void,
     }> = {
         library: Library(store),
@@ -61,47 +75,73 @@ export const createUI = (store: Store) => {
         alerts.length = 0;
     });
 
-    const ret = { render, screen, onKeyDown, alert, visible: true };
+    const ret = { render, screen, onAction, onKeyDown, onGamePad, alert, visible: true };
 
-    function onKeyDown(key: string): boolean {
+    function onAction(action: Action): boolean {
         const activeMenuItem = menuItems[menu.state.activeIndex];
 
-        if (key === 'Escape' || key === 'Tab') {
+        if (action === 'toggle_ui') {
             hooks.call('toggleUI');
+            return true;
         } else if (ret.visible) {
-            const captured = subMenuMapping[activeMenuItem].onKeyDown(key);
+            const captured = subMenuMapping[activeMenuItem].onAction?.(action) ?? false;
 
             if (captured) {
                 return true;
             }
 
-            switch (key) {
-                case 'ArrowLeft':
+            switch (action) {
+                case 'left':
                     if (ret.visible) {
                         menu.prev();
                         subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
                         return true;
                     }
                     break;
-                case 'ArrowRight':
+                case 'right':
                     if (ret.visible) {
                         menu.next();
                         subMenu.update(subMenuMapping[menuItems[menu.state.activeIndex]]);
                         return true;
                     }
                     break;
-                case 'ArrowDown':
+                case 'down':
                     if (ret.visible) {
                         subMenuMapping[activeMenuItem].next();
                         return true;
                     }
                     break;
-                case 'ArrowUp':
+                case 'up':
                     if (ret.visible) {
                         subMenuMapping[activeMenuItem].prev();
                         return true;
                     }
                     break;
+            }
+        }
+
+        return false;
+    }
+
+    function onGamePad(id: number): void {
+        if (ret.visible) {
+            const activeMenuItem = menuItems[menu.state.activeIndex];
+            subMenuMapping[activeMenuItem].onGamePad?.(id);
+        }
+    }
+
+    function onKeyDown(key: KeyboardEvent['key']): boolean {
+        if (ret.visible) {
+            const captured = subMenuMapping[menuItems[menu.state.activeIndex]].onKeyDown?.(key);
+
+            if (captured) {
+                return true;
+            }
+
+            const action = UI_ACTION_MAPPING[key];
+
+            if (action) {
+                return onAction(action);
             }
         }
 

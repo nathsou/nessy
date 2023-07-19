@@ -4,6 +4,7 @@ import { Button } from "./Button";
 import { VMenu } from "./VMenu";
 import { Text } from "./Text";
 import { hooks } from "../hooks";
+import { Action } from "../ui";
 
 const SAVE_MENU_ITEM_INDEX = 0;
 const LOAD_LAST_MENU_ITEM_INDEX = 1;
@@ -63,8 +64,8 @@ export const Saves = (store: Store) => {
     store.subscribe('rom', updateList);
     events.on('saved', updateList);
 
-    const onKeyDown = (key: string): boolean => {
-        if (key === 'Enter') {
+    const onAction = (action: Action): boolean => {
+        if (action === 'start' || action === 'a') {
             list.state.items[list.state.activeIndex].enter();
             return true;
         }
@@ -82,7 +83,7 @@ export const Saves = (store: Store) => {
 
     return {
         ...list,
-        onKeyDown,
+        onAction,
         setActive,
     };
 };

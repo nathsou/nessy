@@ -30,7 +30,7 @@
 - Save state preview in the saves menu
 - Supported mappers: [NROM](https://nesdir.github.io/mapper0.html) (0), [MMC1](https://nesdir.github.io/mapper1.html) (1), [UNROM](https://nesdir.github.io/mapper2.html) (2), [MMC3](https://nesdir.github.io/mapper4.html) (4)
 
-# Settings Menu
+## Settings Menu
 Press ESC / Tab to toggle the UI
 
 Use the arrow keys to navigate the menus and press enter to validate

@@ -1,5 +1,6 @@
 import { hooks } from "../hooks";
 import { Store } from "../store";
+import { Action } from "../ui";
 import { Button } from "./Button";
 import { Select } from "./Select";
 import { Text } from "./Text";
@@ -44,8 +45,8 @@ const FullScreen = () => ({
         Text('Toggle Fullscreen'),
         () => hooks.call('toggleFullscreen'),
     ),
-    onKeyDown(key: string) {
-        if (key === 'Enter') {
+    onAction(action: Action) {
+        if (action === 'start' || action === 'a') {
             this.enter();
             return true;
         }
@@ -62,8 +63,8 @@ const SoftReset = () => ({
             hooks.call('toggleUI', false);
         },
     ),
-    onKeyDown(key: string) {
-        if (key === 'Enter') {
+    onAction(action: Action) {
+        if (action === 'start' || action === 'a') {
             this.enter();
             return true;
         }
@@ -80,15 +81,15 @@ export const Misc = (store: Store) => {
         SoftReset(),
     ]);
 
-    const onKeyDown = (key: string): boolean => {
-        return list.state.items[list.state.activeIndex].onKeyDown(key);
+    const onAction = (action: Action): boolean => {
+        return list.state.items[list.state.activeIndex].onAction(action);
     };
 
     const setActive = (_isActive: boolean) => { };
 
     return {
         ...list,
-        onKeyDown,
+        onAction,
         setActive,
     };
 };

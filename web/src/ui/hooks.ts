@@ -1,3 +1,4 @@
+import { Action } from "./ui";
 
 const createHooks = <Hooks extends Record<string, (...args: any[]) => any>>() => {
     const hooks: Partial<Hooks> = {};
@@ -35,5 +36,6 @@ export const hooks = createHooks<{
     ): void,
     toggleUI(visible?: boolean): void,
     softReset(): void,
+    input(kind: Action, gamepadButton?: number): void,
     setJoypad1(state: number): void,
 }>();
