@@ -50,6 +50,9 @@ export class Nes {
 * @param {boolean} avoid_underruns
 */
   fillAudioBuffer(buffer: Float32Array, avoid_underruns: boolean): void;
+/**
+*/
+  clearAudioBuffer(): void;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -67,6 +70,7 @@ export interface InitOutput {
   readonly nes_saveState: (a: number, b: number) => void;
   readonly nes_loadState: (a: number, b: number, c: number, d: number) => void;
   readonly nes_fillAudioBuffer: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly nes_clearAudioBuffer: (a: number) => void;
   readonly nes_initPanicHook: () => void;
   readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
   readonly __wbindgen_malloc: (a: number, b: number) => number;

@@ -274,6 +274,11 @@ export class Nes {
         var len0 = WASM_VECTOR_LEN;
         wasm.nes_fillAudioBuffer(this.__wbg_ptr, ptr0, len0, addHeapObject(buffer), avoid_underruns);
     }
+    /**
+    */
+    clearAudioBuffer() {
+        wasm.nes_clearAudioBuffer(this.__wbg_ptr);
+    }
 }
 
 async function __wbg_load(module, imports) {
