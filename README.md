@@ -28,6 +28,7 @@
 - Working audio
 - Auto generated ROM backgrounds in the library
 - Save state preview in the saves menu
+- Gamepad support
 - Supported mappers: [NROM](https://nesdir.github.io/mapper0.html) (0), [MMC1](https://nesdir.github.io/mapper1.html) (1), [UNROM](https://nesdir.github.io/mapper2.html) (2), [MMC3](https://nesdir.github.io/mapper4.html) (4)
 
 ## Settings Menu
@@ -45,7 +46,7 @@ Use the arrow keys to navigate the menus and press enter to validate
 - Use an AudioWorkletNode instead of a scriptProcessor
 - Lock framerate at 60fps even on higher refresh rate displays
 - Support iNes 2.0 roms
-- Support gamepads + Joypad2
+- Support Joypad2
 - Time travel mode (Save states recorded at regular intervals)
 - Replay mode (Replay all inputs from the start)
 - Different color palettes

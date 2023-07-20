@@ -29,7 +29,7 @@ async function setup() {
     Nes.initPanicHook();
     const store = await createStore();
     const ui = createUI(store);
-    const syncMode = SYNC_VIDEO;
+    const syncMode = SYNC_BOTH;
     const audioBufferSize = AUDIO_BUFFER_SIZE_MAPPING[syncMode];
     const avoidUnderruns = syncMode === SYNC_BOTH;
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
@@ -82,6 +82,7 @@ async function setup() {
 
         if (!ui.visible) {
             if (nes !== undefined) {
+                nes.clearAudioBuffer();
                 await audioCtx.resume();
             }
         } else {

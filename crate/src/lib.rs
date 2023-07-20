@@ -69,7 +69,7 @@ impl WasmNes {
     #[wasm_bindgen(js_name = nextFrame)]
     pub fn next_frame(&mut self, buffer: &mut [u8]) {
         self.nes.next_frame();
-        buffer.copy_from_slice(self.nes.get_frame())
+        buffer.copy_from_slice(self.nes.get_frame());
     }
 
     #[wasm_bindgen(js_name = nextSamples)]
@@ -105,5 +105,10 @@ impl WasmNes {
     #[wasm_bindgen(js_name = fillAudioBuffer)]
     pub fn fill_audio_buffer(&mut self, buffer: &mut [f32], avoid_underruns: bool) {
         self.nes.fill_audio_buffer(buffer, avoid_underruns);
+    }
+
+    #[wasm_bindgen(js_name = clearAudioBuffer)]
+    pub fn clear_audio_buffer(&mut self) {
+        self.nes.clear_audio_buffer();
     }
 }

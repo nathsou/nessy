@@ -75,16 +75,17 @@ impl Nes {
                 self.cpu.bus.apu.remaining_buffered_samples() as usize;
 
             // ensure that the buffer is filled with enough samples
-            // wihtout skipping a frame
             if remaining_samples_in_bufffer < buffer.len() {
-                let remaining_samples_in_frame = self.cpu.bus.apu.remaining_samples_in_frame();
-                let remaining_samples = buffer.len() - remaining_samples_in_bufffer;
-                let wait_for = remaining_samples.min(remaining_samples_in_frame - 1);
+                let wait_for = buffer.len() - remaining_samples_in_bufffer + 1;
                 self.wait_for_samples(wait_for);
             }
         }
 
         self.cpu.bus.apu.fill(buffer);
+    }
+
+    pub fn clear_audio_buffer(&mut self) {
+        self.cpu.bus.apu.clear_buffer();
     }
 
     pub fn soft_reset(&mut self) {

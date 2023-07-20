@@ -13,8 +13,7 @@ mod noise;
 mod pulse;
 mod triangle;
 
-const APU_BUFFER_SIZE: usize = 8 * 1024;
-const APU_BUFFER_MASK: u16 = APU_BUFFER_SIZE as u16 - 1;
+const APU_BUFFER_SIZE: usize = 16 * 1024;
 const CPU_FREQ: f64 = 1789772.5;
 
 #[derive(Clone, Copy)]
@@ -45,10 +44,8 @@ impl From<FrameMode> for u8 {
 #[allow(clippy::upper_case_acronyms)]
 pub struct APU {
     cycles_per_sample: f64,
-    samples_per_frame: f64,
     buffer: [f32; APU_BUFFER_SIZE],
     buffer_write_index: u16,
-    buffer_read_index: u16,
     cycle: u32,
     frame_counter: u32,
     frame_interrupt: bool,
@@ -110,10 +107,8 @@ impl APU {
     pub fn new(sound_card_sample_rate: f64) -> APU {
         APU {
             cycles_per_sample: CPU_FREQ / sound_card_sample_rate,
-            samples_per_frame: sound_card_sample_rate / 60.0,
             buffer: [0.0; APU_BUFFER_SIZE],
             buffer_write_index: 0,
-            buffer_read_index: 0,
             cycle: 0,
             frame_counter: 0,
             frame_interrupt: false,
@@ -146,11 +141,16 @@ impl APU {
     }
 
     fn push_sample(&mut self) {
-        self.samples_pushed += 1;
         let sample = self.get_sample();
         self.current_sample = Some(sample);
-        self.buffer[self.buffer_write_index as usize] = sample;
-        self.buffer_write_index = (self.buffer_write_index + 1) & APU_BUFFER_MASK;
+
+        if self.buffer_write_index < APU_BUFFER_SIZE as u16 {
+            self.buffer[self.buffer_write_index as usize] = sample;
+            self.samples_pushed += 1;
+            self.buffer_write_index += 1;
+        } else {
+            self.clear_buffer();
+        }
     }
 
     #[inline]
@@ -306,15 +306,7 @@ impl APU {
     }
 
     pub fn remaining_buffered_samples(&self) -> u16 {
-        if self.buffer_write_index >= self.buffer_read_index {
-            self.buffer_write_index - self.buffer_read_index
-        } else {
-            APU_BUFFER_SIZE as u16 - self.buffer_read_index + self.buffer_write_index
-        }
-    }
-
-    pub fn remaining_samples_in_frame(&self) -> usize {
-        (self.samples_per_frame - (self.samples_pushed as f64 % self.samples_per_frame)) as usize
+        self.buffer_write_index
     }
 
     pub fn fill(&mut self, buffer: &mut [f32]) {
@@ -338,6 +330,11 @@ impl APU {
         } else {
             0
         };
+    }
+
+    pub fn clear_buffer(&mut self) {
+        self.buffer_write_index = 0;
+        self.buffer.fill(0.0);
     }
 
     #[inline]
@@ -376,12 +373,11 @@ impl savestate::Save for APU {
     fn save(&self, parent: &mut savestate::Section) {
         let s = parent.create_child("apu");
 
-        // ignore cycles_per_sample and samples_per_frame
-        // as they depend on the sample rate
+        // ignore cycles_per_sample
+        // as it depends on the sample rate
 
         s.data.write_f32_slice(&self.buffer);
         s.data.write_u16(self.buffer_write_index);
-        s.data.write_u16(self.buffer_read_index);
         s.data.write_u32(self.cycle);
         s.data.write_u32(self.frame_counter);
         s.data.write_bool(self.frame_interrupt);
@@ -403,7 +399,6 @@ impl savestate::Save for APU {
 
         s.data.read_f32_slice(&mut self.buffer)?;
         self.buffer_write_index = s.data.read_u16()?;
-        self.buffer_read_index = s.data.read_u16()?;
         self.cycle = s.data.read_u32()?;
         self.frame_counter = s.data.read_u32()?;
         self.frame_interrupt = s.data.read_bool()?;
