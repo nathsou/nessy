@@ -2,6 +2,7 @@ use crate::savestate::{self, SaveStateError};
 
 use self::{
     dmc::DeltaModulationChannel,
+    filters::Filter,
     noise::NoiseChannel,
     pulse::{PulseChannel, PulseChannelId},
     triangle::TriangleChannel,
@@ -9,6 +10,7 @@ use self::{
 
 mod common;
 mod dmc;
+mod filters;
 mod noise;
 mod pulse;
 mod triangle;
@@ -59,6 +61,7 @@ pub struct APU {
     triangle: TriangleChannel,
     noise: NoiseChannel,
     dmc: DeltaModulationChannel,
+    filters: Vec<Filter>,
 }
 
 #[rustfmt::skip]
@@ -122,11 +125,16 @@ impl APU {
             samples_pushed: 0,
             irq_inhibit: false,
             prev_irq: false,
+            filters: vec![
+                Filter::new_high_pass(sound_card_sample_rate as f32, 90.0),
+                Filter::new_high_pass(sound_card_sample_rate as f32, 440.0),
+                Filter::new_low_pass(sound_card_sample_rate as f32, 14_000.0),
+            ],
         }
     }
 
     #[inline]
-    fn get_sample(&self) -> f32 {
+    fn get_sample(&mut self) -> f32 {
         // https://www.nesdev.org/wiki/APU_Mixer
         let p1 = self.pulse1.output();
         let p2 = self.pulse2.output();
@@ -137,7 +145,10 @@ impl APU {
         let pulse_out = PULSE_MIXER_LOOKUP[(p1 + p2) as usize];
         let tnd_out = TRIANGLE_MIXER_LOOKUP[(3 * t + 2 * n + dmc) as usize];
 
-        pulse_out + tnd_out
+        let sample = pulse_out + tnd_out;
+        let sample = self.filters[0].filter(sample);
+        let sample = self.filters[1].filter(sample);
+        self.filters[2].filter(sample)
     }
 
     fn push_sample(&mut self) {

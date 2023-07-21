@@ -42,7 +42,6 @@ Use the arrow keys to navigate the menus and press enter to validate
 ## Todo / Ideas
 
 - Support more mappers (3, 66, 118, ...)
-- Reduce audio clicks (blip buffer?) + Add audio filters
 - Use an AudioWorkletNode instead of a scriptProcessor
 - Lock framerate at 60fps even on higher refresh rate displays
 - Support iNes 2.0 roms
