@@ -10,7 +10,7 @@
     "nessy.d.ts"
   ],
   "scripts": {
-    "wasm": "wasm-pack build ../crate --target web",
+    "wasm": "wasm-pack build ../crate --release --target web",
     "copy": "mkdir -p ./public && rm -rf ./public/wasm && cp -rf ../crate/pkg ./public/wasm",
     "dev": "npm run wasm && npm run copy && vite",
     "build": "vite build --base=/nessy/"
@@ -19,7 +19,7 @@
   "types": "nessy.d.ts",
   "sideEffects": false,
   "devDependencies": {
-    "vite": "^4.3.9",
+    "vite": "^4.4.6",
     "typescript": "^5.1.6"
   },
   "dependencies": {

@@ -54,7 +54,6 @@ impl Bus {
         }
     }
 
-    #[inline]
     pub fn pull_interrupt(&mut self) -> Interrupt {
         if self.ppu.is_asserting_nmi() {
             Interrupt::Nmi
@@ -143,10 +142,8 @@ impl savestate::Save for Bus {
         s.data.write_bool(self.dma_transfer);
 
         self.ppu.save(s);
-        self.apu.save(s);
 
         let s = parent.create_child(JOYPADS_SECTION_NAME);
-
         self.joypad1.save(s);
         self.joypad2.save(s);
     }
@@ -158,7 +155,6 @@ impl savestate::Save for Bus {
         self.dma_transfer = s.data.read_bool()?;
 
         self.ppu.load(s)?;
-        self.apu.load(s)?;
 
         let s = parent.get(JOYPADS_SECTION_NAME)?;
         self.joypad1.load(s)?;

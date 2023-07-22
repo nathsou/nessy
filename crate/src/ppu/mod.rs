@@ -61,7 +61,7 @@ pub struct PPU {
     scanline_sprites: [SpriteData; 8],
     visible_sprites_count: u8,
     frame_buffer: [u8; WIDTH * HEIGHT * 3],
-    frame_buffer_complete: [u8; WIDTH * HEIGHT * 3],
+    frame_buffer_complete: Box<[u8; WIDTH * HEIGHT * 3]>, // avoid stack overflow in WASM
 }
 
 impl PPU {
@@ -96,7 +96,7 @@ impl PPU {
             }; 8],
             visible_sprites_count: 0,
             frame_buffer: [0; WIDTH * HEIGHT * 3],
-            frame_buffer_complete: [0; WIDTH * HEIGHT * 3],
+            frame_buffer_complete: Box::new([0; WIDTH * HEIGHT * 3]),
         };
 
         ppu.reset();
@@ -293,7 +293,7 @@ impl PPU {
         } else {
             None
         }
-        .map(|idx| COLOR_PALETTE[self.palette[idx] as usize])
+        .map(|idx| COLOR_PALETTE[(self.palette[idx] & 63) as usize])
     }
 
     fn get_sprite_pixel(&mut self) -> Option<((u8, u8, u8), bool, u8)> {
@@ -406,7 +406,7 @@ impl PPU {
         }
 
         let color = match (bg, sprite) {
-            (None, None) => COLOR_PALETTE[self.palette[0] as usize],
+            (None, None) => COLOR_PALETTE[(self.palette[0] & 63) as usize],
             (None, Some((sp, _, _))) => sp,
             (Some(bg), None) => bg,
             (Some(bg), Some((sp, behind, _))) => {
@@ -610,7 +610,7 @@ impl PPU {
 
     #[inline]
     pub fn get_frame(&self) -> &[u8] {
-        &self.frame_buffer_complete
+        self.frame_buffer_complete.as_slice()
     }
 }
 

@@ -257,12 +257,6 @@ impl ByteBuffer {
         }
     }
 
-    pub fn write_f32_slice(&mut self, data: &[f32]) {
-        for value in data {
-            self.write_f32(*value);
-        }
-    }
-
     pub fn write_bool(&mut self, data: bool) {
         self.write_u8(data.into());
     }
@@ -283,10 +277,6 @@ impl ByteBuffer {
         self.write_u8_slice(&data.to_le_bytes());
     }
 
-    pub fn write_f32(&mut self, data: f32) {
-        self.write_u32(data.to_bits());
-    }
-
     pub fn read_u8_slice(&mut self, dst: &mut [u8]) -> Result<(), SaveStateError> {
         if self.read_index + dst.len() > self.data.len() {
             return Err(SaveStateError::InvalidData);
@@ -302,14 +292,6 @@ impl ByteBuffer {
     pub fn read_u32_slice(&mut self, dst: &mut [u32]) -> Result<(), SaveStateError> {
         for value in dst {
             *value = self.read_u32()?;
-        }
-
-        Ok(())
-    }
-
-    pub fn read_f32_slice(&mut self, dst: &mut [f32]) -> Result<(), SaveStateError> {
-        for value in dst {
-            *value = self.read_f32()?;
         }
 
         Ok(())
@@ -346,9 +328,5 @@ impl ByteBuffer {
         let mut buf = [0; 8];
         self.read_u8_slice(&mut buf)?;
         Ok(u64::from_le_bytes(buf))
-    }
-
-    pub fn read_f32(&mut self) -> Result<f32, SaveStateError> {
-        Ok(f32::from_bits(self.read_u32()?))
     }
 }

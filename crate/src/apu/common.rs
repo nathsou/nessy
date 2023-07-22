@@ -1,5 +1,3 @@
-use crate::savestate::{self, SaveStateError};
-
 #[derive(Default)]
 pub struct Timer {
     pub counter: u16,
@@ -16,26 +14,6 @@ impl Timer {
             self.counter -= 1;
             false
         }
-    }
-}
-
-const TIMER_SECTION_NAME: &str = "timer";
-
-impl savestate::Save for Timer {
-    fn save(&self, parent: &mut savestate::Section) {
-        let s = parent.create_child(TIMER_SECTION_NAME);
-
-        s.data.write_u16(self.counter);
-        s.data.write_u16(self.period);
-    }
-
-    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
-        let s = parent.get(TIMER_SECTION_NAME)?;
-
-        self.counter = s.data.read_u16()?;
-        self.period = s.data.read_u16()?;
-
-        Ok(())
     }
 }
 
@@ -82,26 +60,6 @@ impl LengthCounter {
     }
 }
 
-const LENGTH_COUNTER_SECTION_NAME: &str = "length_counter";
-
-impl savestate::Save for LengthCounter {
-    fn save(&self, parent: &mut savestate::Section) {
-        let s = parent.create_child(LENGTH_COUNTER_SECTION_NAME);
-
-        s.data.write_bool(self.enabled);
-        s.data.write_u8(self.counter);
-    }
-
-    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
-        let s = parent.get(LENGTH_COUNTER_SECTION_NAME)?;
-
-        self.enabled = s.data.read_bool()?;
-        self.counter = s.data.read_u8()?;
-
-        Ok(())
-    }
-}
-
 #[derive(Default)]
 pub struct Envelope {
     pub constant_mode: bool,
@@ -139,35 +97,5 @@ impl Envelope {
         } else {
             self.decay
         }
-    }
-}
-
-const ENVELOPE_SECTION_NAME: &str = "envelope";
-
-impl savestate::Save for Envelope {
-    fn save(&self, parent: &mut savestate::Section) {
-        let s = parent.create_child(ENVELOPE_SECTION_NAME);
-
-        s.data.write_bool(self.constant_mode);
-        s.data.write_bool(self.looping);
-        s.data.write_bool(self.start);
-        s.data.write_u8(self.constant_volume);
-        s.data.write_u8(self.period);
-        s.data.write_u8(self.divider);
-        s.data.write_u8(self.decay);
-    }
-
-    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
-        let s = parent.get(ENVELOPE_SECTION_NAME)?;
-
-        self.constant_mode = s.data.read_bool()?;
-        self.looping = s.data.read_bool()?;
-        self.start = s.data.read_bool()?;
-        self.constant_volume = s.data.read_u8()?;
-        self.period = s.data.read_u8()?;
-        self.divider = s.data.read_u8()?;
-        self.decay = s.data.read_u8()?;
-
-        Ok(())
     }
 }
