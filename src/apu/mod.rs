@@ -1,5 +1,3 @@
-use crate::savestate::{self, SaveStateError};
-
 use self::{
     dmc::DeltaModulationChannel,
     filters::Filter,
@@ -15,7 +13,8 @@ mod noise;
 mod pulse;
 mod triangle;
 
-const APU_BUFFER_SIZE: usize = 16 * 1024;
+const BUFFER_SIZE: usize = 8 * 1024; // 2^14
+const BUFFER_MASK: u16 = (BUFFER_SIZE as u16) - 1;
 const CPU_FREQ: f64 = 1789772.5;
 
 #[derive(Clone, Copy)]
@@ -46,8 +45,9 @@ impl From<FrameMode> for u8 {
 #[allow(clippy::upper_case_acronyms)]
 pub struct APU {
     cycles_per_sample: f64,
-    buffer: [f32; APU_BUFFER_SIZE],
-    buffer_write_index: u16,
+    buffer: Box<[f32; BUFFER_SIZE]>, // avoid stack overflow in WASM
+    front_ptr: u16,
+    back_ptr: u16,
     cycle: u32,
     frame_counter: u32,
     frame_interrupt: bool,
@@ -61,7 +61,7 @@ pub struct APU {
     triangle: TriangleChannel,
     noise: NoiseChannel,
     dmc: DeltaModulationChannel,
-    filters: Vec<Filter>,
+    filters: [Filter; 3],
 }
 
 #[rustfmt::skip]
@@ -110,8 +110,9 @@ impl APU {
     pub fn new(sound_card_sample_rate: f64) -> APU {
         APU {
             cycles_per_sample: CPU_FREQ / sound_card_sample_rate,
-            buffer: [0.0; APU_BUFFER_SIZE],
-            buffer_write_index: 0,
+            buffer: Box::new([0.0; BUFFER_SIZE]),
+            front_ptr: 0,
+            back_ptr: 0,
             cycle: 0,
             frame_counter: 0,
             frame_interrupt: false,
@@ -125,7 +126,7 @@ impl APU {
             samples_pushed: 0,
             irq_inhibit: false,
             prev_irq: false,
-            filters: vec![
+            filters: [
                 Filter::new_high_pass(sound_card_sample_rate as f32, 90.0),
                 Filter::new_high_pass(sound_card_sample_rate as f32, 440.0),
                 Filter::new_low_pass(sound_card_sample_rate as f32, 14_000.0),
@@ -154,14 +155,9 @@ impl APU {
     fn push_sample(&mut self) {
         let sample = self.get_sample();
         self.current_sample = Some(sample);
-
-        if self.buffer_write_index < APU_BUFFER_SIZE as u16 {
-            self.buffer[self.buffer_write_index as usize] = sample;
-            self.samples_pushed += 1;
-            self.buffer_write_index += 1;
-        } else {
-            self.clear_buffer();
-        }
+        self.buffer[self.front_ptr as usize] = sample;
+        self.samples_pushed += 1;
+        self.front_ptr = (self.front_ptr + 1) & BUFFER_MASK;
     }
 
     #[inline]
@@ -317,34 +313,24 @@ impl APU {
     }
 
     pub fn remaining_buffered_samples(&self) -> u16 {
-        self.buffer_write_index
+        if self.front_ptr >= self.back_ptr {
+            self.front_ptr - self.back_ptr
+        } else {
+            BUFFER_SIZE as u16 - self.back_ptr + self.front_ptr
+        }
     }
 
     pub fn fill(&mut self, buffer: &mut [f32]) {
-        let client_buffer_size = buffer.len();
-
         #[allow(clippy::needless_range_loop)]
-        for i in 0..client_buffer_size {
-            buffer[i] = if i < self.buffer_write_index as usize {
-                self.buffer[i]
-            } else {
-                0.0 // Buffer underflow
-            };
+        for i in 0..buffer.len().min(self.remaining_buffered_samples() as usize) {
+            buffer[i] = self.buffer[self.back_ptr as usize];
+            self.back_ptr = (self.back_ptr + 1) & BUFFER_MASK;
         }
-
-        for i in client_buffer_size..APU_BUFFER_SIZE {
-            self.buffer[i - client_buffer_size] = self.buffer[i];
-        }
-
-        self.buffer_write_index = if self.buffer_write_index > client_buffer_size as u16 {
-            self.buffer_write_index - client_buffer_size as u16
-        } else {
-            0
-        };
     }
 
     pub fn clear_buffer(&mut self) {
-        self.buffer_write_index = 0;
+        self.front_ptr = 0;
+        self.back_ptr = 0;
         self.buffer.fill(0.0);
     }
 
@@ -377,54 +363,5 @@ impl APU {
     #[inline]
     pub fn push_memory_read_response(&mut self, val: u8) {
         self.dmc.set_memory_read_response(val);
-    }
-}
-
-impl savestate::Save for APU {
-    fn save(&self, parent: &mut savestate::Section) {
-        let s = parent.create_child("apu");
-
-        // ignore cycles_per_sample
-        // as it depends on the sample rate
-
-        s.data.write_f32_slice(&self.buffer);
-        s.data.write_u16(self.buffer_write_index);
-        s.data.write_u32(self.cycle);
-        s.data.write_u32(self.frame_counter);
-        s.data.write_bool(self.frame_interrupt);
-        s.data.write_u8(self.frame_mode.into());
-        // ignore current_sample
-        s.data.write_u32(self.samples_pushed);
-        s.data.write_bool(self.irq_inhibit);
-        s.data.write_bool(self.prev_irq);
-
-        self.pulse1.save(s);
-        self.pulse2.save(s);
-        self.triangle.save(s);
-        self.noise.save(s);
-        self.dmc.save(s);
-    }
-
-    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
-        let s = parent.get("apu")?;
-
-        s.data.read_f32_slice(&mut self.buffer)?;
-        self.buffer_write_index = s.data.read_u16()?;
-        self.cycle = s.data.read_u32()?;
-        self.frame_counter = s.data.read_u32()?;
-        self.frame_interrupt = s.data.read_bool()?;
-        self.frame_mode = s.data.read_u8()?.into();
-        // ignore current_sample
-        self.samples_pushed = s.data.read_u32()?;
-        self.irq_inhibit = s.data.read_bool()?;
-        self.prev_irq = s.data.read_bool()?;
-
-        self.pulse1.load(s)?;
-        self.pulse2.load(s)?;
-        self.triangle.load(s)?;
-        self.noise.load(s)?;
-        self.dmc.load(s)?;
-
-        Ok(())
     }
 }

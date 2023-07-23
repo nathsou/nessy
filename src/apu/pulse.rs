@@ -1,5 +1,3 @@
-use crate::savestate::{self, SaveStateError};
-
 use super::common::{Envelope, LengthCounter, Timer};
 
 const DUTY_TABLE: [[u8; 8]; 4] = [
@@ -13,15 +11,6 @@ const DUTY_TABLE: [[u8; 8]; 4] = [
 pub enum PulseChannelId {
     Pulse1,
     Pulse2,
-}
-
-impl PulseChannelId {
-    fn section_name(self) -> &'static str {
-        match self {
-            PulseChannelId::Pulse1 => "pulse1",
-            PulseChannelId::Pulse2 => "pulse2",
-        }
-    }
 }
 
 pub struct PulseChannel {
@@ -163,47 +152,5 @@ impl PulseChannel {
         }
 
         self.envelope.output()
-    }
-}
-
-impl savestate::Save for PulseChannel {
-    fn save(&self, parent: &mut savestate::Section) {
-        let s = parent.create_child(self.id.section_name());
-
-        s.data.write_bool(self.enabled);
-        s.data.write_u8(self.duty_mode);
-        s.data.write_u8(self.duty_cycle);
-        s.data.write_bool(self.sweep_enabled);
-        s.data.write_u8(self.sweep_period);
-        s.data.write_bool(self.sweep_negate);
-        s.data.write_u8(self.sweep_shift);
-        s.data.write_bool(self.sweep_reload);
-        s.data.write_u8(self.sweep_divider);
-        s.data.write_bool(self.sweep_mute);
-
-        self.length_counter.save(s);
-        self.envelope.save(s);
-        self.timer.save(s);
-    }
-
-    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
-        let s = parent.get(self.id.section_name())?;
-
-        self.enabled = s.data.read_bool()?;
-        self.duty_mode = s.data.read_u8()?;
-        self.duty_cycle = s.data.read_u8()?;
-        self.sweep_enabled = s.data.read_bool()?;
-        self.sweep_period = s.data.read_u8()?;
-        self.sweep_negate = s.data.read_bool()?;
-        self.sweep_shift = s.data.read_u8()?;
-        self.sweep_reload = s.data.read_bool()?;
-        self.sweep_divider = s.data.read_u8()?;
-        self.sweep_mute = s.data.read_bool()?;
-
-        self.length_counter.load(s)?;
-        self.envelope.load(s)?;
-        self.timer.load(s)?;
-
-        Ok(())
     }
 }

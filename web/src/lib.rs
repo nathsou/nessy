@@ -1,19 +1,22 @@
-mod apu;
-mod bus;
-mod cpu;
+extern crate nessy;
+extern crate wasm_bindgen;
+
 mod js;
-mod nes;
-mod ppu;
-use cpu::rom::{RomError, ROM};
-use nes::Nes;
-mod savestate;
+
+use nessy::{
+    cpu::rom::{RomError, ROM},
+    savestate::SaveStateError,
+    Nes,
+};
 extern crate console_error_panic_hook;
-use savestate::SaveStateError;
 use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
 
-impl From<RomError> for JsValue {
-    fn from(err: RomError) -> JsValue {
-        match err {
+pub struct RomErrorWrapper(RomError);
+pub struct SaveStateErrorWrapper(SaveStateError);
+
+impl From<RomErrorWrapper> for JsValue {
+    fn from(err: RomErrorWrapper) -> JsValue {
+        match err.0 {
             RomError::InvalidiNesHeader => JsValue::from_str("Invalid iNES header"),
             RomError::InvalidSaveStateHeader => JsValue::from_str("Invalid save state header"),
             RomError::UnsupportedMapper(mapper_id) => {
@@ -23,9 +26,9 @@ impl From<RomError> for JsValue {
     }
 }
 
-impl From<SaveStateError> for JsValue {
-    fn from(err: SaveStateError) -> JsValue {
-        match err {
+impl From<SaveStateErrorWrapper> for JsValue {
+    fn from(err: SaveStateErrorWrapper) -> JsValue {
+        match err.0 {
             SaveStateError::InvalidHeader => JsValue::from_str("Invalid savestate header"),
             SaveStateError::InvalidVersion(v) => {
                 JsValue::from_str(&format!("Invalid savestate version: {}", v))
@@ -53,12 +56,12 @@ impl WasmNes {
         console_error_panic_hook::set_once();
     }
 
-    pub fn new(rom: Vec<u8>, sample_rate: f64) -> Result<WasmNes, RomError> {
-        let rom = ROM::new(rom)?;
-
-        Ok(WasmNes {
-            nes: Nes::new(rom, sample_rate),
-        })
+    pub fn new(rom: Vec<u8>, sample_rate: f64) -> Result<WasmNes, RomErrorWrapper> {
+        ROM::new(rom)
+            .map(|rom| WasmNes {
+                nes: Nes::new(rom, sample_rate),
+            })
+            .map_err(RomErrorWrapper)
     }
 
     #[wasm_bindgen(js_name = softReset)]
@@ -98,8 +101,8 @@ impl WasmNes {
     }
 
     #[wasm_bindgen(js_name = loadState)]
-    pub fn load_state(&mut self, data: &[u8]) -> Result<(), SaveStateError> {
-        self.nes.load_state(data)
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), SaveStateErrorWrapper> {
+        self.nes.load_state(data).map_err(SaveStateErrorWrapper)
     }
 
     #[wasm_bindgen(js_name = fillAudioBuffer)]

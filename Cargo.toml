@@ -1,0 +1,16 @@
+[package]
+name = "nessy"
+version = "0.1.0"
+authors = ["nathsou"]
+edition = "2021"
+exclude = ["web/*"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bitflags = "2.3.1"
+sha2 = "0.10.7"
+
+[profile.release]
+opt-level = 3

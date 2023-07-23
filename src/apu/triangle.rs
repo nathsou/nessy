@@ -1,5 +1,3 @@
-use crate::savestate::{self, SaveStateError};
-
 use super::common::{LengthCounter, Timer};
 
 #[rustfmt::skip]
@@ -90,39 +88,5 @@ impl TriangleChannel {
         } else {
             SEQUENCER_LOOKUP[self.duty_cycle as usize]
         }
-    }
-}
-
-const TRIANGLE_CHANNEL_SECTION_NAME: &str = "triangle";
-
-impl savestate::Save for TriangleChannel {
-    fn save(&self, parent: &mut savestate::Section) {
-        let s = parent.create_child(TRIANGLE_CHANNEL_SECTION_NAME);
-
-        s.data.write_bool(self.enabled);
-        s.data.write_bool(self.control_flag);
-        s.data.write_u8(self.counter_reload);
-        s.data.write_u8(self.linear_counter);
-        s.data.write_bool(self.linear_counter_reload);
-        s.data.write_u8(self.duty_cycle);
-
-        self.timer.save(s);
-        self.length_counter.save(s);
-    }
-
-    fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
-        let s = parent.get(TRIANGLE_CHANNEL_SECTION_NAME)?;
-
-        self.enabled = s.data.read_bool()?;
-        self.control_flag = s.data.read_bool()?;
-        self.counter_reload = s.data.read_u8()?;
-        self.linear_counter = s.data.read_u8()?;
-        self.linear_counter_reload = s.data.read_bool()?;
-        self.duty_cycle = s.data.read_u8()?;
-
-        self.timer.load(s)?;
-        self.length_counter.load(s)?;
-
-        Ok(())
     }
 }
