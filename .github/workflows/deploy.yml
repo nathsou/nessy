@@ -18,7 +18,7 @@ jobs:
 
       - name: Install and Build 🔧
         run: |
-          cd web
+          cd web/ui
           npm install -g wasm-pack@0.12.1
           npm install
           npm run wasm
