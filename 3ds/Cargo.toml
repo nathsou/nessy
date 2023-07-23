@@ -1,0 +1,13 @@
+[package]
+name = "nessy_3ds"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nessy = { path = "../" }
+ctru-rs = { git = "https://github.com/rust3ds/ctru-rs" }
+
+[package.metadata.cargo-3ds]
+romfs_dir = "romfs"

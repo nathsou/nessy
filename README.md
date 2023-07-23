@@ -51,4 +51,10 @@ Use the arrow keys to navigate the menus and press enter to validate
 - Different color palettes
 - Better UX
 - VR / 3D mode with sprites in front and bg tiles in the background?
-- Compile 6502 instructions to WASM directly?
+- Optimize!
+
+## Embedding
+
+Nessy can easily be embedded on other platforms, see the `3ds/` folder for a 3ds port (no sound and very slow frame rate for now).
+
+![3DS](resources/3ds.png)
