@@ -1,16 +1,16 @@
 {
-  "name": "nessy",
+  "name": "nessy-web",
   "collaborators": [
-    "nathsou <nathsou@users.noreply.github.com>"
+    "nathsou"
   ],
   "version": "0.1.0",
   "files": [
-    "nessy_bg.wasm",
-    "nessy.js",
-    "nessy.d.ts"
+    "nessy_web_bg.wasm",
+    "nessy_web.js",
+    "nessy_web.d.ts"
   ],
-  "module": "nessy.js",
-  "types": "nessy.d.ts",
+  "module": "nessy_web.js",
+  "types": "nessy_web.d.ts",
   "sideEffects": [
     "./snippets/*"
   ]
