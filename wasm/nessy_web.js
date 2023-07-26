@@ -194,9 +194,12 @@ export class Nes {
         wasm.nes_softReset(this.__wbg_ptr);
     }
     /**
+    * @param {Uint8Array} buffer
     */
-    nextFrame() {
-        wasm.nes_nextFrame(this.__wbg_ptr);
+    nextFrame(buffer) {
+        var ptr0 = passArray8ToWasm0(buffer, wasm.__wbindgen_malloc);
+        var len0 = WASM_VECTOR_LEN;
+        wasm.nes_nextFrame(this.__wbg_ptr, ptr0, len0, addHeapObject(buffer));
     }
     /**
     * @param {Float32Array} audio_buffer
@@ -215,13 +218,6 @@ export class Nes {
         var ptr0 = passArray8ToWasm0(buffer, wasm.__wbindgen_malloc);
         var len0 = WASM_VECTOR_LEN;
         wasm.nes_fillFrameBuffer(this.__wbg_ptr, ptr0, len0, addHeapObject(buffer));
-    }
-    /**
-    * @returns {number}
-    */
-    getUpdatedTilesCount() {
-        const ret = wasm.nes_getUpdatedTilesCount(this.__wbg_ptr);
-        return ret >>> 0;
     }
     /**
     * @param {number} buttons
