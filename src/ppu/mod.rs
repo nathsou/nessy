@@ -1,15 +1,21 @@
 mod registers;
 
-use self::registers::{Ctrl, Registers, SpriteSize, Status};
+use self::registers::{Ctrl, Mask, Registers, SpriteSize, Status};
 use crate::{
     cpu::rom::{Mirroring, ROM},
     savestate::{self, SaveStateError},
 };
 
+const PIXELS_PER_TILE: usize = 8;
 const BYTES_PER_PALLETE: usize = 4;
+const TILES_PER_NAMETABLE_BYTE: usize = 4;
+const TILES_PER_NAMETABLE: usize = 32 * 30;
+const BYTES_PER_NAMETABLE: usize = 1024;
+const ATTRIBUTES_PER_NAMETABLE: usize = 64;
 const SPRITE_PALETTES_OFFSET: usize = 0x11;
 const WIDTH: usize = 256;
 const HEIGHT: usize = 240;
+const FAST_MODE: bool = true;
 
 #[rustfmt::skip]
 pub static COLOR_PALETTE: [(u8, u8, u8); 64] = [
@@ -37,14 +43,19 @@ struct SpriteData {
     behind_background: bool,
 }
 
+#[derive(Clone, Copy)]
+struct CachedTile {
+    chr: [u8; 64],
+}
+
 #[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
     pub rom: ROM,
     regs: Registers,
     open_bus: u8,
-    vram: [u8; 2 * 1024],
+    vram: [u8; 2 * BYTES_PER_NAMETABLE],
     palette: [u8; 32],
-    attributes: [u8; 64 * 4],
+    attributes: [u8; ATTRIBUTES_PER_NAMETABLE * 4],
     pub cycle: u16,
     scanline: u16,
     frame: u64,
@@ -60,8 +71,10 @@ pub struct PPU {
     pattern_table_high_byte: u8,
     scanline_sprites: [SpriteData; 8],
     visible_sprites_count: u8,
-    frame_buffer: [u8; WIDTH * HEIGHT * 3],
-    frame_buffer_complete: Box<[u8; WIDTH * HEIGHT * 3]>, // avoid stack overflow in WASM
+    background_buffer: Box<[u8; WIDTH * HEIGHT * 3 * 2]>, // both nametables
+    frame_buffer_complete: Box<[u8; WIDTH * HEIGHT * 3 * 2]>, // avoid stack overflow in WASM
+    nt_cache: Box<[Option<CachedTile>; BYTES_PER_NAMETABLE * 2]>,
+    updated_bg_tiles: Box<[bool; BYTES_PER_NAMETABLE * 2]>,
 }
 
 impl PPU {
@@ -95,8 +108,10 @@ impl PPU {
                 chr: [0; 8],
             }; 8],
             visible_sprites_count: 0,
-            frame_buffer: [0; WIDTH * HEIGHT * 3],
-            frame_buffer_complete: Box::new([0; WIDTH * HEIGHT * 3]),
+            background_buffer: Box::new([0; WIDTH * HEIGHT * 3 * 2]),
+            frame_buffer_complete: Box::new([0; WIDTH * HEIGHT * 3 * 2]),
+            nt_cache: Box::new([None; BYTES_PER_NAMETABLE * 2]),
+            updated_bg_tiles: Box::new([true; BYTES_PER_NAMETABLE * 2]),
         };
 
         ppu.reset();
@@ -127,6 +142,10 @@ impl PPU {
         self.cycle += 1;
 
         if self.cycle > 340 {
+            if FAST_MODE && self.is_sprite_zero_hit() {
+                self.regs.status.insert(Status::SPRITE_ZERO_HIT);
+            }
+
             self.cycle = 0;
             self.scanline += 1;
 
@@ -153,50 +172,52 @@ impl PPU {
         let fetch_cycle = pre_fetch_cycle || visible_cycle;
 
         // background logic
-        if self.regs.show_background() {
-            if visible_line && visible_cycle {
-                self.render_pixel();
-            }
+        if !FAST_MODE {
+            if self.regs.show_background() {
+                if visible_line && visible_cycle {
+                    self.render_pixel();
+                }
 
-            if render_line && fetch_cycle {
-                self.tile_data <<= 4;
+                if render_line && fetch_cycle {
+                    self.tile_data <<= 4;
 
-                match self.cycle & 7 {
-                    1 => self.fetch_nametable_byte(),
-                    3 => self.fetch_attribute_table_byte(),
-                    // 5 => self.fetch_pattern_table_low_byte(),
-                    // 7 => self.fetch_pattern_table_high_byte(),
-                    7 => self.fetch_pattern_table_bytes(),
-                    0 => self.store_background_tile_data(),
-                    _ => {}
+                    match self.cycle & 7 {
+                        1 => self.fetch_nametable_byte(),
+                        3 => self.fetch_attribute_table_byte(),
+                        // 5 => self.fetch_pattern_table_low_byte(),
+                        // 7 => self.fetch_pattern_table_high_byte(),
+                        7 => self.fetch_pattern_table_bytes(),
+                        0 => self.store_background_tile_data(),
+                        _ => {}
+                    }
+                }
+
+                if preline && self.cycle >= 280 && self.cycle <= 304 {
+                    self.regs.copy_y();
+                }
+
+                if render_line {
+                    if fetch_cycle && self.cycle & 7 == 0 {
+                        self.regs.increment_x();
+                    }
+
+                    if self.cycle == 256 {
+                        self.regs.increment_y();
+                    }
+
+                    if self.cycle == 257 {
+                        self.regs.copy_x();
+                    }
                 }
             }
 
-            if preline && self.cycle >= 280 && self.cycle <= 304 {
-                self.regs.copy_y();
-            }
-
-            if render_line {
-                if fetch_cycle && self.cycle & 7 == 0 {
-                    self.regs.increment_x();
+            if self.regs.show_sprites() && self.cycle == 257 {
+                if visible_line {
+                    self.fetch_next_scanline_sprites();
+                } else {
+                    // clear secondary OAM
+                    self.visible_sprites_count = 0;
                 }
-
-                if self.cycle == 256 {
-                    self.regs.increment_y();
-                }
-
-                if self.cycle == 257 {
-                    self.regs.copy_x();
-                }
-            }
-        }
-
-        if self.regs.show_sprites() && self.cycle == 257 {
-            if visible_line {
-                self.fetch_next_scanline_sprites();
-            } else {
-                // clear secondary OAM
-                self.visible_sprites_count = 0;
             }
         }
 
@@ -205,7 +226,12 @@ impl PPU {
             self.frame_complete = true;
             self.regs.status.insert(Status::VBLANK_STARTED);
             self.detect_nmi_edge();
-            self.transfer_frame_buffer();
+
+            if FAST_MODE {
+                self.render_frame();
+            }
+
+            // self.transfer_frame_buffer();
         }
 
         if preline && self.cycle == 1 {
@@ -216,11 +242,362 @@ impl PPU {
         }
     }
 
-    #[inline]
-    fn transfer_frame_buffer(&mut self) {
+    fn render_frame(&mut self) {
+        // self.frame_buffer1.fill(0);
+        // self.frame_buffer2.fill(0);
+
+        let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
+        let scroll_x = self.regs.scroll.x as usize;
+        let scroll_y = self.regs.scroll.y as usize;
+
+        let (nametable1, nametable2): (usize, usize) = match self.rom.cart.mirroring {
+            Mirroring::Vertical => match base_nametable_addr {
+                0x2000 | 0x2800 => (0, 0x400),
+                0x2400 | 0x2c00 => (0x400, 0),
+                _ => unreachable!(),
+            },
+            Mirroring::Horizontal => match base_nametable_addr {
+                0x2000 | 0x2400 => (0, 0x400),
+                0x2800 | 0x2c00 => (0x400, 0),
+                _ => unreachable!(),
+            },
+            Mirroring::OneScreenLowerBank => (0, 0),
+            Mirroring::OneScreenUpperBank => (0x400, 0x400),
+            Mirroring::FourScreen => match base_nametable_addr {
+                0x2000 => (0x000, 0x400),
+                0x2400 => (0x400, 0x800),
+                0x2800 => (0x800, 0xc00),
+                0x2c00 => (0xc00, 0x800),
+                _ => unreachable!(),
+            },
+        };
+
+        if self.regs.show_background() {
+            self.render_background(nametable1, 0);
+            self.render_background(nametable2, WIDTH);
+        }
+
+        // for i in 0..HEIGHT {
+        //     self.set_pixel(scroll_x, i, (255, 0, 0));
+        //     self.set_pixel((scroll_x + WIDTH) % (2 * WIDTH), i, (0, 255, 0));
+        // }
+
+        // for i in 0..WIDTH {
+        //     self.set_pixel(i, scroll_y, (0, 0, 255));
+        //     self.set_pixel(i, (scroll_y + HEIGHT) % (2 * HEIGHT), (255, 255, 0));
+        // }
+
+        // if scroll_x > 0 {
+        //     self.render_background(
+        //         nametable2,
+        //         BoundingBox {
+        //             x_min: 0,
+        //             x_max: scroll_x,
+        //             y_min: 0,
+        //             y_max: HEIGHT,
+        //         },
+        //         (WIDTH - scroll_x) as isize,
+        //         0,
+        //     );
+        // } else if scroll_y > 0 {
+        //     self.render_background(
+        //         nametable2,
+        //         BoundingBox {
+        //             x_min: 0,
+        //             x_max: WIDTH,
+        //             y_min: 0,
+        //             y_max: scroll_y,
+        //         },
+        //         0,
+        //         (HEIGHT - scroll_y) as isize,
+        //     );
+        // }
+
         self.frame_buffer_complete
-            .copy_from_slice(&self.frame_buffer);
+            .copy_from_slice(self.background_buffer.as_slice());
+
+        if self.regs.show_sprites() {
+            self.render_sprites(scroll_x, scroll_y);
+        }
     }
+
+    fn render_background(&mut self, nt_offset: usize, x_offset: usize) {
+        let chr_bank_offset = self.regs.ctrl.background_chr_offset();
+
+        for i in 0..0x03c0 {
+            let tile_col = i & 31; // i % 32
+            let tile_row = i / 32;
+
+            self.render_background_tile(
+                chr_bank_offset,
+                nt_offset,
+                i,
+                tile_col,
+                tile_row,
+                x_offset,
+            );
+        }
+    }
+
+    fn get_nametable_tile(
+        &mut self,
+        nt_offset: usize,
+        nth: usize,
+        chr_bank_offset: u16,
+    ) -> [u8; 64] {
+        let tile_index = nt_offset + nth;
+
+        match self.nt_cache[tile_index] {
+            // Some(tile) => tile.chr,
+            _ => {
+                let mut tile = [0u8; 16];
+                self.rom
+                    .mapper
+                    .get_tile(&mut self.rom.cart, chr_bank_offset, nth, &mut tile);
+
+                let mut chr = [0u8; 64];
+
+                for y in 0..PIXELS_PER_TILE {
+                    let mut plane1 = tile[y];
+                    let mut plane2 = tile[y + 8];
+
+                    for x in (0..PIXELS_PER_TILE).rev() {
+                        let bit0 = plane1 & 1;
+                        let bit1 = plane2 & 1;
+                        let color_idx = (bit1 << 1) | bit0;
+
+                        plane1 >>= 1;
+                        plane2 >>= 1;
+
+                        chr[y * PIXELS_PER_TILE + x] = color_idx;
+                    }
+                }
+
+                self.nt_cache[tile_index] = Some(CachedTile { chr });
+                chr
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_background_tile(
+        &mut self,
+        chr_bank_offset: u16,
+        nt_offset: usize,
+        nth: usize,
+        tile_col: usize,
+        tile_row: usize,
+        x_offset: usize,
+    ) {
+        let tile_idx = nt_offset + nth;
+
+        if !self.updated_bg_tiles[tile_idx] {
+            return;
+        }
+
+        let tile =
+            self.get_nametable_tile(nt_offset, self.vram[tile_idx] as usize, chr_bank_offset);
+
+        for y in 0..PIXELS_PER_TILE {
+            for x in 0..PIXELS_PER_TILE {
+                let pixel_x = tile_col * PIXELS_PER_TILE + x;
+                let pixel_y = tile_row * PIXELS_PER_TILE + y;
+                let color_idx = tile[y * PIXELS_PER_TILE + x];
+
+                let rgb =
+                    self.background_color_at(nt_offset, tile_col, tile_row, color_idx as usize);
+
+                PPU::set_pixel(
+                    self.background_buffer.as_mut_slice(),
+                    x_offset + pixel_x,
+                    pixel_y,
+                    rgb,
+                );
+            }
+        }
+
+        self.updated_bg_tiles[tile_idx] = false;
+    }
+
+    fn render_sprites(&mut self, shift_x: usize, shift_y: usize) {
+        let sprite_size = self.regs.ctrl.sprite_size();
+
+        // Sprites with lower OAM indices are drawn in front
+        for i in (0..WIDTH).step_by(4).rev() {
+            let sprite_y = self.attributes[i] as usize + 1;
+            let sprite_tile_idx = match sprite_size {
+                SpriteSize::Sprite8x8 => self.attributes[i + 1] as usize,
+                SpriteSize::Sprite8x16 => (self.attributes[i + 1]) as usize,
+            };
+            let sprite_attr = self.attributes[i + 2];
+            let sprite_x = self.attributes[i + 3] as usize;
+
+            let palette_idx = sprite_attr & 0b11;
+            let behind_background = sprite_attr & 0b0010_0000 != 0;
+            let flip_horizontally = sprite_attr & 0b0100_0000 != 0;
+            let flip_vertically = sprite_attr & 0b1000_0000 != 0;
+            let palette = self.sprite_palette(palette_idx);
+            let chr_bank_offset: u16 = match sprite_size {
+                SpriteSize::Sprite8x8 => {
+                    if !self.regs.ctrl.contains(Ctrl::SPRITE_PATTERN_ADDR) {
+                        0
+                    } else {
+                        0x1000
+                    }
+                }
+                SpriteSize::Sprite8x16 => (sprite_tile_idx as u16 & 1) * 0x1000,
+            };
+
+            let (top_tile_idx, bot_tile_idx) = {
+                use SpriteSize::*;
+                match (sprite_size, flip_vertically) {
+                    (Sprite8x8, _) => (sprite_tile_idx, None),
+                    (Sprite8x16, false) => (sprite_tile_idx, Some(sprite_tile_idx + 1)),
+                    (Sprite8x16, true) => (sprite_tile_idx + 1, Some(sprite_tile_idx)),
+                }
+            };
+
+            self.render_sprite_tile(
+                chr_bank_offset,
+                top_tile_idx,
+                sprite_x,
+                sprite_y,
+                behind_background,
+                flip_horizontally,
+                flip_vertically,
+                palette,
+                shift_x,
+                shift_y,
+            );
+
+            if let Some(idx) = bot_tile_idx {
+                self.render_sprite_tile(
+                    chr_bank_offset,
+                    idx,
+                    sprite_x,
+                    sprite_y + 8,
+                    behind_background,
+                    flip_horizontally,
+                    flip_vertically,
+                    palette,
+                    shift_x,
+                    shift_y,
+                );
+            }
+        }
+    }
+
+    // https://www.nesdev.org/wiki/PPU_palettes
+    fn sprite_palette(&self, palette_idx: u8) -> [Option<(u8, u8, u8)>; 4] {
+        let palette_offset = SPRITE_PALETTES_OFFSET + palette_idx as usize * BYTES_PER_PALLETE;
+
+        [
+            None, // transparent
+            Some(COLOR_PALETTE[self.palette[palette_offset] as usize]),
+            Some(COLOR_PALETTE[self.palette[palette_offset + 1] as usize]),
+            Some(COLOR_PALETTE[self.palette[palette_offset + 2] as usize]),
+        ]
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_sprite_tile(
+        &mut self,
+        chr_bank_offset: u16,
+        nth: usize,
+        tile_x: usize,
+        tile_y: usize,
+        behind_background: bool,
+        flip_horizontally: bool,
+        flip_vertically: bool,
+        palette: [Option<(u8, u8, u8)>; 4],
+        shift_x: usize,
+        shift_y: usize,
+    ) {
+        let mut tile = [0u8; 16];
+        self.rom
+            .mapper
+            .get_tile(&mut self.rom.cart, chr_bank_offset, nth, &mut tile);
+
+        for y in 0..PIXELS_PER_TILE {
+            let mut plane1 = tile[y];
+            let mut plane2 = tile[y + 8];
+
+            for x in (0..PIXELS_PER_TILE).rev() {
+                let bit0 = plane1 & 1;
+                let bit1 = plane2 & 1;
+                let color_idx = (bit1 << 1) | bit0;
+
+                plane1 >>= 1;
+                plane2 >>= 1;
+
+                if let Some(rgb) = palette[color_idx as usize] {
+                    let (x, y) = match (flip_horizontally, flip_vertically) {
+                        (false, false) => (x, y),
+                        (true, false) => (7 - x, y),
+                        (false, true) => (x, 7 - y),
+                        (true, true) => (7 - x, 7 - y),
+                    };
+
+                    let pixel_x = tile_x + x + shift_x;
+                    let pixel_y = tile_y + y + shift_y;
+                    let is_bg_opaque = false;
+                    if !behind_background || !is_bg_opaque {
+                        PPU::set_pixel(
+                            self.frame_buffer_complete.as_mut_slice(),
+                            pixel_x,
+                            pixel_y,
+                            rgb,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[inline]
+    fn is_sprite_zero_hit(&mut self) -> bool {
+        let y = self.attributes[0] as usize;
+        let x = self.attributes[3] as usize;
+
+        y == self.scanline as usize
+            && x <= self.cycle as usize
+            && self.regs.mask.contains(Mask::SHOW_SPRITES)
+    }
+
+    fn background_color_at(
+        &self,
+        nametable_offset: usize,
+        tile_x: usize,
+        tile_y: usize,
+        color_idx: usize,
+    ) -> (u8, u8, u8) {
+        let x = tile_x / TILES_PER_NAMETABLE_BYTE; // 4x4 tiles
+        let y = tile_y / TILES_PER_NAMETABLE_BYTE;
+        let nametable_idx = y * 8 + x; // 1 byte for color info of 4x4 tiles
+        let color_byte = self.vram[nametable_offset + 0x3c0 + nametable_idx];
+
+        let block_x = (tile_x % TILES_PER_NAMETABLE_BYTE) / 2;
+        let block_y = (tile_y % TILES_PER_NAMETABLE_BYTE) / 2;
+
+        let palette_offset = 1 + 4 * match (block_x, block_y) {
+            (0, 0) => color_byte & 0b11,
+            (1, 0) => (color_byte >> 2) & 0b11,
+            (0, 1) => (color_byte >> 4) & 0b11,
+            (1, 1) => (color_byte >> 6) & 0b11,
+            _ => unreachable!(),
+        } as usize;
+
+        COLOR_PALETTE[match color_idx {
+            0 => self.palette[0],
+            _ => self.palette[palette_offset + color_idx - 1],
+        } as usize]
+    }
+
+    // #[inline]
+    // fn transfer_frame_buffer(&mut self) {
+    //     self.frame_buffer_complete
+    //         .copy_from_slice(self.frame_buffer.as_slice());
+    // }
 
     fn detect_nmi_edge(&mut self) {
         let nmi = self.regs.ctrl.contains(Ctrl::GENERATE_NMI)
@@ -429,15 +806,21 @@ impl PPU {
             }
         }
 
-        self.set_pixel(x as usize, y as usize, color);
+        PPU::set_pixel(
+            self.background_buffer.as_mut_slice(),
+            x as usize,
+            y as usize,
+            color,
+        );
     }
 
-    fn set_pixel(&mut self, x: usize, y: usize, (r, g, b): (u8, u8, u8)) {
-        if x < WIDTH && y < HEIGHT {
-            let offset = (y * WIDTH + x) * 3;
-            self.frame_buffer[offset] = r;
-            self.frame_buffer[offset + 1] = g;
-            self.frame_buffer[offset + 2] = b;
+    fn set_pixel(target: &mut [u8], x: usize, y: usize, (r, g, b): (u8, u8, u8)) {
+        let offset = (y * 2 * WIDTH + x) * 3;
+
+        if offset < 2 * WIDTH * HEIGHT * 3 {
+            target[offset] = r;
+            target[offset + 1] = g;
+            target[offset + 2] = b;
         }
     }
 
@@ -542,14 +925,48 @@ impl PPU {
         match addr {
             0x0000..=0x1fff => self.rom.mapper.write(&mut self.rom.cart, addr, data),
             0x2000..=0x2fff => {
-                self.vram[self.nametable_mirrored_addr(addr) as usize] = data;
+                let mirrored_addr = self.nametable_mirrored_addr(addr) as usize;
+                if self.vram[mirrored_addr] != data {
+                    self.vram[mirrored_addr] = data;
+
+                    if mirrored_addr & 0x3ff < TILES_PER_NAMETABLE {
+                        // nametable
+                        self.updated_bg_tiles[mirrored_addr] = true;
+                    } else {
+                        // attributes
+                        let attrib_idx = mirrored_addr & 63;
+                        let meta_tile_x = attrib_idx & 31;
+                        let meta_tile_y = attrib_idx / 32;
+                        let base_nt_addr =
+                            (mirrored_addr / BYTES_PER_NAMETABLE) * BYTES_PER_NAMETABLE;
+
+                        for x in 0..4 {
+                            for y in 0..4 {
+                                let tile_x = meta_tile_x * 4 + x;
+                                let tile_y = meta_tile_y * 4 + y;
+                                let tile_idx = base_nt_addr + tile_y * 32 + tile_x;
+                                self.updated_bg_tiles[tile_idx] = true;
+                            }
+                        }
+                    }
+                }
             }
             // 0x3000..=0x3eff => unreachable!(),
             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => {
-                self.palette[((addr - 0x3f10) & 31) as usize] = data;
+                let addr = ((addr - 0x3f10) & 31) as usize;
+
+                if data != self.palette[addr] {
+                    self.palette[addr] = data;
+                    self.updated_bg_tiles.fill(true);
+                }
             }
             0x3f00..=0x3fff => {
-                self.palette[((addr - 0x3f00) & 31) as usize] = data;
+                let addr = ((addr - 0x3f00) & 31) as usize;
+
+                if data != self.palette[addr] {
+                    self.palette[addr] = data;
+                    self.updated_bg_tiles.fill(true);
+                }
             }
             _ => {
                 // ignoring write to {addr:04X}
@@ -608,9 +1025,58 @@ impl PPU {
         }
     }
 
+    // returns number of bytes copied
+    fn copy_rect(
+        &self,
+        offset: usize,
+        (x1, y1): (usize, usize),
+        (x2, y2): (usize, usize),
+        buffer: &mut [u8],
+    ) -> usize {
+        let width = x2 - x1;
+        let height = y2 - y1;
+
+        // for y in 0..height {
+        //     let src_offset = ((y1 + y) * WIDTH + x1) * 3;
+        //     let dst_offset = offset + y * width * 3;
+        //     buffer[dst_offset..(dst_offset + width * 3)]
+        //         .copy_from_slice(&self.frame_buffer_complete[src_offset..(src_offset + width * 3)]);
+        // }
+
+        let mut index = offset;
+
+        for x in x1..x2 {
+            for y in y1..y2 {
+                let i = (y * 2 * WIDTH + x) * 3;
+                buffer[index] = self.frame_buffer_complete[i];
+                index += 1;
+            }
+        }
+
+        width * height * 3
+    }
+
+    pub fn get_frame(&self, buffer: &mut [u8]) {
+        // let scroll_x = self.regs.scroll.x as usize;
+        // self.copy_rect(0, (0, 0), (WIDTH, HEIGHT), buffer);
+
+        // if scroll_x < WIDTH {
+        //     self.copy_rect(0, (scroll_x, 0), (scroll_x + WIDTH, HEIGHT), buffer);
+        // } else {
+        //     let offset2 = self.copy_rect(0, (scroll_x, 0), (2 * WIDTH, HEIGHT), buffer);
+        //     self.copy_rect(offset2, (0, 0), (scroll_x, HEIGHT), buffer);
+        // }
+
+        buffer.copy_from_slice(self.frame_buffer_complete.as_slice());
+    }
+
     #[inline]
-    pub fn get_frame(&self) -> &[u8] {
+    pub fn get_full_frame(&mut self) -> &[u8] {
         self.frame_buffer_complete.as_slice()
+    }
+
+    pub fn get_updated_tiles_count(&self) -> usize {
+        self.updated_bg_tiles.iter().filter(|&b| *b).count()
     }
 }
 

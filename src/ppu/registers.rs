@@ -14,6 +14,7 @@ pub struct Registers {
     pub mask: Mask,
     pub status: Status,
     pub oam_addr: u8,
+    pub scroll: Scroll,
 }
 
 impl Registers {
@@ -28,6 +29,11 @@ impl Registers {
             mask: Mask::empty(),
             status: Status::empty(),
             oam_addr: 0,
+            scroll: Scroll {
+                x: 0,
+                y: 0,
+                is_x: true,
+            },
         }
     }
 
@@ -93,6 +99,17 @@ impl Ctrl {
             0
         } else {
             0x1000
+        }
+    }
+
+    #[inline]
+    pub fn base_nametable_addr(&self) -> usize {
+        match self.bits() & 0b11 {
+            0 => 0x2000,
+            1 => 0x2400,
+            2 => 0x2800,
+            3 => 0x2c00,
+            _ => unreachable!(),
         }
     }
 
@@ -248,12 +265,18 @@ impl Registers {
             self.t = (self.t & 0xFFE0) | ((data as u16) >> 3);
             self.x = data & 0b111;
             self.w = true;
+
+            self.scroll.is_x = false;
+            self.scroll.x = data;
         } else {
             // t: FGH..AB CDE..... <- d: ABCDEFGH
             // w:                  <- 0
             self.t = (self.t & 0x8FFF) | (((data as u16) & 0b111) << 12);
             self.t = (self.t & 0xFC1F) | (((data as u16) & 0b11111000) << 2);
             self.w = false;
+
+            self.scroll.is_x = true;
+            self.scroll.y = data;
         }
     }
 
@@ -325,6 +348,24 @@ impl Registers {
     pub fn increment_vram_addr(&mut self) {
         let step = self.ctrl.vram_addr_increment();
         self.v = self.v.wrapping_add(step) & 0x3fff;
+    }
+}
+
+pub struct Scroll {
+    pub x: u8,
+    pub y: u8,
+    pub is_x: bool,
+}
+
+impl Scroll {
+    pub fn write(&mut self, data: u8) {
+        if self.is_x {
+            self.x = data;
+        } else {
+            self.y = data;
+        }
+
+        self.is_x = !self.is_x;
     }
 }
 

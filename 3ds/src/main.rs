@@ -14,14 +14,13 @@ const TOP_SCREEN_HEIGHT: usize = 240; // p
 const BOTTOM_SCREEN_WIDTH: usize = 320; // px
 const BOTTOM_SCREEN_HEIGHT: usize = 240; // px
 const SAMPLE_RATE: f64 = 44_100.0; // Hz
-const ROM_BYTES: &[u8] = include_bytes!("../assets/Kirby's Adventure.nes");
+const ROM_BYTES: &[u8] = include_bytes!("../assets/Super Mario Bros.nes");
 const LEFT_X_OFFSET_TOP: usize = (TOP_SCREEN_WIDTH - NES_SCREEN_WIDTH) / 2;
 const LEFT_X_OFFSET_BOTTOM: usize = (BOTTOM_SCREEN_WIDTH - NES_SCREEN_WIDTH) / 2;
-static LOGO: &[u8] = include_bytes!("../assets/logo.rgb");
 
 #[inline]
 fn is_key_active(hid: &Hid, key: KeyPad) -> bool {
-    hid.keys_down().contains(key) || hid.keys_held().contains(key)
+    hid.keys_held().contains(key)
 }
 
 fn main() {
@@ -31,27 +30,18 @@ fn main() {
     let gfx = Gfx::new().expect("Couldn't obtain GFX controller");
     let mut hid = Hid::new().expect("Couldn't obtain HID controller");
     let apt = Apt::new().expect("Couldn't obtain APT controller");
-    // let _console = Console::new(gfx.bottom_screen.borrow_mut());
+    let _console = Console::new(gfx.bottom_screen.borrow_mut());
 
-    // println!("\x1b[0;3HPress L + R to exit.");
+    println!("\x1b[0;3HPress L + R to exit.");
 
     let mut top_screen = gfx.top_screen.borrow_mut();
-    let mut bottom_screen = gfx.bottom_screen.borrow_mut();
-    bottom_screen.set_double_buffering(false);
-    bottom_screen.swap_buffers();
-
-    // We don't need double buffering in this example.
-    // In this way we can draw our image only once on screen.
     top_screen.set_double_buffering(false);
+    top_screen.swap_buffers();
 
     let rom = ROM::new(ROM_BYTES.to_vec()).expect("Couldn't load ROM");
     let mut nes = Nes::new(rom, SAMPLE_RATE);
     let mut nes_frame_buffer = [0u8; FRAME_BUFFER_BYTE_SIZE];
     let mut top_frame_buffer = [0u8; TOP_SCREEN_WIDTH * TOP_SCREEN_HEIGHT * 3];
-    let mut bottom_frame_buffer = [0u8; BOTTOM_SCREEN_WIDTH * BOTTOM_SCREEN_HEIGHT * 3];
-
-    let bottom_offset = LEFT_X_OFFSET_BOTTOM * BOTTOM_SCREEN_HEIGHT * 3;
-    bottom_frame_buffer[bottom_offset..(LOGO.len() + bottom_offset)].copy_from_slice(LOGO);
 
     // Main loop
     while apt.main_loop() {
@@ -72,33 +62,35 @@ fn main() {
             joypad1_state.insert(JoypadStatus::SELECT);
         }
 
-        if is_key_active(&hid, KeyPad::A) {
+        if is_key_active(&hid, KeyPad::A) || is_key_active(&hid, KeyPad::Y) {
             joypad1_state.insert(JoypadStatus::A);
         }
 
-        if is_key_active(&hid, KeyPad::B) {
+        if is_key_active(&hid, KeyPad::B) || is_key_active(&hid, KeyPad::X) {
             joypad1_state.insert(JoypadStatus::B);
         }
 
-        if is_key_active(&hid, KeyPad::DPAD_UP) {
+        if is_key_active(&hid, KeyPad::DPAD_UP) || is_key_active(&hid, KeyPad::CPAD_UP) {
             joypad1_state.insert(JoypadStatus::UP);
         }
 
-        if is_key_active(&hid, KeyPad::DPAD_DOWN) {
+        if is_key_active(&hid, KeyPad::DPAD_DOWN) || is_key_active(&hid, KeyPad::CPAD_DOWN) {
             joypad1_state.insert(JoypadStatus::DOWN);
         }
 
-        if is_key_active(&hid, KeyPad::DPAD_LEFT) {
+        if is_key_active(&hid, KeyPad::DPAD_LEFT) || is_key_active(&hid, KeyPad::CPAD_LEFT) {
             joypad1_state.insert(JoypadStatus::LEFT);
         }
 
-        if is_key_active(&hid, KeyPad::DPAD_RIGHT) {
+        if is_key_active(&hid, KeyPad::DPAD_RIGHT) || is_key_active(&hid, KeyPad::CPAD_RIGHT) {
             joypad1_state.insert(JoypadStatus::RIGHT);
         }
 
         nes.get_joypad1_mut().update(joypad1_state.bits());
-
+        let t0 = std::time::Instant::now();
         nes.next_frame();
+        let frame_time = t0.elapsed().as_millis() as usize;
+        println!("{frame_time}ms");
         nes_frame_buffer.copy_from_slice(&nes.get_frame());
 
         // rotate the frame buffer 90 degrees
@@ -119,17 +111,9 @@ fn main() {
                 .raw_framebuffer()
                 .ptr
                 .copy_from(top_frame_buffer.as_ptr(), top_frame_buffer.len());
-
-            bottom_screen
-                .raw_framebuffer()
-                .ptr
-                .copy_from(bottom_frame_buffer.as_ptr(), bottom_frame_buffer.len());
         }
 
-        // Flush and swap framebuffers
         top_screen.flush_buffers();
-        bottom_screen.flush_buffers();
-        // top_screen.swap_buffers();
 
         //Wait for VBlank
         gfx.wait_for_vblank();

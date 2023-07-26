@@ -6,7 +6,7 @@ import { hooks } from './ui/hooks';
 import { StoreData, createStore } from './ui/store';
 import { createUI } from './ui/ui';
 
-const WIDTH = 256; // px
+const WIDTH = 256 * 2; // px
 const HEIGHT = 240; // px
 type SyncMode = 0 | 1 | 2;
 const SYNC_VIDEO: SyncMode = 0;
@@ -28,12 +28,12 @@ async function setup() {
     await init();
     Nes.initPanicHook();
     const store = await createStore();
-    const ui = createUI(store);
-    const syncMode = SYNC_BOTH;
+    const ui = createUI(store, WIDTH, HEIGHT);
+    const syncMode = SYNC_VIDEO;
     const audioBufferSize = AUDIO_BUFFER_SIZE_MAPPING[syncMode];
     const avoidUnderruns = syncMode === SYNC_BOTH;
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
-    const renderer = createWebglRenderer(canvas);
+    const renderer = createWebglRenderer(canvas, WIDTH, HEIGHT);
     let nes: Nes;
     const controller = createController(store);
     const frame = new Uint8Array(WIDTH * HEIGHT * 3);
@@ -222,7 +222,8 @@ async function setup() {
     function renderState(state: Uint8Array, buffer: Uint8Array): void {
         const prevState = nes.saveState();
         nes.loadState(state);
-        nes.nextFrame(buffer);
+        nes.nextFrame();
+        nes.fillFrameBuffer(buffer);
         nes.loadState(prevState);
     }
 
@@ -263,7 +264,8 @@ async function setup() {
 
             if (nes && store.ref.lastState != null) {
                 nes.loadState(store.ref.lastState);
-                nes.nextFrame(backgroundFrame);
+                nes.nextFrame();
+                nes.fillFrameBuffer(backgroundFrame);
                 nes.loadState(store.ref.lastState);
 
                 hooks.call('setBackground', { mode: 'current' });
@@ -285,7 +287,8 @@ async function setup() {
 
                 // Generate the screenshot after 2 seconds
                 for (let i = 0; i < 120; i++) {
-                    titleScreenNes.nextFrame(titleScreenFrame);
+                    titleScreenNes.nextFrame();
+                    titleScreenNes.fillFrameBuffer(titleScreenFrame);
                 }
 
                 await store.db.titleScreen.insert(hash, titleScreenFrame);
@@ -326,6 +329,7 @@ async function setup() {
         store.save();
     }
 
+
     function run(): void {
         requestAnimationFrame(run);
         controller.tick();
@@ -335,7 +339,9 @@ async function setup() {
             renderer.render(frame);
         } else if (nes !== undefined) {
             if (syncMode !== SYNC_AUDIO) {
-                nes.nextFrame(frame);
+                nes.nextFrame();
+                console.log(nes.getUpdatedTilesCount());
+                nes.fillFrameBuffer(frame);
                 renderer.render(frame);
             }
         }

@@ -103,14 +103,18 @@ impl Nes {
     }
 
     #[inline]
-    pub fn get_frame(&self) -> &[u8] {
-        self.cpu.bus.ppu.get_frame()
+    pub fn get_frame(&self, buffer: &mut [u8]) {
+        self.cpu.bus.ppu.get_frame(buffer);
     }
 
     pub fn save_state(&self) -> SaveState {
         let mut state = SaveState::new(&self.cpu.bus.ppu.rom.cart.hash);
         self.save(state.get_root_mut());
         state
+    }
+
+    pub fn get_updated_tiles_count(&self) -> usize {
+        self.cpu.bus.ppu.get_updated_tiles_count()
     }
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), SaveStateError> {

@@ -70,9 +70,8 @@ impl WasmNes {
     }
 
     #[wasm_bindgen(js_name = nextFrame)]
-    pub fn next_frame(&mut self, buffer: &mut [u8]) {
+    pub fn next_frame(&mut self) {
         self.nes.next_frame();
-        buffer.copy_from_slice(self.nes.get_frame());
     }
 
     #[wasm_bindgen(js_name = nextSamples)]
@@ -82,7 +81,12 @@ impl WasmNes {
 
     #[wasm_bindgen(js_name = fillFrameBuffer)]
     pub fn fill_frame_buffer(&self, buffer: &mut [u8]) {
-        buffer.copy_from_slice(self.nes.get_frame())
+        self.nes.get_frame(buffer)
+    }
+
+    #[wasm_bindgen(js_name = getUpdatedTilesCount)]
+    pub fn get_updated_tiles_count(&self) -> usize {
+        self.nes.get_updated_tiles_count()
     }
 
     #[wasm_bindgen(js_name = setJoypad1)]
