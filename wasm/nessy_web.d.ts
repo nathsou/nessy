@@ -17,9 +17,8 @@ export class Nes {
 */
   softReset(): void;
 /**
-* @param {Uint8Array} buffer
 */
-  nextFrame(buffer: Uint8Array): void;
+  nextFrame(): void;
 /**
 * @param {Float32Array} audio_buffer
 * @returns {boolean}
@@ -29,6 +28,10 @@ export class Nes {
 * @param {Uint8Array} buffer
 */
   fillFrameBuffer(buffer: Uint8Array): void;
+/**
+* @returns {number}
+*/
+  getUpdatedTilesCount(): number;
 /**
 * @param {number} buttons
 */
@@ -62,9 +65,10 @@ export interface InitOutput {
   readonly __wbg_nes_free: (a: number) => void;
   readonly nes_new: (a: number, b: number, c: number, d: number) => void;
   readonly nes_softReset: (a: number) => void;
-  readonly nes_nextFrame: (a: number, b: number, c: number, d: number) => void;
+  readonly nes_nextFrame: (a: number) => void;
   readonly nes_nextSamples: (a: number, b: number, c: number, d: number) => number;
   readonly nes_fillFrameBuffer: (a: number, b: number, c: number, d: number) => void;
+  readonly nes_getUpdatedTilesCount: (a: number) => number;
   readonly nes_setJoypad1: (a: number, b: number) => void;
   readonly nes_setJoypad2: (a: number, b: number) => void;
   readonly nes_saveState: (a: number, b: number) => void;
