@@ -7,6 +7,164 @@ const NMI_VECTOR: u16 = 0xfffa;
 const IRQ_VECTOR: u16 = 0xfffe;
 
 impl CPU {
+    pub fn instructions_lut() -> [fn(&mut CPU); 256] {
+        let mut instructions: [fn(&mut CPU); 256] = [CPU::nop; 256];
+
+        instructions[0x00] = CPU::brk;
+        instructions[0xEA] = CPU::nop;
+        instructions[0xA9] = CPU::lda_imm;
+        instructions[0xA5] = CPU::lda_zp;
+        instructions[0xB5] = CPU::lda_zp_x;
+        instructions[0xAD] = CPU::lda_abs;
+        instructions[0xBD] = CPU::lda_abs_x;
+        instructions[0xB9] = CPU::lda_abs_y;
+        instructions[0xA1] = CPU::lda_ind_x;
+        instructions[0xB1] = CPU::lda_ind_y;
+        instructions[0xA2] = CPU::ldx_imm;
+        instructions[0xA6] = CPU::ldx_zp;
+        instructions[0xB6] = CPU::ldx_zp_y;
+        instructions[0xAE] = CPU::ldx_abs;
+        instructions[0xBE] = CPU::ldx_abs_y;
+        instructions[0xA0] = CPU::ldy_imm;
+        instructions[0xA4] = CPU::ldy_zp;
+        instructions[0xB4] = CPU::ldy_zp_x;
+        instructions[0xAC] = CPU::ldy_abs;
+        instructions[0xBC] = CPU::ldy_abs_x;
+        instructions[0x85] = CPU::sta_zp;
+        instructions[0x95] = CPU::sta_zp_x;
+        instructions[0x8D] = CPU::sta_abs;
+        instructions[0x9D] = CPU::sta_abs_x;
+        instructions[0x99] = CPU::sta_abs_y;
+        instructions[0x81] = CPU::sta_ind_x;
+        instructions[0x91] = CPU::sta_ind_y;
+        instructions[0x86] = CPU::stx_zp;
+        instructions[0x96] = CPU::stx_zp_y;
+        instructions[0x8E] = CPU::stx_abs;
+        instructions[0x84] = CPU::sty_zp;
+        instructions[0x94] = CPU::sty_zp_x;
+        instructions[0x8C] = CPU::sty_abs;
+        instructions[0x69] = CPU::adc_imm;
+        instructions[0x65] = CPU::adc_zp;
+        instructions[0x75] = CPU::adc_zp_x;
+        instructions[0x6D] = CPU::adc_abs;
+        instructions[0x7D] = CPU::adc_abs_x;
+        instructions[0x79] = CPU::adc_abs_y;
+        instructions[0x61] = CPU::adc_ind_x;
+        instructions[0x71] = CPU::adc_ind_y;
+        instructions[0xE9] = CPU::sbc_imm;
+        instructions[0xE5] = CPU::sbc_zp;
+        instructions[0xF5] = CPU::sbc_zp_x;
+        instructions[0xED] = CPU::sbc_abs;
+        instructions[0xFD] = CPU::sbc_abs_x;
+        instructions[0xF9] = CPU::sbc_abs_y;
+        instructions[0xE1] = CPU::sbc_ind_x;
+        instructions[0xF1] = CPU::sbc_ind_y;
+        instructions[0xAA] = CPU::tax;
+        instructions[0xA8] = CPU::tay;
+        instructions[0xBA] = CPU::tsx;
+        instructions[0x8A] = CPU::txa;
+        instructions[0x9A] = CPU::txs;
+        instructions[0x98] = CPU::tya;
+        instructions[0x29] = CPU::and_imm;
+        instructions[0x25] = CPU::and_zp;
+        instructions[0x35] = CPU::and_zp_x;
+        instructions[0x2D] = CPU::and_abs;
+        instructions[0x3D] = CPU::and_abs_x;
+        instructions[0x39] = CPU::and_abs_y;
+        instructions[0x21] = CPU::and_ind_x;
+        instructions[0x31] = CPU::and_ind_y;
+        instructions[0x09] = CPU::ora_imm;
+        instructions[0x05] = CPU::ora_zp;
+        instructions[0x15] = CPU::ora_zp_x;
+        instructions[0x0D] = CPU::ora_abs;
+        instructions[0x1D] = CPU::ora_abs_x;
+        instructions[0x19] = CPU::ora_abs_y;
+        instructions[0x01] = CPU::ora_ind_x;
+        instructions[0x11] = CPU::ora_ind_y;
+        instructions[0x49] = CPU::eor_imm;
+        instructions[0x45] = CPU::eor_zp;
+        instructions[0x55] = CPU::eor_zp_x;
+        instructions[0x4D] = CPU::eor_abs;
+        instructions[0x5D] = CPU::eor_abs_x;
+        instructions[0x59] = CPU::eor_abs_y;
+        instructions[0x41] = CPU::eor_ind_x;
+        instructions[0x51] = CPU::eor_ind_y;
+        instructions[0x0A] = CPU::asl_acc;
+        instructions[0x06] = CPU::asl_zp;
+        instructions[0x16] = CPU::asl_zp_x;
+        instructions[0x0E] = CPU::asl_abs;
+        instructions[0x1E] = CPU::asl_abs_x;
+        instructions[0x4A] = CPU::lsr_acc;
+        instructions[0x46] = CPU::lsr_zp;
+        instructions[0x56] = CPU::lsr_zp_x;
+        instructions[0x4E] = CPU::lsr_abs;
+        instructions[0x5E] = CPU::lsr_abs_x;
+        instructions[0xE6] = CPU::inc_zp;
+        instructions[0xF6] = CPU::inc_zp_x;
+        instructions[0xEE] = CPU::inc_abs;
+        instructions[0xFE] = CPU::inc_abs_x;
+        instructions[0xE8] = CPU::inx;
+        instructions[0xC8] = CPU::iny;
+        instructions[0xC6] = CPU::dec_zp;
+        instructions[0xD6] = CPU::dec_zp_x;
+        instructions[0xCE] = CPU::dec_abs;
+        instructions[0xDE] = CPU::dec_abs_x;
+        instructions[0xCA] = CPU::dex;
+        instructions[0x88] = CPU::dey;
+        instructions[0x4C] = CPU::jmp_abs;
+        instructions[0x6C] = CPU::jmp_ind;
+        instructions[0x90] = CPU::bcc_rel;
+        instructions[0xB0] = CPU::bcs_rel;
+        instructions[0xF0] = CPU::beq_rel;
+        instructions[0xD0] = CPU::bne_rel;
+        instructions[0x10] = CPU::bpl_rel;
+        instructions[0x30] = CPU::bmi_rel;
+        instructions[0x50] = CPU::bvc_rel;
+        instructions[0x70] = CPU::bvs_rel;
+        instructions[0x18] = CPU::clc;
+        instructions[0x38] = CPU::sec;
+        instructions[0xD8] = CPU::cld;
+        instructions[0xF8] = CPU::sed;
+        instructions[0x58] = CPU::cli;
+        instructions[0x78] = CPU::sei;
+        instructions[0xB8] = CPU::clv;
+        instructions[0xC9] = CPU::cmp_imm;
+        instructions[0xC5] = CPU::cmp_zp;
+        instructions[0xD5] = CPU::cmp_zp_x;
+        instructions[0xCD] = CPU::cmp_abs;
+        instructions[0xDD] = CPU::cmp_abs_x;
+        instructions[0xD9] = CPU::cmp_abs_y;
+        instructions[0xC1] = CPU::cmp_ind_x;
+        instructions[0xD1] = CPU::cmp_ind_y;
+        instructions[0xE0] = CPU::cpx_imm;
+        instructions[0xE4] = CPU::cpx_zp;
+        instructions[0xEC] = CPU::cpx_abs;
+        instructions[0xC0] = CPU::cpy_imm;
+        instructions[0xC4] = CPU::cpy_zp;
+        instructions[0xCC] = CPU::cpy_abs;
+        instructions[0x48] = CPU::pha;
+        instructions[0x68] = CPU::pla;
+        instructions[0x28] = CPU::plp;
+        instructions[0x08] = CPU::php;
+        instructions[0x20] = CPU::jsr;
+        instructions[0x60] = CPU::rts;
+        instructions[0x40] = CPU::rti;
+        instructions[0x24] = CPU::bit_zp;
+        instructions[0x2C] = CPU::bit_abs;
+        instructions[0x2A] = CPU::rol_acc;
+        instructions[0x26] = CPU::rol_zp;
+        instructions[0x36] = CPU::rol_zp_x;
+        instructions[0x2E] = CPU::rol_abs;
+        instructions[0x3E] = CPU::rol_abs_x;
+        instructions[0x6A] = CPU::ror_acc;
+        instructions[0x66] = CPU::ror_zp;
+        instructions[0x76] = CPU::ror_zp_x;
+        instructions[0x6E] = CPU::ror_abs;
+        instructions[0x7E] = CPU::ror_abs_x;
+
+        instructions
+    }
+
     pub fn step(&mut self) -> u32 {
         self.instr_cycles = 0;
 
@@ -35,193 +193,7 @@ impl CPU {
         }
 
         let op_code = self.next_byte();
-
-        match op_code {
-            0x00 => self.brk(),
-            0xEA => self.nop(),
-
-            0xA9 => self.lda_imm(),
-            0xA5 => self.lda_zp(),
-            0xB5 => self.lda_zp_x(),
-            0xAD => self.lda_abs(),
-            0xBD => self.lda_abs_x(),
-            0xB9 => self.lda_abs_y(),
-            0xA1 => self.lda_ind_x(),
-            0xB1 => self.lda_ind_y(),
-
-            0xA2 => self.ldx_imm(),
-            0xA6 => self.ldx_zp(),
-            0xB6 => self.ldx_zp_y(),
-            0xAE => self.ldx_abs(),
-            0xBE => self.ldx_abs_y(),
-
-            0xA0 => self.ldy_imm(),
-            0xA4 => self.ldy_zp(),
-            0xB4 => self.ldy_zp_x(),
-            0xAC => self.ldy_abs(),
-            0xBC => self.ldy_abs_x(),
-
-            0x85 => self.sta_zp(),
-            0x95 => self.sta_zp_x(),
-            0x8D => self.sta_abs(),
-            0x9D => self.sta_abs_x(),
-            0x99 => self.sta_abs_y(),
-            0x81 => self.sta_ind_x(),
-            0x91 => self.sta_ind_y(),
-
-            0x86 => self.stx_zp(),
-            0x96 => self.stx_zp_y(),
-            0x8E => self.stx_abs(),
-
-            0x84 => self.sty_zp(),
-            0x94 => self.sty_zp_x(),
-            0x8C => self.sty_abs(),
-
-            0x69 => self.adc_imm(),
-            0x65 => self.adc_zp(),
-            0x75 => self.adc_zp_x(),
-            0x6D => self.adc_abs(),
-            0x7D => self.adc_abs_x(),
-            0x79 => self.adc_abs_y(),
-            0x61 => self.adc_ind_x(),
-            0x71 => self.adc_ind_y(),
-
-            0xE9 => self.sbc_imm(),
-            0xE5 => self.sbc_zp(),
-            0xF5 => self.sbc_zp_x(),
-            0xED => self.sbc_abs(),
-            0xFD => self.sbc_abs_x(),
-            0xF9 => self.sbc_abs_y(),
-            0xE1 => self.sbc_ind_x(),
-            0xF1 => self.sbc_ind_y(),
-
-            0xAA => self.tax(),
-            0xA8 => self.tay(),
-            0xBA => self.tsx(),
-            0x8A => self.txa(),
-            0x9A => self.txs(),
-            0x98 => self.tya(),
-
-            0x29 => self.and_imm(),
-            0x25 => self.and_zp(),
-            0x35 => self.and_zp_x(),
-            0x2D => self.and_abs(),
-            0x3D => self.and_abs_x(),
-            0x39 => self.and_abs_y(),
-            0x21 => self.and_ind_x(),
-            0x31 => self.and_ind_y(),
-
-            0x09 => self.ora_imm(),
-            0x05 => self.ora_zp(),
-            0x15 => self.ora_zp_x(),
-            0x0D => self.ora_abs(),
-            0x1D => self.ora_abs_x(),
-            0x19 => self.ora_abs_y(),
-            0x01 => self.ora_ind_x(),
-            0x11 => self.ora_ind_y(),
-
-            0x49 => self.eor_imm(),
-            0x45 => self.eor_zp(),
-            0x55 => self.eor_zp_x(),
-            0x4D => self.eor_abs(),
-            0x5D => self.eor_abs_x(),
-            0x59 => self.eor_abs_y(),
-            0x41 => self.eor_ind_x(),
-            0x51 => self.eor_ind_y(),
-
-            0x0A => self.asl_acc(),
-            0x06 => self.asl_zp(),
-            0x16 => self.asl_zp_x(),
-            0x0E => self.asl_abs(),
-            0x1E => self.asl_abs_x(),
-
-            0x4A => self.lsr_acc(),
-            0x46 => self.lsr_zp(),
-            0x56 => self.lsr_zp_x(),
-            0x4E => self.lsr_abs(),
-            0x5E => self.lsr_abs_x(),
-
-            0xE6 => self.inc_zp(),
-            0xF6 => self.inc_zp_x(),
-            0xEE => self.inc_abs(),
-            0xFE => self.inc_abs_x(),
-
-            0xE8 => self.inx(),
-            0xC8 => self.iny(),
-
-            0xC6 => self.dec_zp(),
-            0xD6 => self.dec_zp_x(),
-            0xCE => self.dec_abs(),
-            0xDE => self.dec_abs_x(),
-
-            0xCA => self.dex(),
-            0x88 => self.dey(),
-
-            0x4C => self.jmp_abs(),
-            0x6C => self.jmp_ind(),
-
-            0x90 => self.bcc_rel(),
-            0xB0 => self.bcs_rel(),
-            0xF0 => self.beq_rel(),
-            0xD0 => self.bne_rel(),
-            0x10 => self.bpl_rel(),
-            0x30 => self.bmi_rel(),
-            0x50 => self.bvc_rel(),
-            0x70 => self.bvs_rel(),
-
-            0x18 => self.clc(),
-            0x38 => self.sec(),
-            0xD8 => self.cld(),
-            0xF8 => self.sed(),
-            0x58 => self.cli(),
-            0x78 => self.sei(),
-            0xB8 => self.clv(),
-
-            0xC9 => self.cmp_imm(),
-            0xC5 => self.cmp_zp(),
-            0xD5 => self.cmp_zp_x(),
-            0xCD => self.cmp_abs(),
-            0xDD => self.cmp_abs_x(),
-            0xD9 => self.cmp_abs_y(),
-            0xC1 => self.cmp_ind_x(),
-            0xD1 => self.cmp_ind_y(),
-
-            0xE0 => self.cpx_imm(),
-            0xE4 => self.cpx_zp(),
-            0xEC => self.cpx_abs(),
-
-            0xC0 => self.cpy_imm(),
-            0xC4 => self.cpy_zp(),
-            0xCC => self.cpy_abs(),
-
-            0x48 => self.pha(),
-            0x68 => self.pla(),
-            0x28 => self.plp(),
-            0x08 => self.php(),
-
-            0x20 => self.jsr(),
-            0x60 => self.rts(),
-            0x40 => self.rti(),
-
-            0x24 => self.bit_zp(),
-            0x2C => self.bit_abs(),
-
-            0x2A => self.rol_acc(),
-            0x26 => self.rol_zp(),
-            0x36 => self.rol_zp_x(),
-            0x2E => self.rol_abs(),
-            0x3E => self.rol_abs_x(),
-
-            0x6A => self.ror_acc(),
-            0x66 => self.ror_zp(),
-            0x76 => self.ror_zp_x(),
-            0x6E => self.ror_abs(),
-            0x7E => self.ror_abs_x(),
-
-            _ => {
-                panic!("Unknown opcode: ${op_code:02X}, PC: ${:04X}", self.pc);
-            }
-        }
+        self.instructions[op_code as usize](self);
 
         let instr_cycles = self.instr_cycles + INST_CYCLES[op_code as usize];
         self.total_cycles += instr_cycles;
@@ -252,7 +224,7 @@ impl CPU {
 
     // NOP: No Operation
     #[inline]
-    fn nop(&self) {}
+    fn nop(&mut self) {}
 
     // LDA
     #[inline]

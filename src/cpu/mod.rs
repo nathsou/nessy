@@ -67,6 +67,7 @@ pub struct CPU {
     status: Status,
     pub bus: Bus,
     stall: u32,
+    instructions: [fn(&mut CPU); 256],
 }
 
 impl CPU {
@@ -84,6 +85,7 @@ impl CPU {
             status: Status::new(),
             bus,
             stall: 0,
+            instructions: CPU::instructions_lut(),
         }
     }
 
