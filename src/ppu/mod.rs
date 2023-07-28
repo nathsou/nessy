@@ -525,7 +525,10 @@ impl PPU {
             }
             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.palette[(addr as usize - 0x3f10) & 31],
             0x3f00..=0x3fff => self.palette[(addr as usize - 0x3f00) & 31],
-            _ => unreachable!("invalid ppu read address"),
+            _ => {
+                // panic!("invalid ppu read address: {:04x}", addr);
+                0
+            }
         };
 
         self.regs.increment_vram_addr();

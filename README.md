@@ -51,7 +51,8 @@ Use the arrow keys to navigate the menus and press enter to validate
 - Different color palettes
 - Better UX
 - VR / 3D mode with sprites in front and bg tiles in the background?
-- Optimize!
+- Optimize! (JIT Compiler / frame by frame or scanline by scanline rendering instead of pixel by pixel)
+- Wide mode (for scrolling games, visualize the prefilled tiles in advance)
 
 ## Embedding
 

@@ -49,14 +49,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "desktop"
-version = "0.1.0"
-dependencies = [
- "nessy",
- "sdl2",
-]
-
-[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -94,6 +86,14 @@ version = "0.1.0"
 dependencies = [
  "bitflags 2.3.3",
  "sha2",
+]
+
+[[package]]
+name = "nessy_desktop"
+version = "0.1.0"
+dependencies = [
+ "nessy",
+ "sdl2",
 ]
 
 [[package]]

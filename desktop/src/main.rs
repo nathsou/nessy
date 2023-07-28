@@ -41,7 +41,6 @@ impl<'a> AudioCallback for APUCallback<'a> {
 
     fn callback(&mut self, out: &mut [f32]) {
         self.nes.fill_audio_buffer(out, self.avoid_underruns);
-        out.iter_mut().for_each(|s| *s *= 4.0);
     }
 }
 

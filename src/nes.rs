@@ -6,18 +6,12 @@ use crate::{
 
 pub struct Nes {
     cpu: CPU,
-    samples_per_frame: usize,
-    advanced_samples_this_frame: usize,
 }
 
 impl Nes {
     pub fn new(rom: ROM, sample_rate: f64) -> Self {
         let bus = Bus::new(rom, sample_rate);
-        Nes {
-            cpu: CPU::new(bus),
-            samples_per_frame: (sample_rate / 60.0) as usize,
-            advanced_samples_this_frame: 0,
-        }
+        Nes { cpu: CPU::new(bus) }
     }
 
     pub fn step(&mut self) {
@@ -28,7 +22,6 @@ impl Nes {
     #[inline]
     fn on_frame_complete(&mut self) {
         self.cpu.bus.ppu.frame_complete = false;
-        self.advanced_samples_this_frame = 0;
     }
 
     pub fn next_frame(&mut self) {
@@ -81,9 +74,9 @@ impl Nes {
     }
 
     pub fn fill_audio_buffer(&mut self, buffer: &mut [f32], avoid_underruns: bool) {
-        if avoid_underruns {
-            let remaining_samples_in_bufffer = self.cpu.bus.apu.remaining_samples() as usize;
+        let remaining_samples_in_bufffer = self.cpu.bus.apu.remaining_samples() as usize;
 
+        if avoid_underruns {
             // ensure that the buffer is filled with enough samples
             if remaining_samples_in_bufffer < buffer.len() {
                 let wait_for = buffer.len() - remaining_samples_in_bufffer + 1;
@@ -92,6 +85,10 @@ impl Nes {
         }
 
         self.cpu.bus.apu.fill(buffer);
+
+        for i in remaining_samples_in_bufffer..buffer.len() {
+            buffer[i] = 0.0;
+        }
     }
 
     pub fn clear_audio_buffer(&mut self) {
