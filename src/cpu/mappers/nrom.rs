@@ -16,7 +16,6 @@ impl NROM {
     }
 }
 
-#[inline]
 fn mirrored_addr(cart: &Cart, addr: u16) -> usize {
     let mut prg_rom_addr = addr as usize - 0x8000;
 

@@ -56,12 +56,10 @@ impl PulseChannel {
         }
     }
 
-    #[inline]
     pub fn step_length_counter(&mut self) {
         self.length_counter.step();
     }
 
-    #[inline]
     pub fn step_envelope(&mut self) {
         self.envelope.step();
     }
@@ -137,7 +135,6 @@ impl PulseChannel {
         }
     }
 
-    #[inline]
     pub fn is_length_counter_active(&self) -> bool {
         !self.length_counter.is_zero()
     }

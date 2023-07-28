@@ -216,7 +216,6 @@ impl PPU {
         }
     }
 
-    #[inline]
     fn transfer_frame_buffer(&mut self) {
         self.frame_buffer_complete
             .copy_from_slice(&self.frame_buffer);
@@ -454,7 +453,6 @@ impl PPU {
         }
     }
 
-    #[inline]
     pub fn is_asserting_nmi(&mut self) -> bool {
         let triggered = self.nmi_triggered;
         self.nmi_triggered = false;
@@ -502,12 +500,10 @@ impl PPU {
         self.detect_nmi_edge();
     }
 
-    #[inline]
     fn read_chr(&mut self, addr: u16) -> u8 {
         self.rom.mapper.read(&mut self.rom.cart, addr)
     }
 
-    #[inline]
     fn read_nametable(&self, addr: u16) -> u8 {
         let addr = self.nametable_mirrored_addr(addr);
         self.vram[addr as usize]
@@ -608,7 +604,6 @@ impl PPU {
         }
     }
 
-    #[inline]
     pub fn get_frame(&self) -> &[u8] {
         self.frame_buffer_complete.as_slice()
     }

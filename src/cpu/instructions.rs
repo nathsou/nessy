@@ -223,59 +223,51 @@ impl CPU {
     }
 
     // NOP: No Operation
-    #[inline]
+
     fn nop(&mut self) {}
 
     // LDA
-    #[inline]
+
     fn lda(&mut self, a: u8) {
         self.a = a;
         self.toggle_nz(a);
     }
 
-    #[inline]
     fn lda_imm(&mut self) {
         let a = self.next_byte();
         self.lda(a);
     }
 
-    #[inline]
     fn lda_zp(&mut self) {
         let a = self.zero_page_val();
         self.lda(a);
     }
 
-    #[inline]
     fn lda_zp_x(&mut self) {
         let a = self.zero_page_x_val();
         self.lda(a);
     }
 
-    #[inline]
     fn lda_abs(&mut self) {
         let a = self.absolute_val();
         self.lda(a);
     }
 
-    #[inline]
     fn lda_abs_x(&mut self) {
         let a = self.absolute_x_val(true);
         self.lda(a);
     }
 
-    #[inline]
     fn lda_abs_y(&mut self) {
         let a = self.absolute_y_val(true);
         self.lda(a);
     }
 
-    #[inline]
     fn lda_ind_x(&mut self) {
         let a = self.indirect_x_val();
         self.lda(a);
     }
 
-    #[inline]
     fn lda_ind_y(&mut self) {
         let addr = self.indirect_y(true);
         let a = self.bus.read_byte(addr);
@@ -283,74 +275,64 @@ impl CPU {
     }
 
     // LDX
-    #[inline]
+
     fn ldx(&mut self, x: u8) {
         self.x = x;
         self.toggle_nz(x);
     }
 
-    #[inline]
     fn ldx_imm(&mut self) {
         let x = self.next_byte();
         self.ldx(x);
     }
 
-    #[inline]
     fn ldx_zp(&mut self) {
         let x = self.zero_page_val();
         self.ldx(x);
     }
 
-    #[inline]
     fn ldx_zp_y(&mut self) {
         let x = self.zero_page_y_val();
         self.ldx(x);
     }
 
-    #[inline]
     fn ldx_abs(&mut self) {
         let x = self.absolute_val();
         self.ldx(x);
     }
 
-    #[inline]
     fn ldx_abs_y(&mut self) {
         let x = self.absolute_y_val(true);
         self.ldx(x);
     }
 
     // LDY
-    #[inline]
+
     fn ldy(&mut self, y: u8) {
         self.y = y;
         self.toggle_nz(y);
     }
 
-    #[inline]
     fn ldy_imm(&mut self) {
         let y = self.next_byte();
         self.ldy(y);
     }
 
-    #[inline]
     fn ldy_zp(&mut self) {
         let y = self.zero_page_val();
         self.ldy(y);
     }
 
-    #[inline]
     fn ldy_zp_x(&mut self) {
         let y = self.zero_page_x_val();
         self.ldy(y);
     }
 
-    #[inline]
     fn ldy_abs(&mut self) {
         let y = self.absolute_val();
         self.ldy(y);
     }
 
-    #[inline]
     fn ldy_abs_x(&mut self) {
         let y = self.absolute_x_val(true);
         self.ldy(y);
@@ -362,43 +344,36 @@ impl CPU {
         self.bus.write_byte(addr, a);
     }
 
-    #[inline]
     fn sta_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.sta(addr);
     }
 
-    #[inline]
     fn sta_zp_x(&mut self) {
         let addr = self.zero_page_x();
         self.sta(addr);
     }
 
-    #[inline]
     fn sta_abs(&mut self) {
         let addr = self.absolute();
         self.sta(addr);
     }
 
-    #[inline]
     fn sta_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.sta(addr);
     }
 
-    #[inline]
     fn sta_abs_y(&mut self) {
         let addr = self.absolute_y(false);
         self.sta(addr);
     }
 
-    #[inline]
     fn sta_ind_x(&mut self) {
         let addr = self.indirect_x();
         self.sta(addr);
     }
 
-    #[inline]
     fn sta_ind_y(&mut self) {
         let addr = self.indirect_y(false);
         self.sta(addr);
@@ -410,19 +385,16 @@ impl CPU {
         self.bus.write_byte(addr, x);
     }
 
-    #[inline]
     fn stx_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.stx(addr);
     }
 
-    #[inline]
     fn stx_zp_y(&mut self) {
         let addr = self.zero_page_y();
         self.stx(addr);
     }
 
-    #[inline]
     fn stx_abs(&mut self) {
         let addr = self.absolute();
         self.stx(addr);
@@ -434,26 +406,23 @@ impl CPU {
         self.bus.write_byte(addr, y);
     }
 
-    #[inline]
     fn sty_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.sty(addr);
     }
 
-    #[inline]
     fn sty_zp_x(&mut self) {
         let addr = self.zero_page_x();
         self.sty(addr);
     }
 
-    #[inline]
     fn sty_abs(&mut self) {
         let addr = self.absolute();
         self.sty(addr);
     }
 
     // ADC
-    #[inline]
+
     fn adc(&mut self, val: u8) {
         let sum = (self.a as u16).wrapping_add(val as u16).wrapping_add(
             if self.status.contains(Status::CARRY) {
@@ -475,56 +444,48 @@ impl CPU {
         self.toggle_nz(sum);
     }
 
-    #[inline]
     fn adc_imm(&mut self) {
         let val = self.next_byte();
         self.adc(val);
     }
 
-    #[inline]
     fn adc_zp(&mut self) {
         let val = self.zero_page_val();
         self.adc(val);
     }
 
-    #[inline]
     fn adc_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.adc(val);
     }
 
-    #[inline]
     fn adc_abs(&mut self) {
         let val = self.absolute_val();
         self.adc(val);
     }
 
-    #[inline]
     fn adc_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.adc(val);
     }
 
-    #[inline]
     fn adc_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.adc(val);
     }
 
-    #[inline]
     fn adc_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.adc(val);
     }
 
-    #[inline]
     fn adc_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.adc(val);
     }
 
     // SBC - Subtract with Carry
-    #[inline]
+
     fn sbc(&mut self, val: u8) {
         let (sum, carried1) = self.a.overflowing_sub(val);
         let (sum, carried2) = sum.overflowing_sub(!self.status.contains(Status::CARRY) as u8);
@@ -540,56 +501,48 @@ impl CPU {
         self.toggle_nz(sum);
     }
 
-    #[inline]
     fn sbc_imm(&mut self) {
         let val = self.next_byte();
         self.sbc(val);
     }
 
-    #[inline]
     fn sbc_zp(&mut self) {
         let val = self.zero_page_val();
         self.sbc(val);
     }
 
-    #[inline]
     fn sbc_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.sbc(val);
     }
 
-    #[inline]
     fn sbc_abs(&mut self) {
         let val = self.absolute_val();
         self.sbc(val);
     }
 
-    #[inline]
     fn sbc_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.sbc(val);
     }
 
-    #[inline]
     fn sbc_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.sbc(val);
     }
 
-    #[inline]
     fn sbc_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.sbc(val);
     }
 
-    #[inline]
     fn sbc_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.sbc(val);
     }
 
     // TAX
-    #[inline]
+
     fn tax(&mut self) {
         let x = self.a;
         self.x = x;
@@ -597,7 +550,7 @@ impl CPU {
     }
 
     // TAY
-    #[inline]
+
     fn tay(&mut self) {
         let y = self.a;
         self.y = y;
@@ -605,7 +558,7 @@ impl CPU {
     }
 
     // TSX
-    #[inline]
+
     fn tsx(&mut self) {
         let x = self.sp;
         self.x = x;
@@ -613,7 +566,7 @@ impl CPU {
     }
 
     // TXA
-    #[inline]
+
     fn txa(&mut self) {
         let a = self.x;
         self.a = a;
@@ -621,13 +574,13 @@ impl CPU {
     }
 
     // TXS
-    #[inline]
+
     fn txs(&mut self) {
         self.sp = self.x;
     }
 
     // TYA
-    #[inline]
+
     fn tya(&mut self) {
         let a = self.y;
         self.a = a;
@@ -635,175 +588,151 @@ impl CPU {
     }
 
     // AND
-    #[inline]
+
     fn and(&mut self, val: u8) {
         let a = self.a & val;
         self.a = a;
         self.toggle_nz(a);
     }
 
-    #[inline]
     fn and_imm(&mut self) {
         let val = self.next_byte();
         self.and(val);
     }
 
-    #[inline]
     fn and_zp(&mut self) {
         let val = self.zero_page_val();
         self.and(val);
     }
 
-    #[inline]
     fn and_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.and(val);
     }
 
-    #[inline]
     fn and_abs(&mut self) {
         let val = self.absolute_val();
         self.and(val);
     }
 
-    #[inline]
     fn and_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.and(val);
     }
 
-    #[inline]
     fn and_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.and(val);
     }
 
-    #[inline]
     fn and_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.and(val);
     }
 
-    #[inline]
     fn and_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.and(val);
     }
 
     // ORA - Logical Inclusive OR
-    #[inline]
+
     fn ora(&mut self, val: u8) {
         let a = self.a | val;
         self.a = a;
         self.toggle_nz(a);
     }
 
-    #[inline]
     fn ora_imm(&mut self) {
         let val = self.next_byte();
         self.ora(val);
     }
 
-    #[inline]
     fn ora_zp(&mut self) {
         let val = self.zero_page_val();
         self.ora(val);
     }
 
-    #[inline]
     fn ora_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.ora(val);
     }
 
-    #[inline]
     fn ora_abs(&mut self) {
         let val = self.absolute_val();
         self.ora(val);
     }
 
-    #[inline]
     fn ora_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.ora(val);
     }
 
-    #[inline]
     fn ora_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.ora(val);
     }
 
-    #[inline]
     fn ora_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.ora(val);
     }
 
-    #[inline]
     fn ora_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.ora(val);
     }
 
     // EOR - Exclusive OR
-    #[inline]
+
     fn eor(&mut self, val: u8) {
         let a = self.a ^ val;
         self.a = a;
         self.toggle_nz(a);
     }
 
-    #[inline]
     fn eor_imm(&mut self) {
         let val = self.next_byte();
         self.eor(val);
     }
 
-    #[inline]
     fn eor_zp(&mut self) {
         let val = self.zero_page_val();
         self.eor(val);
     }
 
-    #[inline]
     fn eor_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.eor(val);
     }
 
-    #[inline]
     fn eor_abs(&mut self) {
         let val = self.absolute_val();
         self.eor(val);
     }
 
-    #[inline]
     fn eor_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.eor(val);
     }
 
-    #[inline]
     fn eor_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.eor(val);
     }
 
-    #[inline]
     fn eor_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.eor(val);
     }
 
-    #[inline]
     fn eor_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.eor(val);
     }
 
     // ASL - Arithmetic Shift Left
-    #[inline]
+
     fn asl(&mut self, addr: u16) {
         let mut val = self.bus.read_byte(addr);
         self.status.set(Status::CARRY, val & 128 == 128);
@@ -812,7 +741,6 @@ impl CPU {
         self.toggle_nz(val);
     }
 
-    #[inline]
     fn asl_acc(&mut self) {
         let mut val = self.a;
         self.status.set(Status::CARRY, val & 128 == 128);
@@ -821,32 +749,28 @@ impl CPU {
         self.toggle_nz(val);
     }
 
-    #[inline]
     fn asl_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.asl(addr);
     }
 
-    #[inline]
     fn asl_zp_x(&mut self) {
         let addr = self.zero_page_x();
         self.asl(addr);
     }
 
-    #[inline]
     fn asl_abs(&mut self) {
         let addr = self.absolute();
         self.asl(addr);
     }
 
-    #[inline]
     fn asl_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.asl(addr);
     }
 
     // LSR - Logical Shift Right
-    #[inline]
+
     fn lsr(&mut self, addr: u16) {
         let val = self.bus.read_byte(addr);
         self.status.set(Status::CARRY, val & 1 == 1);
@@ -855,7 +779,6 @@ impl CPU {
         self.toggle_nz(val);
     }
 
-    #[inline]
     fn lsr_acc(&mut self) {
         let mut val = self.a;
         self.status.set(Status::CARRY, val & 1 == 1);
@@ -864,32 +787,28 @@ impl CPU {
         self.toggle_nz(val);
     }
 
-    #[inline]
     fn lsr_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.lsr(addr);
     }
 
-    #[inline]
     fn lsr_zp_x(&mut self) {
         let addr = self.zero_page_x();
         self.lsr(addr);
     }
 
-    #[inline]
     fn lsr_abs(&mut self) {
         let addr = self.absolute();
         self.lsr(addr);
     }
 
-    #[inline]
     fn lsr_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.lsr(addr);
     }
 
     // INC - Increment Memory
-    #[inline]
+
     fn inc(&mut self, addr: u16) {
         let val = self.bus.read_byte(addr);
         let val = val.wrapping_add(1);
@@ -897,32 +816,28 @@ impl CPU {
         self.toggle_nz(val);
     }
 
-    #[inline]
     fn inc_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.inc(addr);
     }
 
-    #[inline]
     fn inc_zp_x(&mut self) {
         let addr = self.zero_page_x();
         self.inc(addr);
     }
 
-    #[inline]
     fn inc_abs(&mut self) {
         let val = self.absolute();
         self.inc(val);
     }
 
-    #[inline]
     fn inc_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.inc(addr);
     }
 
     // INX - Increment X Register
-    #[inline]
+
     fn inx(&mut self) {
         let val = self.x;
         let val = if val == 0xff { 0 } else { val + 1 };
@@ -931,7 +846,7 @@ impl CPU {
     }
 
     // INY - Increment Y Register
-    #[inline]
+
     fn iny(&mut self) {
         let val = self.y;
         let val = if val == 0xff { 0 } else { val + 1 };
@@ -940,7 +855,7 @@ impl CPU {
     }
 
     // DEC - Decrement Memory
-    #[inline]
+
     fn dec(&mut self, addr: u16) {
         let val = self.bus.read_byte(addr);
         let val = if val == 0 { 0xff } else { val - 1 };
@@ -948,32 +863,28 @@ impl CPU {
         self.toggle_nz(val);
     }
 
-    #[inline]
     fn dec_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.dec(addr);
     }
 
-    #[inline]
     fn dec_zp_x(&mut self) {
         let addr = self.zero_page_x();
         self.dec(addr);
     }
 
-    #[inline]
     fn dec_abs(&mut self) {
         let addr = self.absolute();
         self.dec(addr);
     }
 
-    #[inline]
     fn dec_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.dec(addr);
     }
 
     // DEX - Decrement X Register
-    #[inline]
+
     fn dex(&mut self) {
         let val = self.x;
         let val = if val == 0 { 0xff } else { val - 1 };
@@ -982,7 +893,7 @@ impl CPU {
     }
 
     // DEY - Decrement Y Register
-    #[inline]
+
     fn dey(&mut self) {
         let val = self.y;
         let val = if val == 0 { 0xff } else { val - 1 };
@@ -991,18 +902,16 @@ impl CPU {
     }
 
     // JMP - Jump
-    #[inline]
+
     fn jmp(&mut self, addr: u16) {
         self.pc = addr;
     }
 
-    #[inline]
     fn jmp_abs(&mut self) {
         let addr = self.absolute();
         self.jmp(addr);
     }
 
-    #[inline]
     fn jmp_ind(&mut self) {
         // An original 6502 does not correctly fetch the target address
         // if the indirect vector falls on a page boundary
@@ -1023,7 +932,6 @@ impl CPU {
         self.jmp(addr);
     }
 
-    #[inline]
     fn branch_rel(&mut self) {
         let rel: i8 = self.next_byte() as i8;
         let jump_addr = self.pc.wrapping_add(rel as u16);
@@ -1037,7 +945,7 @@ impl CPU {
     }
 
     // BCS - Branch if Carry Clear
-    #[inline]
+
     fn bcc_rel(&mut self) {
         if !self.status.contains(Status::CARRY) {
             self.branch_rel();
@@ -1047,7 +955,7 @@ impl CPU {
     }
 
     // BCS - Branch if Carry Set
-    #[inline]
+
     fn bcs_rel(&mut self) {
         if self.status.contains(Status::CARRY) {
             self.branch_rel();
@@ -1057,7 +965,7 @@ impl CPU {
     }
 
     // BEQ - Branch if Equal
-    #[inline]
+
     fn beq_rel(&mut self) {
         if self.status.contains(Status::ZERO) {
             self.branch_rel();
@@ -1067,7 +975,7 @@ impl CPU {
     }
 
     // BNE - Branch if Not Equal
-    #[inline]
+
     fn bne_rel(&mut self) {
         if !self.status.contains(Status::ZERO) {
             self.branch_rel();
@@ -1077,7 +985,7 @@ impl CPU {
     }
 
     // BPL - Branch if Positive
-    #[inline]
+
     fn bpl_rel(&mut self) {
         if !self.status.contains(Status::NEGATIVE) {
             self.branch_rel();
@@ -1087,7 +995,7 @@ impl CPU {
     }
 
     // BMI - Branch if Minus
-    #[inline]
+
     fn bmi_rel(&mut self) {
         if self.status.contains(Status::NEGATIVE) {
             self.branch_rel();
@@ -1097,7 +1005,7 @@ impl CPU {
     }
 
     // BVC - Branch if Overflow Clear
-    #[inline]
+
     fn bvc_rel(&mut self) {
         if !self.status.contains(Status::OVERFLOW) {
             self.branch_rel();
@@ -1107,7 +1015,7 @@ impl CPU {
     }
 
     // BVS - Branch if Overflow Set
-    #[inline]
+
     fn bvs_rel(&mut self) {
         if self.status.contains(Status::OVERFLOW) {
             self.branch_rel();
@@ -1117,48 +1025,47 @@ impl CPU {
     }
 
     // CLC - Clear Carry Flag
-    #[inline]
+
     fn clc(&mut self) {
         self.status.remove(Status::CARRY);
     }
 
     // SEC - Set Carry Flag
-    #[inline]
+
     fn sec(&mut self) {
         self.status.insert(Status::CARRY);
     }
 
     // CLD - Clear Decimal Flag
-    #[inline]
+
     fn cld(&mut self) {
         self.status.remove(Status::DECIMAL);
     }
 
     // SED - Set Decimal Flag
-    #[inline]
+
     fn sed(&mut self) {
         self.status.insert(Status::DECIMAL);
     }
 
     // CLI - Clear Interrupt Disable
-    #[inline]
+
     fn cli(&mut self) {
         self.status.remove(Status::INTERRUPT_DISABLE);
     }
 
     // SEI - Set Interrupt Disable
-    #[inline]
+
     fn sei(&mut self) {
         self.status.insert(Status::INTERRUPT_DISABLE);
     }
 
     // CLV - Clear Overflow Flag
-    #[inline]
+
     fn clv(&mut self) {
         self.status.remove(Status::OVERFLOW);
     }
 
-    #[inline]
     fn cmp_vals(&mut self, a: u8, b: u8) {
         self.status.set(Status::CARRY, a >= b);
         let res = a.wrapping_sub(b);
@@ -1166,118 +1073,104 @@ impl CPU {
     }
 
     // CMP - Compare
-    #[inline]
+
     fn cmp(&mut self, val: u8) {
         self.cmp_vals(self.a, val);
     }
 
-    #[inline]
     fn cmp_imm(&mut self) {
         let val = self.next_byte();
         self.cmp(val);
     }
 
-    #[inline]
     fn cmp_zp(&mut self) {
         let val = self.zero_page_val();
         self.cmp(val);
     }
 
-    #[inline]
     fn cmp_zp_x(&mut self) {
         let val = self.zero_page_x_val();
         self.cmp(val);
     }
 
-    #[inline]
     fn cmp_abs(&mut self) {
         let val = self.absolute_val();
         self.cmp(val);
     }
 
-    #[inline]
     fn cmp_abs_x(&mut self) {
         let val = self.absolute_x_val(true);
         self.cmp(val);
     }
 
-    #[inline]
     fn cmp_abs_y(&mut self) {
         let val = self.absolute_y_val(true);
         self.cmp(val);
     }
 
-    #[inline]
     fn cmp_ind_x(&mut self) {
         let val = self.indirect_x_val();
         self.cmp(val);
     }
 
-    #[inline]
     fn cmp_ind_y(&mut self) {
         let val = self.indirect_y_val(true);
         self.cmp(val);
     }
 
     // CPX - Compare X Register
-    #[inline]
+
     fn cpx(&mut self, val: u8) {
         let x = self.x;
         self.cmp_vals(x, val);
     }
 
-    #[inline]
     fn cpx_imm(&mut self) {
         let val = self.next_byte();
         self.cpx(val);
     }
 
-    #[inline]
     fn cpx_zp(&mut self) {
         let val = self.zero_page_val();
         self.cpx(val);
     }
 
-    #[inline]
     fn cpx_abs(&mut self) {
         let val = self.absolute_val();
         self.cpx(val);
     }
 
     // CPY - Compare Y Register
-    #[inline]
+
     fn cpy(&mut self, val: u8) {
         let y = self.y;
         self.cmp_vals(y, val);
     }
 
-    #[inline]
     fn cpy_imm(&mut self) {
         let val = self.next_byte();
         self.cpy(val);
     }
 
-    #[inline]
     fn cpy_zp(&mut self) {
         let val = self.zero_page_val();
         self.cpy(val);
     }
 
-    #[inline]
     fn cpy_abs(&mut self) {
         let val = self.absolute_val();
         self.cpy(val);
     }
 
     // PHA - Push Accumulator
-    #[inline]
+
     fn pha(&mut self) {
         let a = self.a;
         self.push(a);
     }
 
     // PLA - Pull Accumulator
-    #[inline]
+
     fn pla(&mut self) {
         let a = self.pull();
         self.a = a;
@@ -1285,7 +1178,7 @@ impl CPU {
     }
 
     // PHP - Push Processor Status
-    #[inline]
+
     fn php(&mut self) {
         // set the break flags
         let status_flags = self.status.bits() | Status::BREAK1.bits() | Status::BREAK2.bits();
@@ -1301,7 +1194,7 @@ impl CPU {
     }
 
     // JSR - Jump to Subroutine
-    #[inline]
+
     fn jsr(&mut self) {
         let ret_addr = self.pc + 1;
         self.push_word(ret_addr);
@@ -1310,20 +1203,20 @@ impl CPU {
     }
 
     // RTS - Return from Subroutine
-    #[inline]
+
     fn rts(&mut self) {
         self.pc = self.pull_word() + 1;
     }
 
     // RTI - Return from Interrupt
-    #[inline]
+
     fn rti(&mut self) {
         self.plp();
         self.pc = self.pull_word();
     }
 
     // BIT - Bit Test
-    #[inline]
+
     fn bit(&mut self, val: u8) {
         let res = self.a & val;
         self.status.set(Status::ZERO, res == 0);
@@ -1331,20 +1224,18 @@ impl CPU {
         self.status.set(Status::NEGATIVE, val & 0x80 != 0);
     }
 
-    #[inline]
     fn bit_zp(&mut self) {
         let val = self.zero_page_val();
         self.bit(val);
     }
 
-    #[inline]
     fn bit_abs(&mut self) {
         let val = self.absolute_val();
         self.bit(val);
     }
 
     // ROL - Rotate Left
-    #[inline]
+
     fn rol(&mut self, addr: u16) {
         let mut val = self.bus.read_byte(addr);
         let next_carry = (val >> 7) == 1;
@@ -1359,7 +1250,6 @@ impl CPU {
         self.toggle_nz(val);
     }
 
-    #[inline]
     fn rol_acc(&mut self) {
         let mut a = self.a;
         let next_carry = a >> 7 == 1;
@@ -1374,32 +1264,28 @@ impl CPU {
         self.toggle_nz(a);
     }
 
-    #[inline]
     fn rol_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.rol(addr);
     }
 
-    #[inline]
     fn rol_zp_x(&mut self) {
         let addr = self.zero_page_x();
         self.rol(addr);
     }
 
-    #[inline]
     fn rol_abs(&mut self) {
         let addr = self.absolute();
         self.rol(addr);
     }
 
-    #[inline]
     fn rol_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.rol(addr);
     }
 
     // ROR - Rotate Right
-    #[inline]
+
     fn ror(&mut self, addr: u16) {
         let mut val = self.bus.read_byte(addr);
         let old_carry = self.status.contains(Status::CARRY);
@@ -1415,7 +1301,6 @@ impl CPU {
         self.toggle_nz(val);
     }
 
-    #[inline]
     fn ror_acc(&mut self) {
         let mut a = self.a;
         let old_carry = self.status.contains(Status::CARRY);
@@ -1431,25 +1316,21 @@ impl CPU {
         self.toggle_nz(a);
     }
 
-    #[inline]
     fn ror_zp(&mut self) {
         let addr = self.zero_page() as u16;
         self.ror(addr);
     }
 
-    #[inline]
     fn ror_zp_x(&mut self) {
         let addr = self.zero_page_x();
         self.ror(addr);
     }
 
-    #[inline]
     fn ror_abs(&mut self) {
         let addr = self.absolute();
         self.ror(addr);
     }
 
-    #[inline]
     fn ror_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.ror(addr);

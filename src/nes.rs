@@ -6,18 +6,29 @@ use crate::{
 
 pub struct Nes {
     cpu: CPU,
+    samples_per_frame: usize,
+    advanced_samples_this_frame: usize,
 }
 
 impl Nes {
     pub fn new(rom: ROM, sample_rate: f64) -> Self {
         let bus = Bus::new(rom, sample_rate);
-        Nes { cpu: CPU::new(bus) }
+        Nes {
+            cpu: CPU::new(bus),
+            samples_per_frame: (sample_rate / 60.0) as usize,
+            advanced_samples_this_frame: 0,
+        }
     }
 
-    #[inline]
     pub fn step(&mut self) {
         let cpu_cycles = self.cpu.step();
         self.cpu.bus.advance(cpu_cycles);
+    }
+
+    #[inline]
+    fn on_frame_complete(&mut self) {
+        self.cpu.bus.ppu.frame_complete = false;
+        self.advanced_samples_this_frame = 0;
     }
 
     pub fn next_frame(&mut self) {
@@ -25,7 +36,7 @@ impl Nes {
             self.step();
         }
 
-        self.cpu.bus.ppu.frame_complete = false;
+        self.on_frame_complete();
     }
 
     /// emulates enough cycles to fill the audio buffer,
@@ -40,7 +51,7 @@ impl Nes {
                         audio_buffer[count] = sample;
                         count += 1;
                         if self.cpu.bus.ppu.frame_complete {
-                            self.cpu.bus.ppu.frame_complete = false;
+                            self.on_frame_complete();
                             new_frame = true;
                         }
                         break;
@@ -71,8 +82,7 @@ impl Nes {
 
     pub fn fill_audio_buffer(&mut self, buffer: &mut [f32], avoid_underruns: bool) {
         if avoid_underruns {
-            let remaining_samples_in_bufffer =
-                self.cpu.bus.apu.remaining_buffered_samples() as usize;
+            let remaining_samples_in_bufffer = self.cpu.bus.apu.remaining_samples() as usize;
 
             // ensure that the buffer is filled with enough samples
             if remaining_samples_in_bufffer < buffer.len() {
@@ -92,17 +102,14 @@ impl Nes {
         self.cpu.soft_reset();
     }
 
-    #[inline]
     pub fn get_joypad1_mut(&mut self) -> &mut Joypad {
         &mut self.cpu.bus.joypad1
     }
 
-    #[inline]
     pub fn get_joypad2_mut(&mut self) -> &mut Joypad {
         &mut self.cpu.bus.joypad2
     }
 
-    #[inline]
     pub fn get_frame(&self) -> &[u8] {
         self.cpu.bus.ppu.get_frame()
     }

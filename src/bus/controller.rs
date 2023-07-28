@@ -19,10 +19,11 @@ bitflags! {
 pub struct Joypad {
     strobe: bool,
     index: u8,
-    status: JoypadStatus,
+    pub status: JoypadStatus,
 }
 
 impl Joypad {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Joypad {
             strobe: false,

@@ -19,7 +19,6 @@ const LEFT_X_OFFSET_TOP: usize = (TOP_SCREEN_WIDTH - NES_SCREEN_WIDTH) / 2;
 const LEFT_X_OFFSET_BOTTOM: usize = (BOTTOM_SCREEN_WIDTH - NES_SCREEN_WIDTH) / 2;
 static LOGO: &[u8] = include_bytes!("../assets/logo.rgb");
 
-#[inline]
 fn is_key_active(hid: &Hid, key: KeyPad) -> bool {
     hid.keys_down().contains(key) || hid.keys_held().contains(key)
 }

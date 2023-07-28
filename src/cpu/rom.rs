@@ -24,7 +24,7 @@ pub struct Cart {
 #[allow(clippy::upper_case_acronyms)]
 pub struct ROM {
     pub cart: Cart,
-    pub mapper: Box<dyn Mapper>,
+    pub mapper: Box<dyn Mapper + Send + Sync>,
 }
 
 #[derive(Debug)]
@@ -92,7 +92,7 @@ impl ROM {
         Ok(ROM { mapper, cart })
     }
 
-    fn get_mapper(mapper_id: u8, cart: &Cart) -> Result<Box<dyn Mapper>, RomError> {
+    fn get_mapper(mapper_id: u8, cart: &Cart) -> Result<Box<dyn Mapper + Send + Sync>, RomError> {
         match mapper_id {
             0 => Ok(Box::new(NROM::new())),
             1 => Ok(Box::new(MMC1::new())),

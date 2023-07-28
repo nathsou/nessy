@@ -11,10 +11,8 @@ pub trait Mapper: savestate::Save {
     fn read(&mut self, cart: &mut Cart, addr: u16) -> u8;
     fn write(&mut self, cart: &mut Cart, addr: u16, val: u8);
 
-    #[inline]
     fn step_scanline(&mut self) {}
 
-    #[inline]
     fn is_asserting_irq(&mut self) -> bool {
         false
     }

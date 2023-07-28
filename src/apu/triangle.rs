@@ -54,7 +54,6 @@ impl TriangleChannel {
         }
     }
 
-    #[inline]
     pub fn step_length_counter(&mut self) {
         self.length_counter.step();
     }
@@ -73,7 +72,6 @@ impl TriangleChannel {
         }
     }
 
-    #[inline]
     pub fn is_length_counter_active(&self) -> bool {
         !self.length_counter.is_zero()
     }
