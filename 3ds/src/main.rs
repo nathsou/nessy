@@ -18,7 +18,6 @@ const ROM_BYTES: &[u8] = include_bytes!("../assets/Super Mario Bros.nes");
 const LEFT_X_OFFSET_TOP: usize = (TOP_SCREEN_WIDTH - NES_SCREEN_WIDTH) / 2;
 const LEFT_X_OFFSET_BOTTOM: usize = (BOTTOM_SCREEN_WIDTH - NES_SCREEN_WIDTH) / 2;
 
-#[inline]
 fn is_key_active(hid: &Hid, key: KeyPad) -> bool {
     hid.keys_held().contains(key)
 }

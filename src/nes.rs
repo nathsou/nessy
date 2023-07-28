@@ -14,10 +14,14 @@ impl Nes {
         Nes { cpu: CPU::new(bus) }
     }
 
-    #[inline]
     pub fn step(&mut self) {
         let cpu_cycles = self.cpu.step();
         self.cpu.bus.advance(cpu_cycles);
+    }
+
+    #[inline]
+    fn on_frame_complete(&mut self) {
+        self.cpu.bus.ppu.frame_complete = false;
     }
 
     pub fn next_frame(&mut self) {
@@ -25,7 +29,7 @@ impl Nes {
             self.step();
         }
 
-        self.cpu.bus.ppu.frame_complete = false;
+        self.on_frame_complete();
     }
 
     /// emulates enough cycles to fill the audio buffer,
@@ -40,7 +44,7 @@ impl Nes {
                         audio_buffer[count] = sample;
                         count += 1;
                         if self.cpu.bus.ppu.frame_complete {
-                            self.cpu.bus.ppu.frame_complete = false;
+                            self.on_frame_complete();
                             new_frame = true;
                         }
                         break;
@@ -70,10 +74,9 @@ impl Nes {
     }
 
     pub fn fill_audio_buffer(&mut self, buffer: &mut [f32], avoid_underruns: bool) {
-        if avoid_underruns {
-            let remaining_samples_in_bufffer =
-                self.cpu.bus.apu.remaining_buffered_samples() as usize;
+        let remaining_samples_in_bufffer = self.cpu.bus.apu.remaining_samples() as usize;
 
+        if avoid_underruns {
             // ensure that the buffer is filled with enough samples
             if remaining_samples_in_bufffer < buffer.len() {
                 let wait_for = buffer.len() - remaining_samples_in_bufffer + 1;
@@ -82,6 +85,10 @@ impl Nes {
         }
 
         self.cpu.bus.apu.fill(buffer);
+
+        for i in remaining_samples_in_bufffer..buffer.len() {
+            buffer[i] = 0.0;
+        }
     }
 
     pub fn clear_audio_buffer(&mut self) {
@@ -92,12 +99,10 @@ impl Nes {
         self.cpu.soft_reset();
     }
 
-    #[inline]
     pub fn get_joypad1_mut(&mut self) -> &mut Joypad {
         &mut self.cpu.bus.joypad1
     }
 
-    #[inline]
     pub fn get_joypad2_mut(&mut self) -> &mut Joypad {
         &mut self.cpu.bus.joypad2
     }

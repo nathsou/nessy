@@ -5,7 +5,6 @@ pub struct Timer {
 }
 
 impl Timer {
-    #[inline]
     pub fn step(&mut self) -> bool {
         if self.counter == 0 {
             self.counter = self.period;
@@ -32,29 +31,24 @@ pub struct LengthCounter {
 }
 
 impl LengthCounter {
-    #[inline]
     pub fn reset_to_zero(&mut self) {
         self.counter = 0;
     }
 
-    #[inline]
     pub fn step(&mut self) {
         if self.enabled && self.counter > 0 {
             self.counter -= 1;
         }
     }
 
-    #[inline]
     pub fn set(&mut self, val: u8) {
         self.counter = LENGTH_LOOKUP[val as usize];
     }
 
-    #[inline]
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
     }
 
-    #[inline]
     pub fn is_zero(&self) -> bool {
         self.counter == 0
     }
@@ -90,7 +84,6 @@ impl Envelope {
         }
     }
 
-    #[inline]
     pub fn output(&self) -> u8 {
         if self.constant_mode {
             self.constant_volume

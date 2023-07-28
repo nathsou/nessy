@@ -242,6 +242,7 @@ impl PPU {
         }
     }
 
+<<<<<<< HEAD
     fn render_frame(&mut self) {
         // self.frame_buffer1.fill(0);
         // self.frame_buffer2.fill(0);
@@ -313,6 +314,9 @@ impl PPU {
         //     );
         // }
 
+=======
+    fn transfer_frame_buffer(&mut self) {
+>>>>>>> main
         self.frame_buffer_complete
             .copy_from_slice(self.background_buffer.as_slice());
 
@@ -837,7 +841,6 @@ impl PPU {
         }
     }
 
-    #[inline]
     pub fn is_asserting_nmi(&mut self) -> bool {
         let triggered = self.nmi_triggered;
         self.nmi_triggered = false;
@@ -885,12 +888,10 @@ impl PPU {
         self.detect_nmi_edge();
     }
 
-    #[inline]
     fn read_chr(&mut self, addr: u16) -> u8 {
         self.rom.mapper.read(&mut self.rom.cart, addr)
     }
 
-    #[inline]
     fn read_nametable(&self, addr: u16) -> u8 {
         let addr = self.nametable_mirrored_addr(addr);
         self.vram[addr as usize]
@@ -912,7 +913,10 @@ impl PPU {
             }
             0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.palette[(addr as usize - 0x3f10) & 31],
             0x3f00..=0x3fff => self.palette[(addr as usize - 0x3f00) & 31],
-            _ => unreachable!("invalid ppu read address"),
+            _ => {
+                // panic!("invalid ppu read address: {:04x}", addr);
+                0
+            }
         };
 
         self.regs.increment_vram_addr();
@@ -1025,6 +1029,7 @@ impl PPU {
         }
     }
 
+<<<<<<< HEAD
     // returns number of bytes copied
     fn copy_rect(
         &self,
@@ -1072,6 +1077,9 @@ impl PPU {
 
     #[inline]
     pub fn get_full_frame(&mut self) -> &[u8] {
+=======
+    pub fn get_frame(&self) -> &[u8] {
+>>>>>>> main
         self.frame_buffer_complete.as_slice()
     }
 

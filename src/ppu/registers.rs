@@ -37,7 +37,6 @@ impl Registers {
         }
     }
 
-    #[inline]
     pub fn fine_y(&self) -> u8 {
         ((self.v >> 12) & 0b111) as u8
     }
@@ -81,7 +80,6 @@ pub enum SpriteSize {
 }
 
 impl SpriteSize {
-    #[inline]
     pub fn height(&self) -> u8 {
         use SpriteSize::*;
 
@@ -93,7 +91,6 @@ impl SpriteSize {
 }
 
 impl Ctrl {
-    #[inline]
     pub fn background_chr_offset(&self) -> u16 {
         if !self.contains(Ctrl::BACKROUND_PATTERN_ADDR) {
             0
@@ -102,6 +99,7 @@ impl Ctrl {
         }
     }
 
+<<<<<<< HEAD
     #[inline]
     pub fn base_nametable_addr(&self) -> usize {
         match self.bits() & 0b11 {
@@ -114,6 +112,8 @@ impl Ctrl {
     }
 
     #[inline]
+=======
+>>>>>>> main
     pub fn sprite_chr_offset(&self) -> u16 {
         if !self.contains(Ctrl::SPRITE_PATTERN_ADDR) {
             0
@@ -122,7 +122,6 @@ impl Ctrl {
         }
     }
 
-    #[inline]
     pub fn vram_addr_increment(self) -> u16 {
         if self.contains(Ctrl::VRAM_ADD_INCREMENT) {
             32
@@ -131,7 +130,6 @@ impl Ctrl {
         }
     }
 
-    #[inline]
     pub fn sprite_size(&self) -> SpriteSize {
         if self.contains(Ctrl::SPRITE_SIZE) {
             SpriteSize::Sprite8x16
@@ -180,27 +178,22 @@ impl Registers {
         *self.mask.0.bits_mut() = data;
     }
 
-    #[inline]
     pub fn show_background(&self) -> bool {
         self.mask.contains(Mask::SHOW_BACKGROUND)
     }
 
-    #[inline]
     pub fn show_sprites(&self) -> bool {
         self.mask.contains(Mask::SHOW_SPRITES)
     }
 
-    #[inline]
     pub fn rendering_enabled(&self) -> bool {
         self.show_background() || self.show_sprites()
     }
 
-    #[inline]
     pub fn show_leftmost_background(&self) -> bool {
         self.mask.contains(Mask::SHOW_BACKGROUND_LEFT)
     }
 
-    #[inline]
     pub fn show_leftmost_sprites(&self) -> bool {
         self.mask.contains(Mask::SHOW_SPRITES_LEFT)
     }
@@ -240,7 +233,6 @@ bitflags! {
 }
 
 impl Registers {
-    #[inline]
     pub fn read_status(&mut self, open_bus: u8) -> u8 {
         let res = (self.status.bits() & 0b1110_0000) | (open_bus & 0b0001_1111);
         self.status.remove(Status::VBLANK_STARTED);
@@ -250,7 +242,6 @@ impl Registers {
 }
 
 impl Registers {
-    #[inline]
     pub fn write_oam_address(&mut self, val: u8) {
         self.oam_addr = val;
     }
@@ -310,14 +301,12 @@ impl Registers {
         }
     }
 
-    #[inline]
     pub fn copy_x(&mut self) {
         // copy all bits related to horizontal position from t to v:
         // v: ....A.. ...BCDEF <- t: ....A.. ...BCDEF
         self.v = (self.v & 0xFBE0) | (self.t & 0x041F);
     }
 
-    #[inline]
     pub fn copy_y(&mut self) {
         // copy the vertical bits from t to v
         // v: GHIA.BC DEF..... <- t: GHIA.BC DEF.....
@@ -344,7 +333,6 @@ impl Registers {
         }
     }
 
-    #[inline]
     pub fn increment_vram_addr(&mut self) {
         let step = self.ctrl.vram_addr_increment();
         self.v = self.v.wrapping_add(step) & 0x3fff;

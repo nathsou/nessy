@@ -222,8 +222,7 @@ async function setup() {
     function renderState(state: Uint8Array, buffer: Uint8Array): void {
         const prevState = nes.saveState();
         nes.loadState(state);
-        nes.nextFrame();
-        nes.fillFrameBuffer(buffer);
+        nes.nextFrame(buffer);
         nes.loadState(prevState);
     }
 
@@ -264,8 +263,7 @@ async function setup() {
 
             if (nes && store.ref.lastState != null) {
                 nes.loadState(store.ref.lastState);
-                nes.nextFrame();
-                nes.fillFrameBuffer(backgroundFrame);
+                nes.nextFrame(backgroundFrame);
                 nes.loadState(store.ref.lastState);
 
                 hooks.call('setBackground', { mode: 'current' });
@@ -287,8 +285,7 @@ async function setup() {
 
                 // Generate the screenshot after 2 seconds
                 for (let i = 0; i < 120; i++) {
-                    titleScreenNes.nextFrame();
-                    titleScreenNes.fillFrameBuffer(titleScreenFrame);
+                    titleScreenNes.nextFrame(titleScreenFrame);
                 }
 
                 await store.db.titleScreen.insert(hash, titleScreenFrame);
@@ -339,9 +336,7 @@ async function setup() {
             renderer.render(frame);
         } else if (nes !== undefined) {
             if (syncMode !== SYNC_AUDIO) {
-                nes.nextFrame();
-                console.log(nes.getUpdatedTilesCount());
-                nes.fillFrameBuffer(frame);
+                nes.nextFrame(frame);
                 renderer.render(frame);
             }
         }

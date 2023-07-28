@@ -107,9 +107,9 @@ const TRIANGLE_MIXER_LOOKUP: [f32; 204] = [
 ];
 
 impl APU {
-    pub fn new(sound_card_sample_rate: f64) -> APU {
+    pub fn new(sample_rate: f64) -> APU {
         APU {
-            cycles_per_sample: CPU_FREQ / sound_card_sample_rate,
+            cycles_per_sample: CPU_FREQ / sample_rate,
             buffer: Box::new([0.0; BUFFER_SIZE]),
             front_ptr: 0,
             back_ptr: 0,
@@ -127,14 +127,13 @@ impl APU {
             irq_inhibit: false,
             prev_irq: false,
             filters: [
-                Filter::new_high_pass(sound_card_sample_rate as f32, 90.0),
-                Filter::new_high_pass(sound_card_sample_rate as f32, 440.0),
-                Filter::new_low_pass(sound_card_sample_rate as f32, 14_000.0),
+                Filter::new_high_pass(sample_rate as f32, 90.0),
+                Filter::new_high_pass(sample_rate as f32, 440.0),
+                Filter::new_low_pass(sample_rate as f32, 14_000.0),
             ],
         }
     }
 
-    #[inline]
     fn get_sample(&mut self) -> f32 {
         // https://www.nesdev.org/wiki/APU_Mixer
         let p1 = self.pulse1.output();
@@ -160,7 +159,6 @@ impl APU {
         self.front_ptr = (self.front_ptr + 1) & BUFFER_MASK;
     }
 
-    #[inline]
     pub fn pull_sample(&mut self) -> Option<f32> {
         self.current_sample.take()
     }
@@ -242,7 +240,6 @@ impl APU {
         }
     }
 
-    #[inline]
     fn get_sample_count(&self) -> u32 {
         (self.cycle as f64 / self.cycles_per_sample) as u32
     }
@@ -312,7 +309,7 @@ impl APU {
         }
     }
 
-    pub fn remaining_buffered_samples(&self) -> u16 {
+    pub fn remaining_samples(&self) -> u16 {
         if self.front_ptr >= self.back_ptr {
             self.front_ptr - self.back_ptr
         } else {
@@ -322,7 +319,7 @@ impl APU {
 
     pub fn fill(&mut self, buffer: &mut [f32]) {
         #[allow(clippy::needless_range_loop)]
-        for i in 0..buffer.len().min(self.remaining_buffered_samples() as usize) {
+        for i in 0..buffer.len().min(self.remaining_samples() as usize) {
             buffer[i] = self.buffer[self.back_ptr as usize];
             self.back_ptr = (self.back_ptr + 1) & BUFFER_MASK;
         }
@@ -334,7 +331,6 @@ impl APU {
         self.buffer.fill(0.0);
     }
 
-    #[inline]
     pub fn is_asserting_irq(&mut self) -> bool {
         let irq = self.frame_interrupt || self.dmc.interrupt_flag;
         let edge = irq && !self.prev_irq;
@@ -343,7 +339,6 @@ impl APU {
         edge
     }
 
-    #[inline]
     pub fn is_stalling_cpu(&mut self) -> bool {
         if self.dmc.cpu_stall > 0 {
             self.dmc.cpu_stall -= 1;
@@ -355,12 +350,11 @@ impl APU {
 
     // hack to avoid having to pass a mutable reference of the bus to the DMC
     // when it needs to read from memory
-    #[inline]
+
     pub fn pull_memory_read_request(&mut self) -> Option<u16> {
         self.dmc.memory_read_request.take()
     }
 
-    #[inline]
     pub fn push_memory_read_response(&mut self, val: u8) {
         self.dmc.set_memory_read_response(val);
     }

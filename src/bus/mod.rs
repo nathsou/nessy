@@ -11,7 +11,6 @@ pub mod controller;
 pub struct RAM([u8; 0x800]);
 
 impl RAM {
-    #[inline]
     fn mirrored_addr(addr: u16) -> u16 {
         addr & 0b0000_0111_1111_1111
     }

@@ -59,7 +59,6 @@ impl DeltaModulationChannel {
         }
     }
 
-    #[inline]
     pub fn set_memory_read_response(&mut self, val: u8) {
         self.shift_register = val;
 
@@ -68,7 +67,6 @@ impl DeltaModulationChannel {
         }
     }
 
-    #[inline]
     fn restart(&mut self) {
         self.current_addr = self.sample_addr;
         self.bytes_remaining = self.sample_len;
@@ -121,12 +119,10 @@ impl DeltaModulationChannel {
         }
     }
 
-    #[inline]
     pub fn is_active(&self) -> bool {
         self.bytes_remaining > 0
     }
 
-    #[inline]
     pub fn clear_interrupt_flag(&mut self) {
         self.interrupt_flag = false;
     }
@@ -141,7 +137,6 @@ impl DeltaModulationChannel {
         }
     }
 
-    #[inline]
     pub fn output(&self) -> u8 {
         self.output_level
     }

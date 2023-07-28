@@ -19,6 +19,7 @@ pub struct MMC1 {
 }
 
 impl MMC1 {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         MMC1 {
             prg_ram: [0; 0x2000],
