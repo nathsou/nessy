@@ -85,10 +85,6 @@ impl Nes {
         }
 
         self.cpu.bus.apu.fill(buffer);
-
-        for i in remaining_samples_in_bufffer..buffer.len() {
-            buffer[i] = 0.0;
-        }
     }
 
     pub fn clear_audio_buffer(&mut self) {
