@@ -68,11 +68,11 @@ impl Bus {
         }
     }
 
-    pub fn advance(&mut self, cpu_cycles: u32) {
+    pub fn advance(&mut self, cpu_cycles: u32, frame: &mut [u8]) {
         let ppu_cycles = cpu_cycles * 3;
 
         for _ in 0..ppu_cycles {
-            self.ppu.step();
+            self.ppu.step(frame);
         }
 
         for _ in 0..cpu_cycles {

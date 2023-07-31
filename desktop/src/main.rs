@@ -17,6 +17,8 @@ use sdl2::{
 
 const SCALE_FACTOR: usize = 2;
 const SAMPLE_RATE: f64 = 44_100.0;
+const WIDTH: usize = SCREEN_WIDTH;
+const HEIGHT: usize = SCREEN_HEIGHT;
 
 fn build_controller_map() -> HashMap<Keycode, JoypadStatus> {
     let mut controller_map = HashMap::new();
@@ -33,6 +35,7 @@ fn build_controller_map() -> HashMap<Keycode, JoypadStatus> {
 
 struct APUCallback<'a> {
     nes: &'a mut Nes,
+    frame: &'a mut [u8],
     avoid_underruns: bool,
 }
 
@@ -40,7 +43,8 @@ impl<'a> AudioCallback for APUCallback<'a> {
     type Channel = f32;
 
     fn callback(&mut self, out: &mut [f32]) {
-        self.nes.fill_audio_buffer(out, self.avoid_underruns);
+        self.nes
+            .fill_audio_buffer(out, self.frame, self.avoid_underruns);
     }
 }
 
@@ -48,15 +52,22 @@ fn handle_events(
     event_pump: &mut EventPump,
     controller: &mut Joypad,
     controller_map: &HashMap<Keycode, JoypadStatus>,
+    paused: &mut bool,
 ) {
     for event in event_pump.poll_iter() {
         match event {
-            Event::Quit { .. }
-            | Event::KeyDown {
+            Event::Quit { .. } => {
+                std::process::exit(0);
+            }
+            Event::KeyDown {
                 keycode: Some(Keycode::Escape),
                 ..
+            }
+            | Event::KeyDown {
+                keycode: Some(Keycode::Tab),
+                ..
             } => {
-                std::process::exit(0);
+                *paused = !*paused;
             }
             Event::KeyDown { keycode, .. } => {
                 if let Some(&button) = keycode.and_then(|k| controller_map.get(&k)) {
@@ -96,8 +107,8 @@ fn main() {
         let window = video_subsystem
             .window(
                 "nessy",
-                (SCREEN_WIDTH * SCALE_FACTOR) as u32,
-                (SCREEN_HEIGHT * SCALE_FACTOR) as u32,
+                (WIDTH * SCALE_FACTOR) as u32,
+                (HEIGHT * SCALE_FACTOR) as u32,
             )
             .position_centered()
             .build()
@@ -115,31 +126,41 @@ fn main() {
 
         let creator = canvas.texture_creator();
         let mut texture = creator
-            .create_texture_target(
-                PixelFormatEnum::RGB24,
-                SCREEN_WIDTH as u32,
-                SCREEN_HEIGHT as u32,
-            )
+            .create_texture_target(PixelFormatEnum::RGB24, WIDTH as u32, HEIGHT as u32)
             .unwrap();
 
         let mut event_pump = sdl_context.event_pump().unwrap();
         let controller_map = build_controller_map();
+        let mut frame = [0; WIDTH * HEIGHT * 3];
 
         let audio_device = audio_subsystem
             .open_playback(None, &desired_audio_spec, |_| APUCallback {
                 nes: &mut nes,
+                frame: &mut frame,
                 avoid_underruns: false,
             })
             .unwrap();
 
         audio_device.resume();
 
+        let mut paused = false;
+
         loop {
-            handle_events(&mut event_pump, nes.get_joypad1_mut(), &controller_map);
-            nes.next_frame();
-            let frame = nes.get_frame();
-            texture.update(None, frame, SCREEN_WIDTH * 3).unwrap();
+            handle_events(
+                &mut event_pump,
+                nes.get_joypad1_mut(),
+                &controller_map,
+                &mut paused,
+            );
+
+            if !paused {
+                nes.next_frame_inaccurate(&mut frame);
+            }
+
+            // nes.get_frame(&mut frame);
+            texture.update(None, &frame, WIDTH * 3).unwrap();
             canvas.copy(&texture, None, None).unwrap();
+
             canvas.present();
         }
     }

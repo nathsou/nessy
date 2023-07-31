@@ -42,8 +42,8 @@ const UI_ACTION_MAPPING: Record<string, Action> = {
     ' ': 'select',
 };
 
-export const createUI = (store: Store) => {
-    const screen = createScreen();
+export const createUI = (store: Store, width: number, height: number) => {
+    const screen = createScreen(width, height);
     const alerts: Alert[] = [];
     const subMenuMapping: Record<string, Component<{ activeIndex: number }> & {
         prev(): void,

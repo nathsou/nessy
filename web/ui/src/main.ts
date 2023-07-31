@@ -6,7 +6,7 @@ import { hooks } from './ui/hooks';
 import { StoreData, createStore } from './ui/store';
 import { createUI } from './ui/ui';
 
-const WIDTH = 256; // px
+const WIDTH = 256 * 2; // px
 const HEIGHT = 240; // px
 type SyncMode = 0 | 1 | 2;
 const SYNC_VIDEO: SyncMode = 0;
@@ -28,12 +28,12 @@ async function setup() {
     await init();
     Nes.initPanicHook();
     const store = await createStore();
-    const ui = createUI(store);
-    const syncMode = SYNC_BOTH;
+    const ui = createUI(store, WIDTH, HEIGHT);
+    const syncMode = SYNC_VIDEO;
     const audioBufferSize = AUDIO_BUFFER_SIZE_MAPPING[syncMode];
     const avoidUnderruns = syncMode === SYNC_BOTH;
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
-    const renderer = createWebglRenderer(canvas);
+    const renderer = createWebglRenderer(canvas, WIDTH, HEIGHT);
     let nes: Nes;
     const controller = createController(store);
     const frame = new Uint8Array(WIDTH * HEIGHT * 3);
@@ -325,6 +325,7 @@ async function setup() {
 
         store.save();
     }
+
 
     function run(): void {
         requestAnimationFrame(run);

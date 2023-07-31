@@ -15,18 +15,16 @@ const PALETTE = [
     [0x99, 0xFF, 0xFC], [0xDD, 0xDD, 0xDD], [0x11, 0x11, 0x11], [0x11, 0x11, 0x11],
 ];
 
-const WIDTH = 256;
-const HEIGHT = 240;
 const TILES_PER_ROW = 32;
 const TILES_PER_COL = 30;
 
 export type Tile = Uint8Array;
 export type Screen = ReturnType<typeof createScreen>;
 
-export const createScreen = () => {
+export const createScreen = (width: number, height: number) => {
     const tiles: Tile[] = [];
     const blankTile: Tile = new Uint8Array(64).fill(0x00);
-    const background = new Uint8Array(WIDTH * HEIGHT * 3).fill(0);
+    const background = new Uint8Array(width * height * 3).fill(0);
     let opacity = 0;
 
     for (let i = 0; i < TILES_PER_ROW * TILES_PER_COL; i += 1) {
@@ -66,7 +64,7 @@ export const createScreen = () => {
                     for (let i = 0; i < 8; i += 1) {
                         const colorIndex = tile[i + j * 8];
                         const color = PALETTE[colorIndex];
-                        const index = (x * 8 + i + (y * 8 + j) * WIDTH) * 3;
+                        const index = (x * 8 + i + (y * 8 + j) * width) * 3;
                         buffer[index + 0] = mix(color[0], background[index + 0]);
                         buffer[index + 1] = mix(color[1], background[index + 1]);
                         buffer[index + 2] = mix(color[2], background[index + 2]);

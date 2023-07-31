@@ -1,5 +1,5 @@
 
-export function createWebglRenderer(canvas: HTMLCanvasElement) {
+export function createWebglRenderer(canvas: HTMLCanvasElement, width: number, height: number) {
     const gl = canvas.getContext('webgl')!;
 
     if (gl == null) {
@@ -63,7 +63,7 @@ export function createWebglRenderer(canvas: HTMLCanvasElement) {
     const fragmentShader = createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
     const program = createProgram(vertexShader, fragmentShader);
     const posAttribLoc = gl.getAttribLocation(program, "a_position");
-    gl.viewport(0, 0, 256, 240);
+    gl.viewport(0, 0, width, height);
 
     function createShader(type: number, source: string): WebGLShader {
         const shader = gl.createShader(type);
