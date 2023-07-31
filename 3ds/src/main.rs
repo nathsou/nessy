@@ -23,15 +23,15 @@ fn is_key_active(hid: &Hid, key: KeyPad) -> bool {
 }
 
 fn main() {
-    let mut nes_frame_buffer: [u8; FRAME_BUFFER_BYTE_SIZE] = [0; FRAME_BUFFER_BYTE_SIZE];
+    let mut nes_frame_buffer = [0u8; FRAME_BUFFER_BYTE_SIZE];
     ctru::use_panic_handler();
 
     let gfx = Gfx::new().expect("Couldn't obtain GFX controller");
     let mut hid = Hid::new().expect("Couldn't obtain HID controller");
     let apt = Apt::new().expect("Couldn't obtain APT controller");
-    let _console = Console::new(gfx.bottom_screen.borrow_mut());
+    // let _console = Console::new(gfx.bottom_screen.borrow_mut());
 
-    println!("\x1b[0;3HPress L + R to exit.");
+    // println!("\x1b[0;3HPress L + R to exit.");
 
     let mut top_screen = gfx.top_screen.borrow_mut();
     top_screen.set_double_buffering(false);
@@ -39,11 +39,13 @@ fn main() {
 
     let rom = ROM::new(ROM_BYTES.to_vec()).expect("Couldn't load ROM");
     let mut nes = Nes::new(rom, SAMPLE_RATE);
-    let mut nes_frame_buffer = [0u8; FRAME_BUFFER_BYTE_SIZE];
     let mut top_frame_buffer = [0u8; TOP_SCREEN_WIDTH * TOP_SCREEN_HEIGHT * 3];
+    // let mut last_frame = std::time::Instant::now();
 
     // Main loop
     while apt.main_loop() {
+        // let frame_duration = last_frame.elapsed();
+        // last_frame = std::time::Instant::now();
         // Scan all the inputs. This should be done once for each frame
         hid.scan_input();
 
@@ -86,13 +88,22 @@ fn main() {
         }
 
         nes.get_joypad1_mut().update(joypad1_state.bits());
-        let t0 = std::time::Instant::now();
-        nes.next_frame();
-        let frame_time = t0.elapsed().as_millis() as usize;
-        println!("{frame_time}ms");
-        nes_frame_buffer.copy_from_slice(&nes.get_frame());
+        // let t0 = std::time::Instant::now();
+        let offset = LEFT_X_OFFSET_TOP * NES_SCREEN_HEIGHT * 3;
+        // nes.next_frame_inaccurate(
+        //     &mut top_frame_buffer[offset..offset + NES_SCREEN_WIDTH * NES_SCREEN_HEIGHT * 3],
+        // );
 
-        // rotate the frame buffer 90 degrees
+        nes.next_frame_inaccurate(&mut nes_frame_buffer);
+
+        // let frame_time = t0.elapsed().as_millis() as usize;
+        // let d0 = t0.elapsed();
+        // let t1 = std::time::Instant::now();
+        // nes.get_frame(&mut nes_frame_buffer);
+        // let d1 = t1.elapsed();
+
+        // let t2 = std::time::Instant::now();
+        // // rotate the frame buffer 90 degrees
         for y in 0..NES_SCREEN_HEIGHT {
             for x in 0..NES_SCREEN_WIDTH {
                 let src_index = (y * NES_SCREEN_WIDTH + x) * 3;
@@ -105,6 +116,12 @@ fn main() {
             }
         }
 
+        // top_frame_buffer[..(NES_SCREEN_WIDTH * NES_SCREEN_HEIGHT * 3)]
+        //     .copy_from_slice(&nes_frame_buffer[..]);
+
+        // let d2 = t2.elapsed();
+
+        // let t3 = std::time::Instant::now();
         unsafe {
             top_screen
                 .raw_framebuffer()
@@ -114,7 +131,18 @@ fn main() {
 
         top_screen.flush_buffers();
 
+        // let d3 = t3.elapsed();
+
+        // println!(
+        //     "nf {} gf {}, rt {} after {} frame {}",
+        //     d0.as_millis(),
+        //     d1.as_millis(),
+        //     d2.as_millis(),
+        //     d3.as_millis(),
+        //     frame_duration.as_millis()
+        // );
+
         //Wait for VBlank
-        gfx.wait_for_vblank();
+        // gfx.wait_for_vblank();
     }
 }

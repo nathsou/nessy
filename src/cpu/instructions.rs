@@ -189,7 +189,9 @@ impl CPU {
                     self.irq();
                 }
             }
-            Interrupt::Nmi => self.nmi(),
+            Interrupt::Nmi => {
+                self.nmi();
+            }
         }
 
         let op_code = self.next_byte();

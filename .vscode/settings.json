@@ -1,5 +1,7 @@
 {
     "rust-analyzer.linkedProjects": [
         "Cargo.toml",
+        "./desktop/Cargo.toml",
+        "./3ds/Cargo.toml"
     ]
 }

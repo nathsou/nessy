@@ -1,6 +1,7 @@
 use crate::{
     bus::{controller::Joypad, Bus},
     cpu::{rom::ROM, CPU},
+    ppu::registers::Status,
     savestate::{self, Save, SaveState, SaveStateError},
 };
 
@@ -14,9 +15,9 @@ impl Nes {
         Nes { cpu: CPU::new(bus) }
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self, frame: &mut [u8]) {
         let cpu_cycles = self.cpu.step();
-        self.cpu.bus.advance(cpu_cycles);
+        self.cpu.bus.advance(cpu_cycles, frame);
     }
 
     #[inline]
@@ -24,16 +25,43 @@ impl Nes {
         self.cpu.bus.ppu.frame_complete = false;
     }
 
-    pub fn next_frame(&mut self) {
+    pub fn next_frame(&mut self, frame: &mut [u8]) {
         while !self.cpu.bus.ppu.frame_complete {
-            self.step();
+            self.step(frame);
         }
 
         self.on_frame_complete();
     }
 
+    pub fn next_frame_inaccurate(&mut self, frame: &mut [u8]) {
+        let mut cycles = 0;
+
+        let (spzx, spzy) = self.cpu.bus.ppu.sprite_zero_coords();
+        let sprite_zero_cycles = (spzy as f32 * 113.667 + spzx as f32 * 3.0) as u32;
+
+        while cycles < sprite_zero_cycles {
+            cycles += self.cpu.step();
+        }
+
+        self.cpu.bus.ppu.regs.status.insert(Status::SPRITE_ZERO_HIT);
+
+        while cycles < 27_508 {
+            cycles += self.cpu.step();
+        }
+
+        self.cpu.bus.ppu.render_frame(frame);
+        self.cpu.bus.ppu.start_vblank();
+        self.cpu.bus.ppu.tick_inaccurate();
+
+        while cycles < 29_781 {
+            cycles += self.cpu.step();
+        }
+
+        self.cpu.bus.ppu.end_vblank();
+    }
+
     /// emulates enough cycles to fill the audio buffer,
-    pub fn next_samples(&mut self, audio_buffer: &mut [f32]) -> bool {
+    pub fn next_samples(&mut self, audio_buffer: &mut [f32], frame_buffer: &mut [u8]) -> bool {
         let mut count = 0;
         let mut new_frame = false;
 
@@ -49,7 +77,7 @@ impl Nes {
                         }
                         break;
                     }
-                    None => self.step(),
+                    None => self.step(frame_buffer),
                 }
             }
         }
@@ -57,7 +85,7 @@ impl Nes {
         new_frame
     }
 
-    pub fn wait_for_samples(&mut self, count: usize) {
+    pub fn wait_for_samples(&mut self, count: usize, frame: &mut [u8]) {
         let mut i = 0;
 
         while i < count {
@@ -67,27 +95,32 @@ impl Nes {
                         i += 1;
                         break;
                     }
-                    None => self.step(),
+                    None => self.step(frame),
                 }
             }
         }
     }
 
-    pub fn fill_audio_buffer(&mut self, buffer: &mut [f32], avoid_underruns: bool) {
+    pub fn fill_audio_buffer(
+        &mut self,
+        audio_buffer: &mut [f32],
+        frame_buffer: &mut [u8],
+        avoid_underruns: bool,
+    ) {
         let remaining_samples_in_bufffer = self.cpu.bus.apu.remaining_samples() as usize;
 
         if avoid_underruns {
             // ensure that the buffer is filled with enough samples
-            if remaining_samples_in_bufffer < buffer.len() {
-                let wait_for = buffer.len() - remaining_samples_in_bufffer + 1;
-                self.wait_for_samples(wait_for);
+            if remaining_samples_in_bufffer < audio_buffer.len() {
+                let wait_for = audio_buffer.len() - remaining_samples_in_bufffer + 1;
+                self.wait_for_samples(wait_for, frame_buffer);
             }
         }
 
-        self.cpu.bus.apu.fill(buffer);
+        self.cpu.bus.apu.fill(audio_buffer);
 
-        for i in remaining_samples_in_bufffer..buffer.len() {
-            buffer[i] = 0.0;
+        for i in remaining_samples_in_bufffer..audio_buffer.len() {
+            audio_buffer[i] = 0.0;
         }
     }
 
@@ -107,19 +140,10 @@ impl Nes {
         &mut self.cpu.bus.joypad2
     }
 
-    #[inline]
-    pub fn get_frame(&self, buffer: &mut [u8]) {
-        self.cpu.bus.ppu.get_frame(buffer);
-    }
-
     pub fn save_state(&self) -> SaveState {
         let mut state = SaveState::new(&self.cpu.bus.ppu.rom.cart.hash);
         self.save(state.get_root_mut());
         state
-    }
-
-    pub fn get_updated_tiles_count(&self) -> usize {
-        self.cpu.bus.ppu.get_updated_tiles_count()
     }
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), SaveStateError> {

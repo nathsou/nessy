@@ -99,7 +99,6 @@ impl Ctrl {
         }
     }
 
-<<<<<<< HEAD
     #[inline]
     pub fn base_nametable_addr(&self) -> usize {
         match self.bits() & 0b11 {
@@ -112,8 +111,6 @@ impl Ctrl {
     }
 
     #[inline]
-=======
->>>>>>> main
     pub fn sprite_chr_offset(&self) -> u16 {
         if !self.contains(Ctrl::SPRITE_PATTERN_ADDR) {
             0

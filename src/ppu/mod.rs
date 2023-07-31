@@ -1,4 +1,4 @@
-mod registers;
+pub mod registers;
 
 use self::registers::{Ctrl, Mask, Registers, SpriteSize, Status};
 use crate::{
@@ -11,7 +11,6 @@ const BYTES_PER_PALLETE: usize = 4;
 const TILES_PER_NAMETABLE_BYTE: usize = 4;
 const TILES_PER_NAMETABLE: usize = 32 * 30;
 const BYTES_PER_NAMETABLE: usize = 1024;
-const ATTRIBUTES_PER_NAMETABLE: usize = 64;
 const SPRITE_PALETTES_OFFSET: usize = 0x11;
 const WIDTH: usize = 256;
 const HEIGHT: usize = 240;
@@ -51,11 +50,11 @@ struct CachedTile {
 #[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
     pub rom: ROM,
-    regs: Registers,
+    pub regs: Registers,
     open_bus: u8,
     vram: [u8; 2 * BYTES_PER_NAMETABLE],
     palette: [u8; 32],
-    attributes: [u8; ATTRIBUTES_PER_NAMETABLE * 4],
+    attributes: [u8; 64 * 4],
     pub cycle: u16,
     scanline: u16,
     frame: u64,
@@ -71,10 +70,9 @@ pub struct PPU {
     pattern_table_high_byte: u8,
     scanline_sprites: [SpriteData; 8],
     visible_sprites_count: u8,
-    background_buffer: Box<[u8; WIDTH * HEIGHT * 3 * 2]>, // both nametables
-    frame_buffer_complete: Box<[u8; WIDTH * HEIGHT * 3 * 2]>, // avoid stack overflow in WASM
     nt_cache: Box<[Option<CachedTile>; BYTES_PER_NAMETABLE * 2]>,
     updated_bg_tiles: Box<[bool; BYTES_PER_NAMETABLE * 2]>,
+    background: Box<[u8; WIDTH * HEIGHT * 3 * 2]>,
 }
 
 impl PPU {
@@ -108,14 +106,23 @@ impl PPU {
                 chr: [0; 8],
             }; 8],
             visible_sprites_count: 0,
-            background_buffer: Box::new([0; WIDTH * HEIGHT * 3 * 2]),
-            frame_buffer_complete: Box::new([0; WIDTH * HEIGHT * 3 * 2]),
             nt_cache: Box::new([None; BYTES_PER_NAMETABLE * 2]),
             updated_bg_tiles: Box::new([true; BYTES_PER_NAMETABLE * 2]),
+            background: Box::new([0; WIDTH * HEIGHT * 3 * 2]),
         };
 
         ppu.reset();
         ppu
+    }
+
+    pub fn tick_inaccurate(&mut self) {
+        if self.should_trigger_nmi
+            && self.regs.ctrl.contains(Ctrl::GENERATE_NMI)
+            && self.regs.status.contains(Status::VBLANK_STARTED)
+        {
+            self.nmi_triggered = true;
+            self.should_trigger_nmi = false;
+        }
     }
 
     fn tick(&mut self) {
@@ -161,7 +168,7 @@ impl PPU {
         }
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self, frame: &mut [u8]) {
         self.tick();
 
         let preline = self.scanline == 261;
@@ -175,7 +182,7 @@ impl PPU {
         if !FAST_MODE {
             if self.regs.show_background() {
                 if visible_line && visible_cycle {
-                    self.render_pixel();
+                    self.render_pixel(frame);
                 }
 
                 if render_line && fetch_cycle {
@@ -221,35 +228,40 @@ impl PPU {
             }
         }
 
-        // VBlank
-        if self.scanline == 241 && self.cycle == 1 {
-            self.frame_complete = true;
-            self.regs.status.insert(Status::VBLANK_STARTED);
-            self.detect_nmi_edge();
-
-            if FAST_MODE {
-                self.render_frame();
-            }
-
-            // self.transfer_frame_buffer();
+        if preline && self.cycle == 1 {
+            self.end_vblank();
         }
 
-        if preline && self.cycle == 1 {
-            self.regs.status.remove(Status::VBLANK_STARTED);
-            self.regs.status.remove(Status::SPRITE_ZERO_HIT);
-            self.regs.status.remove(Status::SPRITE_OVERFLOW);
-            self.detect_nmi_edge();
+        // VBlank
+        if self.scanline == 241 && self.cycle == 1 {
+            self.start_vblank();
         }
     }
 
-<<<<<<< HEAD
-    fn render_frame(&mut self) {
-        // self.frame_buffer1.fill(0);
-        // self.frame_buffer2.fill(0);
+    pub fn start_vblank(&mut self) {
+        self.frame_complete = true;
+        self.regs.status.insert(Status::VBLANK_STARTED);
+        self.detect_nmi_edge();
 
+        // if FAST_MODE {
+        //     self.render_frame();
+        // }
+
+        // self.transfer_frame_buffer();
+    }
+
+    pub fn end_vblank(&mut self) {
+        self.frame_complete = false;
+        self.regs.status.remove(Status::VBLANK_STARTED);
+        self.regs.status.remove(Status::SPRITE_ZERO_HIT);
+        self.regs.status.remove(Status::SPRITE_OVERFLOW);
+        self.detect_nmi_edge();
+    }
+
+    pub fn render_frame(&mut self, frame: &mut [u8]) {
         let base_nametable_addr = self.regs.ctrl.base_nametable_addr();
         let scroll_x = self.regs.scroll.x as usize;
-        let scroll_y = self.regs.scroll.y as usize;
+        // let scroll_y = self.regs.scroll.y as usize;
 
         let (nametable1, nametable2): (usize, usize) = match self.rom.cart.mirroring {
             Mirroring::Vertical => match base_nametable_addr {
@@ -274,58 +286,53 @@ impl PPU {
         };
 
         if self.regs.show_background() {
+            frame.fill(0);
             self.render_background(nametable1, 0);
-            self.render_background(nametable2, WIDTH);
+
+            if scroll_x > 0 {
+                self.render_background(nametable2, WIDTH);
+            }
+
+            let mut offset = 0;
+            let len = WIDTH * 3;
+            for y in 0..HEIGHT {
+                // for x in 0..WIDTH {
+                //     let xs = x + scroll_x;
+                //     let bg_idx = (y * 2 * WIDTH + xs) * 3;
+                //     let buf_idx = (y * WIDTH + x) * 3;
+                //     frame[buf_idx] = self.background[bg_idx];
+                //     frame[buf_idx + 1] = self.background[bg_idx + 1];
+                //     frame[buf_idx + 2] = self.background[bg_idx + 2];
+                // }
+
+                let s = (y * 2 * WIDTH + scroll_x) * 3;
+
+                frame[offset..offset + len]
+                    .copy_from_slice(&self.background.as_slice()[s..s + len]);
+                offset += len;
+            }
+
+            // frame.copy_from_slice(&self.background.as_slice()[..WIDTH * HEIGHT * 3]);
+            // self.copy_rect(0, (scroll_x, 0), (WIDTH + scroll_x, HEIGHT), frame);
+            // self.copy_rect(
+            //     WIDTH - scroll_x,
+            //     (WIDTH + scroll_x, 0),
+            //     (2 * WIDTH, HEIGHT),
+            //     frame,
+            // );
         }
 
-        // for i in 0..HEIGHT {
-        //     self.set_pixel(scroll_x, i, (255, 0, 0));
-        //     self.set_pixel((scroll_x + WIDTH) % (2 * WIDTH), i, (0, 255, 0));
+        // for y in 0..HEIGHT {
+        //     PPU::set_pixel(frame, scroll_x, y, (0, 0, 255));
+        //     PPU::set_pixel(frame, (scroll_x + WIDTH) % (2 * WIDTH), y, (0, 0, 255));
         // }
-
-        // for i in 0..WIDTH {
-        //     self.set_pixel(i, scroll_y, (0, 0, 255));
-        //     self.set_pixel(i, (scroll_y + HEIGHT) % (2 * HEIGHT), (255, 255, 0));
-        // }
-
-        // if scroll_x > 0 {
-        //     self.render_background(
-        //         nametable2,
-        //         BoundingBox {
-        //             x_min: 0,
-        //             x_max: scroll_x,
-        //             y_min: 0,
-        //             y_max: HEIGHT,
-        //         },
-        //         (WIDTH - scroll_x) as isize,
-        //         0,
-        //     );
-        // } else if scroll_y > 0 {
-        //     self.render_background(
-        //         nametable2,
-        //         BoundingBox {
-        //             x_min: 0,
-        //             x_max: WIDTH,
-        //             y_min: 0,
-        //             y_max: scroll_y,
-        //         },
-        //         0,
-        //         (HEIGHT - scroll_y) as isize,
-        //     );
-        // }
-
-=======
-    fn transfer_frame_buffer(&mut self) {
->>>>>>> main
-        self.frame_buffer_complete
-            .copy_from_slice(self.background_buffer.as_slice());
 
         if self.regs.show_sprites() {
-            self.render_sprites(scroll_x, scroll_y);
+            self.render_sprites(frame);
         }
     }
 
-    fn render_background(&mut self, nt_offset: usize, x_offset: usize) {
+    fn render_background(&mut self, nt_offset: usize, offset_x: usize) {
         let chr_bank_offset = self.regs.ctrl.background_chr_offset();
 
         for i in 0..0x03c0 {
@@ -338,7 +345,7 @@ impl PPU {
                 i,
                 tile_col,
                 tile_row,
-                x_offset,
+                offset_x,
             );
         }
     }
@@ -352,7 +359,7 @@ impl PPU {
         let tile_index = nt_offset + nth;
 
         match self.nt_cache[tile_index] {
-            // Some(tile) => tile.chr,
+            Some(tile) => tile.chr,
             _ => {
                 let mut tile = [0u8; 16];
                 self.rom
@@ -391,7 +398,7 @@ impl PPU {
         nth: usize,
         tile_col: usize,
         tile_row: usize,
-        x_offset: usize,
+        offset_x: usize,
     ) {
         let tile_idx = nt_offset + nth;
 
@@ -404,26 +411,20 @@ impl PPU {
 
         for y in 0..PIXELS_PER_TILE {
             for x in 0..PIXELS_PER_TILE {
-                let pixel_x = tile_col * PIXELS_PER_TILE + x;
-                let pixel_y = tile_row * PIXELS_PER_TILE + y;
                 let color_idx = tile[y * PIXELS_PER_TILE + x];
-
                 let rgb =
                     self.background_color_at(nt_offset, tile_col, tile_row, color_idx as usize);
 
-                PPU::set_pixel(
-                    self.background_buffer.as_mut_slice(),
-                    x_offset + pixel_x,
-                    pixel_y,
-                    rgb,
-                );
+                let pixel_x = offset_x + tile_col * PIXELS_PER_TILE + x;
+                let pixel_y = tile_row * PIXELS_PER_TILE + y;
+                PPU::set_pixel(self.background.as_mut_slice(), pixel_x, pixel_y, rgb);
             }
         }
 
         self.updated_bg_tiles[tile_idx] = false;
     }
 
-    fn render_sprites(&mut self, shift_x: usize, shift_y: usize) {
+    fn render_sprites(&mut self, frame: &mut [u8]) {
         let sprite_size = self.regs.ctrl.sprite_size();
 
         // Sprites with lower OAM indices are drawn in front
@@ -470,8 +471,7 @@ impl PPU {
                 flip_horizontally,
                 flip_vertically,
                 palette,
-                shift_x,
-                shift_y,
+                frame,
             );
 
             if let Some(idx) = bot_tile_idx {
@@ -484,8 +484,7 @@ impl PPU {
                     flip_horizontally,
                     flip_vertically,
                     palette,
-                    shift_x,
-                    shift_y,
+                    frame,
                 );
             }
         }
@@ -514,8 +513,7 @@ impl PPU {
         flip_horizontally: bool,
         flip_vertically: bool,
         palette: [Option<(u8, u8, u8)>; 4],
-        shift_x: usize,
-        shift_y: usize,
+        frame: &mut [u8],
     ) {
         let mut tile = [0u8; 16];
         self.rom
@@ -542,16 +540,17 @@ impl PPU {
                         (true, true) => (7 - x, 7 - y),
                     };
 
-                    let pixel_x = tile_x + x + shift_x;
-                    let pixel_y = tile_y + y + shift_y;
+                    let pixel_x = tile_x + x;
+                    let pixel_y = tile_y + y;
                     let is_bg_opaque = false;
                     if !behind_background || !is_bg_opaque {
-                        PPU::set_pixel(
-                            self.frame_buffer_complete.as_mut_slice(),
-                            pixel_x,
-                            pixel_y,
-                            rgb,
-                        );
+                        let offset = (pixel_y * WIDTH + pixel_x) * 3;
+                        if offset < frame.len() {
+                            frame[offset] = rgb.0;
+                            frame[offset + 1] = rgb.1;
+                            frame[offset + 2] = rgb.2;
+                            // PPU::set_pixel(frame, pixel_x, pixel_y, rgb);
+                        }
                     }
                 }
             }
@@ -770,7 +769,7 @@ impl PPU {
         self.visible_sprites_count = count as u8;
     }
 
-    fn render_pixel(&mut self) {
+    fn render_pixel(&mut self, frame: &mut [u8]) {
         let x = self.cycle - 1;
         let y = self.scanline;
         let mut bg = self.get_background_pixel();
@@ -810,22 +809,22 @@ impl PPU {
             }
         }
 
-        PPU::set_pixel(
-            self.background_buffer.as_mut_slice(),
-            x as usize,
-            y as usize,
-            color,
-        );
+        PPU::set_pixel(frame, x as usize, y as usize, color);
     }
 
     fn set_pixel(target: &mut [u8], x: usize, y: usize, (r, g, b): (u8, u8, u8)) {
         let offset = (y * 2 * WIDTH + x) * 3;
 
-        if offset < 2 * WIDTH * HEIGHT * 3 {
+        if x < 2 * WIDTH && y < HEIGHT && offset < target.len() {
             target[offset] = r;
             target[offset + 1] = g;
             target[offset + 2] = b;
         }
+    }
+
+    #[inline]
+    pub fn sprite_zero_coords(&self) -> (u8, u8) {
+        (self.attributes[3], self.attributes[0])
     }
 
     // https://www.nesdev.org/wiki/PPU_palettes
@@ -883,6 +882,21 @@ impl PPU {
     }
 
     pub fn write_ctrl_reg(&mut self, data: u8) {
+        // let bg_bank = self.regs.ctrl.bits() & 0b11;
+        // if self.regs.show_background() && data & 0b11 != bg_bank {
+        //     match bg_bank {
+        //         0 => self.updated_bg_tiles[BYTES_PER_NAMETABLE..].fill(true),
+        //         1 => self.updated_bg_tiles[..BYTES_PER_NAMETABLE].fill(true),
+        //         _ => {}
+        //     }
+        // }
+
+        if data & Ctrl::BACKROUND_PATTERN_ADDR.bits()
+            != self.regs.ctrl.bits() & Ctrl::BACKROUND_PATTERN_ADDR.bits()
+        {
+            self.nt_cache.fill(None);
+        }
+
         self.regs.write_ctrl(data);
         // the PPU immediately triggers a NMI when the VBlank flag transitions from 0 to 1 during VBlank
         self.detect_nmi_edge();
@@ -1019,7 +1033,9 @@ impl PPU {
         match addr {
             0x2000 => self.write_ctrl_reg(data),
             0x2001 => self.regs.write_mask(data),
-            0x2002 => panic!("PPU status register is read-only"),
+            0x2002 => {
+                // panic!("PPU status register is read-only");
+            }
             0x2003 => self.regs.write_oam_address(data),
             0x2004 => self.write_oam_data_reg(data),
             0x2005 => self.regs.write_scroll(data),
@@ -1027,64 +1043,6 @@ impl PPU {
             0x2007 => self.write_data_reg(data),
             _ => unreachable!("invalid PPU register address"),
         }
-    }
-
-<<<<<<< HEAD
-    // returns number of bytes copied
-    fn copy_rect(
-        &self,
-        offset: usize,
-        (x1, y1): (usize, usize),
-        (x2, y2): (usize, usize),
-        buffer: &mut [u8],
-    ) -> usize {
-        let width = x2 - x1;
-        let height = y2 - y1;
-
-        // for y in 0..height {
-        //     let src_offset = ((y1 + y) * WIDTH + x1) * 3;
-        //     let dst_offset = offset + y * width * 3;
-        //     buffer[dst_offset..(dst_offset + width * 3)]
-        //         .copy_from_slice(&self.frame_buffer_complete[src_offset..(src_offset + width * 3)]);
-        // }
-
-        let mut index = offset;
-
-        for x in x1..x2 {
-            for y in y1..y2 {
-                let i = (y * 2 * WIDTH + x) * 3;
-                buffer[index] = self.frame_buffer_complete[i];
-                index += 1;
-            }
-        }
-
-        width * height * 3
-    }
-
-    pub fn get_frame(&self, buffer: &mut [u8]) {
-        // let scroll_x = self.regs.scroll.x as usize;
-        // self.copy_rect(0, (0, 0), (WIDTH, HEIGHT), buffer);
-
-        // if scroll_x < WIDTH {
-        //     self.copy_rect(0, (scroll_x, 0), (scroll_x + WIDTH, HEIGHT), buffer);
-        // } else {
-        //     let offset2 = self.copy_rect(0, (scroll_x, 0), (2 * WIDTH, HEIGHT), buffer);
-        //     self.copy_rect(offset2, (0, 0), (scroll_x, HEIGHT), buffer);
-        // }
-
-        buffer.copy_from_slice(self.frame_buffer_complete.as_slice());
-    }
-
-    #[inline]
-    pub fn get_full_frame(&mut self) -> &[u8] {
-=======
-    pub fn get_frame(&self) -> &[u8] {
->>>>>>> main
-        self.frame_buffer_complete.as_slice()
-    }
-
-    pub fn get_updated_tiles_count(&self) -> usize {
-        self.updated_bg_tiles.iter().filter(|&b| *b).count()
     }
 }
 
