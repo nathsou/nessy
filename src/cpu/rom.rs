@@ -49,12 +49,6 @@ impl ROM {
             return Err(RomError::InvalidiNesHeader);
         }
 
-        let ines_ver = (bytes[7] >> 2) & 0b11;
-        if ines_ver != 0 {
-            // only support iNES version 1
-            return Err(RomError::InvalidiNesHeader);
-        }
-
         let mut hasher = Sha256::new();
         hasher.update(&bytes);
         let hash = hasher.finalize().into();

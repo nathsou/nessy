@@ -1,3 +1,6 @@
 .DS_Store
 /pkg
 /target
+/crate/target/
+/web/node_modules
+/web/public/
