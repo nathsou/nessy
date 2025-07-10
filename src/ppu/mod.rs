@@ -62,6 +62,7 @@ pub struct PPU {
     visible_sprites_count: u8,
     frame_buffer: [u8; WIDTH * HEIGHT * 3],
     frame_buffer_complete: Box<[u8; WIDTH * HEIGHT * 3]>, // avoid stack overflow in WASM
+    last_a12: bool,  // Track A12 state for MMC3 IRQ timing
 }
 
 impl PPU {
@@ -97,6 +98,7 @@ impl PPU {
             visible_sprites_count: 0,
             frame_buffer: [0; WIDTH * HEIGHT * 3],
             frame_buffer_complete: Box::new([0; WIDTH * HEIGHT * 3]),
+            last_a12: false,
         };
 
         ppu.reset();
@@ -135,10 +137,6 @@ impl PPU {
                 self.regs.f = !self.regs.f;
                 self.frame += 1;
             }
-        }
-
-        if self.regs.rendering_enabled() && self.cycle == 260 && self.scanline < 240 {
-            self.rom.mapper.step_scanline();
         }
     }
 
@@ -501,6 +499,20 @@ impl PPU {
     }
 
     fn read_chr(&mut self, addr: u16) -> u8 {
+        // Track A12 toggles for MMC3 IRQ timing
+        // A12 is bit 12 of the address (0x1000)
+        // Only track A12 toggles during rendering periods
+        if self.regs.rendering_enabled() && (self.scanline < 240 || self.scanline == 261) {
+            let new_a12 = (addr & 0x1000) != 0;
+            
+            // Check if this is a rising edge (0 to 1 transition)
+            if new_a12 && !self.last_a12 {
+                self.rom.mapper.step_scanline();
+            }
+            
+            self.last_a12 = new_a12;
+        }
+        
         self.rom.mapper.read(&mut self.rom.cart, addr)
     }
 
@@ -654,6 +666,7 @@ impl savestate::Save for PPU {
         s.data.write_u8(self.pattern_table_low_byte);
         s.data.write_u8(self.pattern_table_high_byte);
         s.data.write_u8(self.visible_sprites_count);
+        s.data.write_bool(self.last_a12);
         s.write_all(&self.scanline_sprites);
 
         self.regs.save(s);
@@ -681,6 +694,7 @@ impl savestate::Save for PPU {
         self.pattern_table_low_byte = s.data.read_u8()?;
         self.pattern_table_high_byte = s.data.read_u8()?;
         self.visible_sprites_count = s.data.read_u8()?;
+        self.last_a12 = s.data.read_bool()?;
         s.read_all(&mut self.scanline_sprites)?;
 
         self.regs.load(s)?;
