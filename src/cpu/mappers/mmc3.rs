@@ -147,6 +147,8 @@ impl Mapper for MMC3 {
     }
 
     fn step_scanline(&mut self) {
+        // MMC3 IRQ should be triggered on A12 toggles, not just once per scanline
+        // This is called when A12 transitions from 0 to 1 during background tile fetching
         if self.irq_counter == 0 {
             self.irq_counter = self.irq_reload;
         } else {

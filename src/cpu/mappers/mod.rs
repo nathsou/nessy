@@ -7,6 +7,9 @@ pub mod mmc3;
 pub mod nrom;
 pub mod unrom;
 
+#[cfg(test)]
+mod mmc3_test;
+
 pub trait Mapper: savestate::Save {
     fn read(&mut self, cart: &mut Cart, addr: u16) -> u8;
     fn write(&mut self, cart: &mut Cart, addr: u16, val: u8);
