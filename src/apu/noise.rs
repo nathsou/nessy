@@ -64,10 +64,12 @@ impl NoiseChannel {
             }
             0x400E => {
                 self.mode = val & 0b1000_0000 != 0;
-                self.timer.period = NOISE_PERIOD_TABLE[(val & 0b1111) as usize];
+                self.timer.period = NOISE_PERIOD_TABLE[(val & 0b1111) as usize] - 1;
             }
             0x400F => {
-                self.length_counter.set(val >> 3);
+                if self.enabled {
+                    self.length_counter.set(val >> 3);
+                }
                 self.envelope.start = true;
             }
             _ => {}
@@ -84,5 +86,21 @@ impl NoiseChannel {
         } else {
             self.envelope.output()
         }
+    }
+}
+
+crate::savestate::state_fields!(
+    NoiseChannel,
+    enabled,
+    shift_register,
+    mode,
+    length_counter,
+    envelope,
+    timer
+);
+
+impl NoiseChannel {
+    pub(super) fn valid(&self) -> bool {
+        self.envelope.valid()
     }
 }

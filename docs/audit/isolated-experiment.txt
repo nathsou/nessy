@@ -1,0 +1,31 @@
+   Compiling typenum v1.16.0
+   Compiling version_check v0.9.4
+   Compiling libc v0.2.146
+   Compiling cfg-if v1.0.0
+   Compiling bitflags v2.3.1
+   Compiling generic-array v0.14.7
+   Compiling cpufeatures v0.2.9
+   Compiling crypto-common v0.1.6
+   Compiling block-buffer v0.10.4
+   Compiling digest v0.10.7
+   Compiling sha2 v0.10.7
+   Compiling nessy v0.1.0 (<isolated-audit>)
+warning: field `id` is never read
+  --> src/apu/pulse.rs:17:5
+   |
+16 | pub struct PulseChannel {
+   |            ------------ field in this struct
+17 |     id: PulseChannelId,
+   |     ^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `nessy` (lib) generated 1 warning
+    Finished `release` profile [optimized] target(s) in 1.73s
+     Running `<isolated-audit>/target/release/examples/audit_rom <test-roms>/instr_test-v5/official_only.nes <test-roms>/instr_test-v5/rom_singles/12-jmp_jsr.nes <test-roms>/instr_test-v5/rom_singles/13-rts.nes <test-roms>/instr_test-v5/rom_singles/14-rti.nes <test-roms>/instr_test-v5/rom_singles/15-brk.nes`
+<test-roms>/instr_test-v5/official_only.nes: FAIL 1; cycles=53010433; pc=EC5B; text="00 BRK\n\n15-brk\n\nFailed\n\nWhile running test 15 of 16\n\n\n"
+<test-roms>/instr_test-v5/rom_singles/12-jmp_jsr.nes: PASS; cycles=506880; pc=E444; text="\n12-jmp_jsr\n\nPassed\n"
+<test-roms>/instr_test-v5/rom_singles/13-rts.nes: PASS; cycles=417794; pc=E440; text="\n13-rts\n\nPassed\n"
+<test-roms>/instr_test-v5/rom_singles/14-rti.nes: PASS; cycles=417792; pc=E440; text="\n14-rti\n\nPassed\n"
+<test-roms>/instr_test-v5/rom_singles/15-brk.nes: FAIL 1; cycles=775169; pc=E442; text="00 BRK\n\n15-brk\n\nFailed\n"
+3/5 ROMs passed

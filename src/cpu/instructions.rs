@@ -1,14 +1,11 @@
-use super::memory::Memory;
-use super::opcodes::INST_CYCLES;
 use super::{Status, CPU};
-use crate::bus::Interrupt;
 
 const NMI_VECTOR: u16 = 0xfffa;
 const IRQ_VECTOR: u16 = 0xfffe;
 
 impl CPU {
     pub fn instructions_lut() -> [fn(&mut CPU); 256] {
-        let mut instructions: [fn(&mut CPU); 256] = [CPU::nop; 256];
+        let mut instructions: [fn(&mut CPU); 256] = [CPU::unofficial; 256];
 
         instructions[0x00] = CPU::brk;
         instructions[0xEA] = CPU::nop;
@@ -165,61 +162,94 @@ impl CPU {
         instructions
     }
 
+    /// Execute one instruction, interrupt entry, or DMA transfer, advancing the bus each cycle.
     pub fn step(&mut self) -> u32 {
-        self.instr_cycles = 0;
-
+        let start = self.total_cycles;
         if self.bus.dma_transfer {
-            self.bus.dma_transfer = false;
-            self.stall += 513 + (self.total_cycles & 1);
-        }
-
-        if self.bus.apu.is_stalling_cpu() {
-            return 1;
-        }
-
-        if self.stall > 0 {
-            self.stall -= 1;
-            return 1;
-        }
-
-        match self.bus.pull_interrupt() {
-            Interrupt::None => {}
-            Interrupt::Irq => {
-                if !self.status.contains(Status::INTERRUPT_DISABLE) {
-                    self.irq();
-                }
+            self.dma();
+            return (self.total_cycles.wrapping_sub(start)) as u32;
+        } else if self.jammed {
+            self.read(self.pc);
+        } else if self.nmi_pending || self.irq_pending {
+            let nmi = self.nmi_pending;
+            self.nmi_pending = false;
+            self.irq_pending = false;
+            if nmi {
+                self.nmi_sample = false;
+                self.nmi_previous = false;
             }
-            Interrupt::Nmi => self.nmi(),
+            self.interrupt(if nmi { NMI_VECTOR } else { IRQ_VECTOR });
+            self.irq_pending = false;
+            self.nmi_pending = false;
+            return (self.total_cycles.wrapping_sub(start)) as u32;
+        } else {
+            self.opcode = self.next_byte();
+            if matches!(
+                self.opcode,
+                0xea | 0x0a
+                    | 0x2a
+                    | 0x4a
+                    | 0x6a
+                    | 0x18
+                    | 0x38
+                    | 0x58
+                    | 0x78
+                    | 0xb8
+                    | 0xd8
+                    | 0xf8
+                    | 0x88
+                    | 0xc8
+                    | 0xca
+                    | 0xe8
+                    | 0x8a
+                    | 0x98
+                    | 0x9a
+                    | 0xa8
+                    | 0xaa
+                    | 0xba
+            ) {
+                self.read(self.pc);
+            }
+            self.instructions[self.opcode as usize](self);
         }
-
-        let op_code = self.next_byte();
-        self.instructions[op_code as usize](self);
-
-        let instr_cycles = self.instr_cycles + INST_CYCLES[op_code as usize];
-        self.total_cycles += instr_cycles;
-
-        instr_cycles
+        if self.opcode == 0x00 {
+            self.irq_pending = false;
+            self.nmi_pending = false;
+            return (self.total_cycles.wrapping_sub(start)) as u32;
+        }
+        self.irq_pending = self.irq_previous;
+        self.nmi_pending = self.nmi_sample;
+        (self.total_cycles.wrapping_sub(start)) as u32
     }
 
-    // interrupts
+    fn interrupt(&mut self, vector: u16) {
+        self.read(self.pc);
+        self.read(self.pc);
+        self.push_word(self.pc);
+        self.push((self.status.bits() | 0x20) & !0x10);
+        self.status.insert(Status::INTERRUPT_DISABLE);
+        let vector = if vector == IRQ_VECTOR && self.nmi_sample {
+            self.nmi_sample = false;
+            self.nmi_previous = false;
+            NMI_VECTOR
+        } else {
+            vector
+        };
+        self.pc = self.read_word(vector);
+    }
     fn brk(&mut self) {
+        self.next_byte();
         self.push_word(self.pc);
-        self.php();
-        self.sei();
-        self.pc = self.bus.read_word(IRQ_VECTOR);
-    }
-
-    fn nmi(&mut self) {
-        self.push_word(self.pc);
-        self.php();
-        self.sei();
-        self.pc = self.bus.read_word(NMI_VECTOR);
-        self.instr_cycles += 7;
-    }
-
-    fn irq(&mut self) {
-        self.brk();
-        self.instr_cycles += 7;
+        self.push(self.status.bits() | 0x30);
+        self.status.insert(Status::INTERRUPT_DISABLE);
+        let vector = if self.nmi_sample {
+            self.nmi_sample = false;
+            self.nmi_previous = false;
+            NMI_VECTOR
+        } else {
+            IRQ_VECTOR
+        };
+        self.pc = self.read_word(vector);
     }
 
     // NOP: No Operation
@@ -270,7 +300,7 @@ impl CPU {
 
     fn lda_ind_y(&mut self) {
         let addr = self.indirect_y(true);
-        let a = self.bus.read_byte(addr);
+        let a = self.read(addr);
         self.lda(a);
     }
 
@@ -341,7 +371,7 @@ impl CPU {
     // STA
     fn sta(&mut self, addr: u16) {
         let a = self.a;
-        self.bus.write_byte(addr, a);
+        self.write(addr, a);
     }
 
     fn sta_zp(&mut self) {
@@ -382,7 +412,7 @@ impl CPU {
     // STX
     fn stx(&mut self, addr: u16) {
         let x = self.x;
-        self.bus.write_byte(addr, x);
+        self.write(addr, x);
     }
 
     fn stx_zp(&mut self) {
@@ -403,7 +433,7 @@ impl CPU {
     // STY
     fn sty(&mut self, addr: u16) {
         let y = self.y;
-        self.bus.write_byte(addr, y);
+        self.write(addr, y);
     }
 
     fn sty_zp(&mut self) {
@@ -734,10 +764,11 @@ impl CPU {
     // ASL - Arithmetic Shift Left
 
     fn asl(&mut self, addr: u16) {
-        let mut val = self.bus.read_byte(addr);
+        let mut val = self.read(addr);
+        self.write(addr, val);
         self.status.set(Status::CARRY, val & 128 == 128);
         val <<= 1;
-        self.bus.write_byte(addr, val);
+        self.write(addr, val);
         self.toggle_nz(val);
     }
 
@@ -772,10 +803,11 @@ impl CPU {
     // LSR - Logical Shift Right
 
     fn lsr(&mut self, addr: u16) {
-        let val = self.bus.read_byte(addr);
+        let val = self.read(addr);
+        self.write(addr, val);
         self.status.set(Status::CARRY, val & 1 == 1);
         let val = val >> 1;
-        self.bus.write_byte(addr, val);
+        self.write(addr, val);
         self.toggle_nz(val);
     }
 
@@ -810,9 +842,10 @@ impl CPU {
     // INC - Increment Memory
 
     fn inc(&mut self, addr: u16) {
-        let val = self.bus.read_byte(addr);
+        let val = self.read(addr);
+        self.write(addr, val);
         let val = val.wrapping_add(1);
-        self.bus.write_byte(addr, val);
+        self.write(addr, val);
         self.toggle_nz(val);
     }
 
@@ -857,9 +890,10 @@ impl CPU {
     // DEC - Decrement Memory
 
     fn dec(&mut self, addr: u16) {
-        let val = self.bus.read_byte(addr);
+        let val = self.read(addr);
+        self.write(addr, val);
         let val = if val == 0 { 0xff } else { val - 1 };
-        self.bus.write_byte(addr, val);
+        self.write(addr, val);
         self.toggle_nz(val);
     }
 
@@ -922,26 +956,30 @@ impl CPU {
 
         let addr = self.next_word();
         let addr = if addr & 0x00ff == 0xff {
-            let lo = self.bus.read_byte(addr);
-            let hi = self.bus.read_byte(addr & 0xff00);
+            let lo = self.read(addr);
+            let hi = self.read(addr & 0xff00);
             (hi as u16) << 8 | (lo as u16)
         } else {
-            self.bus.read_word(addr)
+            self.read_word(addr)
         };
 
         self.jmp(addr);
     }
 
     fn branch_rel(&mut self) {
+        let irq = self.irq_sample;
+        let nmi = self.nmi_sample;
         let rel: i8 = self.next_byte() as i8;
         let jump_addr = self.pc.wrapping_add(rel as u16);
         let prev_pc = self.pc;
-        self.pc = jump_addr;
-        self.instr_cycles += 1;
-
+        self.read(prev_pc);
         if self.page_crossed(prev_pc, jump_addr) {
-            self.instr_cycles += 1;
+            self.read((prev_pc & 0xff00) | (jump_addr & 0xff));
+        } else {
+            self.irq_previous = irq;
+            self.nmi_previous = nmi;
         }
+        self.pc = jump_addr;
     }
 
     // BCS - Branch if Carry Clear
@@ -950,7 +988,7 @@ impl CPU {
         if !self.status.contains(Status::CARRY) {
             self.branch_rel();
         } else {
-            self.pc += 1;
+            self.next_byte();
         }
     }
 
@@ -960,7 +998,7 @@ impl CPU {
         if self.status.contains(Status::CARRY) {
             self.branch_rel();
         } else {
-            self.pc += 1;
+            self.next_byte();
         }
     }
 
@@ -970,7 +1008,7 @@ impl CPU {
         if self.status.contains(Status::ZERO) {
             self.branch_rel();
         } else {
-            self.pc += 1;
+            self.next_byte();
         }
     }
 
@@ -980,7 +1018,7 @@ impl CPU {
         if !self.status.contains(Status::ZERO) {
             self.branch_rel();
         } else {
-            self.pc += 1;
+            self.next_byte();
         }
     }
 
@@ -990,7 +1028,7 @@ impl CPU {
         if !self.status.contains(Status::NEGATIVE) {
             self.branch_rel();
         } else {
-            self.pc += 1;
+            self.next_byte();
         }
     }
 
@@ -1000,7 +1038,7 @@ impl CPU {
         if self.status.contains(Status::NEGATIVE) {
             self.branch_rel();
         } else {
-            self.pc += 1;
+            self.next_byte();
         }
     }
 
@@ -1010,7 +1048,7 @@ impl CPU {
         if !self.status.contains(Status::OVERFLOW) {
             self.branch_rel();
         } else {
-            self.pc += 1;
+            self.next_byte();
         }
     }
 
@@ -1020,7 +1058,7 @@ impl CPU {
         if self.status.contains(Status::OVERFLOW) {
             self.branch_rel();
         } else {
-            self.pc += 1;
+            self.next_byte();
         }
     }
 
@@ -1165,6 +1203,7 @@ impl CPU {
     // PHA - Push Accumulator
 
     fn pha(&mut self) {
+        self.read(self.pc);
         let a = self.a;
         self.push(a);
     }
@@ -1172,6 +1211,8 @@ impl CPU {
     // PLA - Pull Accumulator
 
     fn pla(&mut self) {
+        self.read(self.pc);
+        self.read(0x100 + self.sp as u16);
         let a = self.pull();
         self.a = a;
         self.toggle_nz(a);
@@ -1180,6 +1221,7 @@ impl CPU {
     // PHP - Push Processor Status
 
     fn php(&mut self) {
+        self.read(self.pc);
         // set the break flags
         let status_flags = self.status.bits() | Status::BREAK1.bits() | Status::BREAK2.bits();
         self.push(status_flags);
@@ -1187,6 +1229,8 @@ impl CPU {
 
     // PLP - Pull Processor Status
     fn plp(&mut self) {
+        self.read(self.pc);
+        self.read(0x100 + self.sp as u16);
         let mut flags = self.pull();
         flags &= 0b11101111;
         flags |= 0b00100000;
@@ -1196,22 +1240,24 @@ impl CPU {
     // JSR - Jump to Subroutine
 
     fn jsr(&mut self) {
-        let ret_addr = self.pc + 1;
-        self.push_word(ret_addr);
-        let target_addr = self.absolute();
-        self.pc = target_addr;
+        let lo = self.next_byte() as u16;
+        self.read(0x100 + self.sp as u16);
+        self.push_word(self.pc);
+        let hi = self.next_byte() as u16;
+        self.pc = lo | hi << 8;
     }
-
-    // RTS - Return from Subroutine
-
     fn rts(&mut self) {
-        self.pc = self.pull_word() + 1;
+        self.read(self.pc);
+        self.read(0x100 + self.sp as u16);
+        let addr = self.pull_word();
+        self.read(addr);
+        self.pc = addr.wrapping_add(1);
     }
-
-    // RTI - Return from Interrupt
-
     fn rti(&mut self) {
-        self.plp();
+        self.read(self.pc);
+        self.read(0x100 + self.sp as u16);
+        let flags = self.pull();
+        self.status.update((flags & !0x10) | 0x20);
         self.pc = self.pull_word();
     }
 
@@ -1237,7 +1283,8 @@ impl CPU {
     // ROL - Rotate Left
 
     fn rol(&mut self, addr: u16) {
-        let mut val = self.bus.read_byte(addr);
+        let mut val = self.read(addr);
+        self.write(addr, val);
         let next_carry = (val >> 7) == 1;
         val <<= 1;
         val |= if self.status.contains(Status::CARRY) {
@@ -1246,7 +1293,7 @@ impl CPU {
             0
         };
         self.status.set(Status::CARRY, next_carry);
-        self.bus.write_byte(addr, val);
+        self.write(addr, val);
         self.toggle_nz(val);
     }
 
@@ -1287,7 +1334,8 @@ impl CPU {
     // ROR - Rotate Right
 
     fn ror(&mut self, addr: u16) {
-        let mut val = self.bus.read_byte(addr);
+        let mut val = self.read(addr);
+        self.write(addr, val);
         let old_carry = self.status.contains(Status::CARRY);
         self.status.set(Status::CARRY, val & 1 == 1);
 
@@ -1297,7 +1345,7 @@ impl CPU {
             val |= 1 << 7;
         }
 
-        self.bus.write_byte(addr, val);
+        self.write(addr, val);
         self.toggle_nz(val);
     }
 
@@ -1334,5 +1382,181 @@ impl CPU {
     fn ror_abs_x(&mut self) {
         let addr = self.absolute_x(false);
         self.ror(addr);
+    }
+    fn unofficial(&mut self) {
+        let op = self.opcode;
+        match op {
+            0x02 | 0x12 | 0x22 | 0x32 | 0x42 | 0x52 | 0x62 | 0x72 | 0x92 | 0xb2 | 0xd2 | 0xf2 => {
+                self.read(self.pc);
+                self.jammed = true;
+            }
+            0x1a | 0x3a | 0x5a | 0x7a | 0xda | 0xfa => {
+                self.read(self.pc);
+            }
+            0x80 | 0x82 | 0x89 | 0xc2 | 0xe2 => {
+                self.next_byte();
+            }
+            0x04 | 0x44 | 0x64 => {
+                self.zero_page_val();
+            }
+            0x14 | 0x34 | 0x54 | 0x74 | 0xd4 | 0xf4 => {
+                self.zero_page_x_val();
+            }
+            0x0c => {
+                self.absolute_val();
+            }
+            0x1c | 0x3c | 0x5c | 0x7c | 0xdc | 0xfc => {
+                self.absolute_x_val(true);
+            }
+            0xeb => {
+                let v = self.next_byte();
+                self.sbc(v);
+            }
+            0x0b | 0x2b => {
+                let v = self.next_byte();
+                self.and(v);
+                self.status.set(Status::CARRY, self.a & 0x80 != 0);
+            }
+            0x4b => {
+                let v = self.next_byte();
+                self.and(v);
+                self.lsr_acc();
+            }
+            0x6b => {
+                let v = self.next_byte();
+                self.a &= v;
+                self.a = (self.a >> 1)
+                    | if self.status.contains(Status::CARRY) {
+                        0x80
+                    } else {
+                        0
+                    };
+                self.toggle_nz(self.a);
+                self.status.set(Status::CARRY, self.a & 0x40 != 0);
+                self.status
+                    .set(Status::OVERFLOW, ((self.a >> 6) ^ (self.a >> 5)) & 1 != 0);
+            }
+            0x8b => {
+                let v = self.next_byte();
+                self.lda((self.a | 0xee) & self.x & v);
+            }
+            0xab => {
+                let v = self.next_byte();
+                // Deterministic LAX-immediate model used by the instruction suite.
+                // Analog-sensitive XAA/LXA behavior varies between physical CPUs.
+                self.lda(v);
+                self.x = self.a;
+            }
+            0xcb => {
+                let v = self.next_byte();
+                let x = self.a & self.x;
+                self.status.set(Status::CARRY, x >= v);
+                self.x = x.wrapping_sub(v);
+                self.toggle_nz(self.x);
+            }
+            0xa3 | 0xa7 | 0xaf | 0xb3 | 0xb7 | 0xbf | 0xbb => {
+                let v = match op {
+                    0xa3 => self.indirect_x_val(),
+                    0xa7 => self.zero_page_val(),
+                    0xaf => self.absolute_val(),
+                    0xb3 => self.indirect_y_val(true),
+                    0xb7 => self.zero_page_y_val(),
+                    _ => self.absolute_y_val(true),
+                };
+                let v = if op == 0xbb {
+                    self.sp &= v;
+                    self.sp
+                } else {
+                    v
+                };
+                self.lda(v);
+                self.x = v;
+            }
+            0x83 | 0x87 | 0x8f | 0x97 => {
+                let addr = match op {
+                    0x83 => self.indirect_x(),
+                    0x87 => self.zero_page() as u16,
+                    0x8f => self.absolute(),
+                    _ => self.zero_page_y(),
+                };
+                self.write(addr, self.a & self.x);
+            }
+            0x93 | 0x9f | 0x9b | 0x9c | 0x9e => {
+                let (base, index) = if op == 0x93 {
+                    let zp = self.next_byte();
+                    let lo = self.read(zp as u16);
+                    let hi = self.read(zp.wrapping_add(1) as u16);
+                    ((hi as u16) << 8 | lo as u16, self.y)
+                } else {
+                    (self.next_word(), if op == 0x9c { self.x } else { self.y })
+                };
+                let mut addr = base.wrapping_add(index as u16);
+                self.read((base & 0xff00) | (addr & 0xff));
+                let value = match op {
+                    0x9c => self.y,
+                    0x9e => self.x,
+                    0x9b => {
+                        self.sp = self.a & self.x;
+                        self.sp
+                    }
+                    _ => self.a & self.x,
+                } & ((base >> 8) as u8).wrapping_add(1);
+                if self.page_crossed(base, addr) {
+                    addr = (value as u16) << 8 | (addr & 0xff);
+                }
+                self.write(addr, value);
+            }
+            _ => {
+                let addr = match op & 0x1f {
+                    0x03 => self.indirect_x(),
+                    0x07 => self.zero_page() as u16,
+                    0x0f => self.absolute(),
+                    0x13 => self.indirect_y(false),
+                    0x17 => self.zero_page_x(),
+                    0x1b => self.absolute_y(false),
+                    0x1f => self.absolute_x(false),
+                    _ => unreachable!("unhandled opcode {op:02x}"),
+                };
+                let old = self.read(addr);
+                self.write(addr, old);
+                let value = match op >> 5 {
+                    0 => {
+                        self.status.set(Status::CARRY, old & 0x80 != 0);
+                        old << 1
+                    }
+                    1 => {
+                        let carry = self.status.contains(Status::CARRY) as u8;
+                        self.status.set(Status::CARRY, old & 0x80 != 0);
+                        old << 1 | carry
+                    }
+                    2 => {
+                        self.status.set(Status::CARRY, old & 1 != 0);
+                        old >> 1
+                    }
+                    3 => {
+                        let carry = if self.status.contains(Status::CARRY) {
+                            0x80
+                        } else {
+                            0
+                        };
+                        self.status.set(Status::CARRY, old & 1 != 0);
+                        old >> 1 | carry
+                    }
+                    6 => old.wrapping_sub(1),
+                    7 => old.wrapping_add(1),
+                    _ => unreachable!(),
+                };
+                self.write(addr, value);
+                match op >> 5 {
+                    0 => self.ora(value),
+                    1 => self.and(value),
+                    2 => self.eor(value),
+                    3 => self.adc(value),
+                    6 => self.cmp(value),
+                    7 => self.sbc(value),
+                    _ => unreachable!(),
+                }
+            }
+        }
     }
 }

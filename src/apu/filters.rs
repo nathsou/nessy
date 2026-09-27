@@ -43,3 +43,5 @@ impl Filter {
         y
     }
 }
+
+crate::savestate::state_fields!(Filter, b0, b1, a1, prev_x, prev_y);

@@ -18,23 +18,37 @@ pub struct DeltaModulationChannel {
     silence_flag: bool,
     output_bits_remaining: u8,
     irq_enabled: bool,
-    pub cpu_stall: u32,
+    sample_buffer: Option<u8>,
+    read_pending: bool,
     pub memory_read_request: Option<u16>,
     timer: Timer,
 }
 
 impl DeltaModulationChannel {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            silence_flag: true,
+            output_bits_remaining: 8,
+            sample_addr: 0xc000,
+            sample_len: 1,
+            timer: Timer {
+                counter: 427,
+                period: 427,
+            },
+            ..Self::default()
+        }
     }
 
     pub fn write(&mut self, addr: u16, val: u8) {
         match addr {
             0x4010 => {
                 self.irq_enabled = val & 0b1000_0000 != 0;
+                if !self.irq_enabled {
+                    self.interrupt_flag = false;
+                }
                 self.loop_flag = val & 0b0100_0000 != 0;
                 let rate_index = (val & 0b1111) as usize;
-                self.timer.period = DELTA_MODULATION_RATES[rate_index];
+                self.timer.period = DELTA_MODULATION_RATES[rate_index] - 1;
             }
             0x4011 => {
                 self.output_level = val & 0b0111_1111;
@@ -50,20 +64,29 @@ impl DeltaModulationChannel {
     }
 
     pub fn step_timer(&mut self) {
-        if self.enabled {
-            self.step_reader();
-
-            if self.memory_read_request.is_none() && self.timer.step() {
-                self.step_shifter();
-            }
-        }
-    }
-
-    pub fn set_memory_read_response(&mut self, val: u8) {
-        self.shift_register = val;
-
+        self.step_reader();
         if self.timer.step() {
             self.step_shifter();
+        }
+    }
+    pub fn set_memory_read_response(&mut self, val: u8) {
+        self.read_pending = false;
+        self.sample_buffer = Some(val);
+        if self.bytes_remaining == 0 {
+            return;
+        }
+        self.current_addr = if self.current_addr == 0xffff {
+            0x8000
+        } else {
+            self.current_addr + 1
+        };
+        self.bytes_remaining -= 1;
+        if self.bytes_remaining == 0 {
+            if self.loop_flag {
+                self.restart();
+            } else if self.irq_enabled {
+                self.interrupt_flag = true;
+            }
         }
     }
 
@@ -73,49 +96,31 @@ impl DeltaModulationChannel {
     }
 
     fn step_reader(&mut self) {
-        if self.output_bits_remaining == 0 && self.bytes_remaining > 0 {
-            // TODO: the stall duration varies depending on the timing of the read
-            self.cpu_stall += 4;
-
-            // the bus will update the shift register with the read value right after the apu.step() call
-            // ideally we would have: self.shift_register = bus.read_word(self.current_addr);
+        if self.sample_buffer.is_none() && !self.read_pending && self.bytes_remaining > 0 {
             self.memory_read_request = Some(self.current_addr);
-
-            self.output_bits_remaining = 8;
-            self.current_addr = match self.current_addr {
-                0xFFFF => 0x8000,
-                _ => self.current_addr + 1,
-            };
-
-            self.bytes_remaining -= 1;
-
-            if self.bytes_remaining == 0 && self.loop_flag {
-                self.restart();
-            } else if self.bytes_remaining == 0 && self.interrupt_flag {
-                self.interrupt_flag = true;
-            }
+            self.read_pending = true;
         }
     }
-
     fn step_shifter(&mut self) {
-        if self.output_bits_remaining != 0 {
-            if !self.silence_flag {
-                match self.shift_register & 1 {
-                    1 => {
-                        if self.output_level <= 125 {
-                            self.output_level += 2
-                        }
-                    }
-                    _ => {
-                        if self.output_level >= 2 {
-                            self.output_level -= 2
-                        }
-                    }
-                };
+        if !self.silence_flag {
+            if self.shift_register & 1 != 0 {
+                if self.output_level <= 125 {
+                    self.output_level += 2;
+                }
+            } else if self.output_level >= 2 {
+                self.output_level -= 2;
             }
-
-            self.shift_register >>= 1;
-            self.output_bits_remaining -= 1;
+        }
+        self.shift_register >>= 1;
+        self.output_bits_remaining -= 1;
+        if self.output_bits_remaining == 0 {
+            self.output_bits_remaining = 8;
+            if let Some(value) = self.sample_buffer.take() {
+                self.shift_register = value;
+                self.silence_flag = false;
+            } else {
+                self.silence_flag = true;
+            }
         }
     }
 
@@ -139,5 +144,31 @@ impl DeltaModulationChannel {
 
     pub fn output(&self) -> u8 {
         self.output_level
+    }
+}
+
+crate::savestate::state_fields!(
+    DeltaModulationChannel,
+    enabled,
+    interrupt_flag,
+    loop_flag,
+    output_level,
+    sample_addr,
+    sample_len,
+    current_addr,
+    bytes_remaining,
+    shift_register,
+    silence_flag,
+    output_bits_remaining,
+    irq_enabled,
+    sample_buffer,
+    read_pending,
+    memory_read_request,
+    timer
+);
+
+impl DeltaModulationChannel {
+    pub(super) fn valid(&self) -> bool {
+        self.output_level <= 127 && (1..=8).contains(&self.output_bits_remaining)
     }
 }

@@ -8,17 +8,6 @@ import { createUI } from './ui/ui';
 
 const WIDTH = 256; // px
 const HEIGHT = 240; // px
-type SyncMode = 0 | 1 | 2;
-const SYNC_VIDEO: SyncMode = 0;
-const SYNC_AUDIO: SyncMode = 1;
-const SYNC_BOTH: SyncMode = 2;
-
-const AUDIO_BUFFER_SIZE_MAPPING = {
-    [SYNC_VIDEO]: 1024,
-    [SYNC_AUDIO]: 512,
-    [SYNC_BOTH]: 1024,
-};
-
 const SCALING_MODE_MAPPING: Record<StoreData['scalingMode'], HTMLCanvasElement['style']['imageRendering']> = {
     pixelated: 'pixelated',
     blurry: 'auto',
@@ -29,12 +18,11 @@ async function setup() {
     Nes.initPanicHook();
     const store = await createStore();
     const ui = createUI(store);
-    const syncMode = SYNC_BOTH;
-    const audioBufferSize = AUDIO_BUFFER_SIZE_MAPPING[syncMode];
-    const avoidUnderruns = syncMode === SYNC_BOTH;
+    const audioBufferSize = 512;
     const canvas = document.querySelector<HTMLCanvasElement>('#screen')!;
     const renderer = createWebglRenderer(canvas);
     let nes: Nes;
+    let activeRom: Uint8Array;
     const controller = createController(store);
     const frame = new Uint8Array(WIDTH * HEIGHT * 3);
     const audioCtx = new AudioContext();
@@ -95,6 +83,7 @@ async function setup() {
     });
 
     window.addEventListener('blur', () => {
+        controller.releaseAll();
         if (!ui.visible) {
             hooks.call('toggleUI');
         }
@@ -102,39 +91,18 @@ async function setup() {
 
     // TODO: use an AudioWorkletNode
     const scriptProcessor = audioCtx.createScriptProcessor(audioBufferSize, 0, 1);
-    scriptProcessor.onaudioprocess = ((): ScriptProcessorNode['onaudioprocess'] => {
-        if (syncMode === SYNC_AUDIO) {
-            return (event: AudioProcessingEvent) => {
-                if (!ui.visible) {
-                    const channel = event.outputBuffer.getChannelData(0);
-
-                    if (nes !== undefined) {
-                        const newFrameReady = nes.nextSamples(channel);
-
-                        if (newFrameReady) {
-                            nes.fillFrameBuffer(frame);
-                            renderer.render(frame);
-                        }
-                    }
-                }
-            };
-        } else {
-            return (event: AudioProcessingEvent) => {
-                if (!ui.visible) {
-                    const channel = event.outputBuffer.getChannelData(0);
-                    nes.fillAudioBuffer(channel, avoidUnderruns);
-                }
-            };
+    // Audio consumption is the only emulation clock; display refresh never advances the CPU.
+    scriptProcessor.onaudioprocess = event => {
+        const channel = event.outputBuffer.getChannelData(0);
+        channel.fill(0);
+        if (!ui.visible && nes !== undefined && nes.nextSamples(channel)) {
+            nes.fillFrameBuffer(frame);
         }
-    })();
+    };
 
     scriptProcessor.connect(audioCtx.destination);
 
-    hooks.register('input', (action, pressed) => {
-        if (pressed) {
-            ui.onAction(action);
-        }
-    });
+    hooks.register('input', action => { ui.onAction(action); });
 
     const onKeyDown = (event: KeyboardEvent) => {
         const capturedByUI = ui.onKeyDown(event.key);
@@ -156,7 +124,10 @@ async function setup() {
     window.addEventListener('gamepaddisconnected', controller.onGamepadDisconnected);
 
     function updateROM(rom: Uint8Array): void {
-        nes = Nes.new(rom, audioCtx.sampleRate);
+        const next = Nes.new(rom, audioCtx.sampleRate);
+        nes?.free();
+        nes = next;
+        activeRom = rom.slice();
         frame.fill(0);
     }
 
@@ -220,10 +191,17 @@ async function setup() {
     });
 
     function renderState(state: Uint8Array, buffer: Uint8Array): void {
-        const prevState = nes.saveState();
-        nes.loadState(state);
-        nes.nextFrame(buffer);
-        nes.loadState(prevState);
+        const preview = Nes.new(activeRom, audioCtx.sampleRate);
+        try {
+            preview.loadState(state);
+            preview.nextFrame(buffer);
+        } catch (error) {
+            // Older save formats remain in the library, but cannot provide a preview.
+            console.warn('Could not render saved preview:', error);
+            buffer.fill(0);
+        } finally {
+            preview.free();
+        }
     }
 
     hooks.register('setBackground', async payload => {
@@ -262,11 +240,13 @@ async function setup() {
             await loadROM(store.ref.rom);
 
             if (nes && store.ref.lastState != null) {
-                nes.loadState(store.ref.lastState);
-                nes.nextFrame(backgroundFrame);
-                nes.loadState(store.ref.lastState);
-
-                hooks.call('setBackground', { mode: 'current' });
+                try {
+                    nes.loadState(store.ref.lastState);
+                    renderState(store.ref.lastState, backgroundFrame);
+                    hooks.call('setBackground', { mode: 'current' });
+                } catch (error) {
+                    ui.alert({ text: `Could not resume the saved game: ${error}. Starting a new game.`, type: 'error', frames: 300 });
+                }
             }
         }
 
@@ -283,9 +263,11 @@ async function setup() {
             if (titleScreen == null) {
                 const titleScreenNes = Nes.new(rom.data, audioCtx.sampleRate);
 
-                // Generate the screenshot after 2 seconds
-                for (let i = 0; i < 120; i++) {
-                    titleScreenNes.nextFrame(titleScreenFrame);
+                try {
+                    // Generate the screenshot after 2 seconds.
+                    for (let i = 0; i < 120; i++) titleScreenNes.nextFrame(titleScreenFrame);
+                } finally {
+                    titleScreenNes.free();
                 }
 
                 await store.db.titleScreen.insert(hash, titleScreenFrame);
@@ -334,10 +316,7 @@ async function setup() {
             ui.render(frame);
             renderer.render(frame);
         } else if (nes !== undefined) {
-            if (syncMode !== SYNC_AUDIO) {
-                nes.nextFrame(frame);
-                renderer.render(frame);
-            }
+            renderer.render(frame);
         }
     }
 

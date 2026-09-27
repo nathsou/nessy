@@ -7,12 +7,16 @@ use super::Mapper;
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct NROM {
-    ram: [u8; 2048],
+    ram: [u8; 0x2000],
+    chr_ram: [u8; 0x2000],
 }
 
 impl NROM {
     pub fn new() -> Self {
-        NROM { ram: [0; 2048] }
+        NROM {
+            ram: [0; 0x2000],
+            chr_ram: [0; 0x2000],
+        }
     }
 }
 
@@ -30,10 +34,13 @@ impl Mapper for NROM {
     fn read(&mut self, cart: &mut Cart, addr: u16) -> u8 {
         match addr {
             0x0000..=0x1FFF => {
+                if cart.chr_rom_size == 0 {
+                    return self.chr_ram[addr as usize];
+                }
                 let addr = cart.chr_rom_start + addr as usize;
                 cart.bytes[addr]
             }
-            0x6000..=0x7FFF => self.ram[((addr - 0x6000) & 0x7FF) as usize],
+            0x6000..=0x7FFF => self.ram[((addr - 0x6000) & 0x1FFF) as usize],
             0x8000..=0xFFFF => {
                 let addr = mirrored_addr(cart, addr);
                 cart.bytes[addr]
@@ -42,10 +49,12 @@ impl Mapper for NROM {
         }
     }
 
-    fn write(&mut self, _: &mut Cart, addr: u16, val: u8) {
+    fn write(&mut self, cart: &mut Cart, addr: u16, val: u8) {
         match addr {
             0x0000..=0x1FFF => {
-                // panic!("Attempted to write to CHR ROM on NROM mapper");
+                if cart.chr_rom_size == 0 {
+                    self.chr_ram[addr as usize] = val;
+                }
             }
             0x6000..=0x7FFF => {
                 self.ram[(addr - 0x6000) as usize] = val;
@@ -64,13 +73,21 @@ impl savestate::Save for NROM {
         let s = parent.create_child(NROM_SECTION_NAME);
 
         s.data.write_u8_slice(&self.ram);
+        s.data.write_u8_slice(&self.chr_ram);
     }
 
     fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
         let s = parent.get(NROM_SECTION_NAME)?;
 
         s.data.read_u8_slice(&mut self.ram)?;
+        s.data.read_u8_slice(&mut self.chr_ram)?;
 
         Ok(())
+    }
+}
+
+impl Default for NROM {
+    fn default() -> Self {
+        Self::new()
     }
 }

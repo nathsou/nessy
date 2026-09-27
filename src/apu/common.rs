@@ -92,3 +92,24 @@ impl Envelope {
         }
     }
 }
+
+crate::savestate::state_fields!(Timer, counter, period);
+
+crate::savestate::state_fields!(LengthCounter, enabled, counter);
+
+crate::savestate::state_fields!(
+    Envelope,
+    constant_mode,
+    looping,
+    start,
+    constant_volume,
+    period,
+    divider,
+    decay
+);
+
+impl Envelope {
+    pub(super) fn valid(&self) -> bool {
+        self.decay <= 15 && self.constant_volume <= 15
+    }
+}

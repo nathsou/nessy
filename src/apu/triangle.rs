@@ -27,6 +27,7 @@ impl TriangleChannel {
         match addr {
             0x4008 => {
                 self.control_flag = val & 0b1000_0000 != 0;
+                self.length_counter.set_enabled(!self.control_flag);
                 self.counter_reload = val & 0b0111_1111;
             }
             0x400A => {
@@ -35,7 +36,9 @@ impl TriangleChannel {
             0x400B => {
                 self.timer.period = (self.timer.period & 0x00FF) | (((val & 0b111) as u16) << 8);
                 self.timer.counter = self.timer.period;
-                self.length_counter.set(val >> 3);
+                if self.enabled {
+                    self.length_counter.set(val >> 3);
+                }
                 self.linear_counter_reload = true;
             }
             _ => {}
@@ -77,14 +80,24 @@ impl TriangleChannel {
     }
 
     pub fn output(&self) -> u8 {
-        if !self.enabled
-            || self.length_counter.is_zero()
-            || self.linear_counter == 0
-            || self.timer.period <= 2
-        {
-            0
-        } else {
-            SEQUENCER_LOOKUP[self.duty_cycle as usize]
-        }
+        SEQUENCER_LOOKUP[self.duty_cycle as usize]
+    }
+}
+
+crate::savestate::state_fields!(
+    TriangleChannel,
+    enabled,
+    control_flag,
+    counter_reload,
+    linear_counter,
+    linear_counter_reload,
+    duty_cycle,
+    timer,
+    length_counter
+);
+
+impl TriangleChannel {
+    pub(super) fn valid(&self) -> bool {
+        self.duty_cycle < 32
     }
 }

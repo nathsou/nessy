@@ -15,8 +15,7 @@ impl Nes {
     }
 
     pub fn step(&mut self) {
-        let cpu_cycles = self.cpu.step();
-        self.cpu.bus.advance(cpu_cycles);
+        self.cpu.step();
     }
 
     #[inline]
@@ -126,8 +125,13 @@ impl Nes {
             });
         }
 
-        self.load(state.get_root_mut())?;
-
+        let mut previous = self.save_state();
+        if let Err(error) = self.load(state.get_root_mut()) {
+            // Restore the complete, locally generated state if any section is invalid.
+            self.load(previous.get_root_mut())
+                .expect("restoring a generated state");
+            return Err(error);
+        }
         Ok(())
     }
 }

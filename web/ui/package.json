@@ -10,7 +10,7 @@
     "nessy.d.ts"
   ],
   "scripts": {
-    "wasm": "wasm-pack build ../ --release --target web",
+    "wasm": "wasm-pack build ../ --release --target web --locked",
     "copy": "mkdir -p ./public && rm -rf ./public/wasm && cp -rf ../pkg ./public/wasm",
     "dev": "npm run wasm && npm run copy && vite",
     "build": "vite build --base=/nessy/"

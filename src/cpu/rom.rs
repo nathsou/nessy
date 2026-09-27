@@ -34,7 +34,7 @@ pub enum RomError {
     UnsupportedMapper(u8),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Mirroring {
     Horizontal,
     Vertical,
@@ -45,7 +45,7 @@ pub enum Mirroring {
 
 impl ROM {
     pub fn new(bytes: Vec<u8>) -> Result<ROM, RomError> {
-        if bytes[0] != 78 || bytes[1] != 69 || bytes[2] != 83 || bytes[3] != 26 {
+        if bytes.len() < 16 || &bytes[..4] != b"NES\x1a" || bytes[7] & 0x0c != 0 || bytes[4] == 0 {
             return Err(RomError::InvalidiNesHeader);
         }
 
@@ -68,6 +68,9 @@ impl ROM {
         let chr_rom_size = bytes[5];
         let prg_rom_start = 16 + if trainer { 512 } else { 0 };
         let chr_rom_start = prg_rom_start + (prg_rom_size as usize) * PRG_ROM_PAGE_SIZE;
+        if bytes.len() < chr_rom_start + chr_rom_size as usize * 0x2000 {
+            return Err(RomError::InvalidiNesHeader);
+        }
         let cart = Cart {
             bytes,
             hash,

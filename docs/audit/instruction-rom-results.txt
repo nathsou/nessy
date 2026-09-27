@@ -1,0 +1,16 @@
+<test-roms>/instr_test-v5/official_only.nes: FAIL 1; cycles=2174976; pc=EC5B; text="\nInterrupts could not be disabled\n\n01-basics\n\nFailed #2\n\nWhile running test 1 of 16\n\n\n"
+<test-roms>/instr_test-v5/rom_singles/12-jmp_jsr.nes: FAIL 1; cycles=447490; pc=E8AE; text="4C JMP\n20 JSR\n\n12-jmp_jsr\n\nFailed\n"
+<test-roms>/instr_test-v5/rom_singles/13-rts.nes: FAIL 1; cycles=388096; pc=E444; text="60 RTS\n\n13-rts\n\nFailed\n"
+<test-roms>/instr_test-v5/rom_singles/14-rti.nes: FAIL 1; cycles=388096; pc=E442; text="40 RTI\n\n14-rti\n\nFailed\n"
+<test-roms>/instr_test-v5/rom_singles/15-brk.nes: FAIL 1; cycles=775169; pc=E440; text="00 BRK\n\n15-brk\n\nFailed\n"
+<test-roms>/instr_test-v5/rom_singles/16-special.nes: FAIL 6; cycles=480256; pc=E841; text="\nBRK should push address BRK + 2\n\n16-special\n\nFailed #6\n"
+
+thread 'main' panicked at src/cpu/mappers/nrom.rs:51:17:
+index out of bounds: the len is 2048 but the index is 5082
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+<test-roms>/cpu_dummy_writes/cpu_dummy_writes_oam.nes: PANIC; cycles=5526008; pc=0424; text="\u{1b}[0;37mTEST: cpu_dummy_writes_oam\n\u{1b}[0;33mThis program verifies that the\nCPU does 2x writes properly.\nAny read-modify-write opcode\nshould first write the origi-\nnal value; then the calculated\nvalue exactly 1 cycle later.\n\nRequirement: OAM memory reads\nMUST be reliable. This is\noften the case on emulators,\nbut NOT on the real NES.\nNevertheless, this test can be\nused to see if the CPU in the\nemulator is built properly.\n\n\u{1b}[0;37m\u{1b}[0;37mTesting OAM.  The screen will go blank for a moment now.\n\u{1b}[0;37mOK; \u{1b}[0;37mVerifying opcodes...\n\u{1b}[0;37m0E\u{1b}[0;37m2E\u{1b}[0;37m4E\u{1b}[0;37m6E\u{1b}[0;37mCE\u{1b}[0;37mEE \u{1b}[0;37m1E\u{1b}[0;37m3E\u{1b}[0;37m5E\u{1b}[0;37m7E\u{1b}[0;37mDE\u{1b}[0;37mFE \u{1b}[0;37m*12\n"
+
+thread 'main' panicked at src/ppu/mod.rs:600:23:
+PPU status register is read-only
+<test-roms>/cpu_dummy_writes/cpu_dummy_writes_ppumem.nes: PANIC; cycles=693675; pc=EDC4; text="\u{1b}[0;37mTEST: cpu_dummy_writes_ppumem\n\u{1b}[0;33mThis program verifies that the\nCPU does 2x writes properly.\nAny read-modify-write opcode\nshould first write the origi-\nnal value; then the calculated\nvalue exactly 1 cycle later.\n\n\u{1b}[0;37mVerifying open bus behavior.\n\u{1b}[0;33m      W- W- WR W- W- W- W- WR\n2000+ 0  1  2  3  4  5  6  7 \n\u{1b}[0;33m  R0:\u{1b}[1;34m \u{1b}[0;37mF\u{1b}[1;34m- \u{1b}[0;37mF\u{1b}[1;34m- "
+0/8 ROMs passed

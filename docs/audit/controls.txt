@@ -1,0 +1,19 @@
+FAIL F02: restored bindings update serialized preferences: Expected values to be strictly equal:
+
+'w' !== 'z'
+
+FAIL F02: restored bindings remove old keys: Expected values to be strictly equal:
+
+true !== false
+
+FAIL F03: releasing a negative axis clears its button: Expected values to be strictly equal:
+
+64 !== 0
+
+FAIL F03: disconnect clears held gamepad buttons: Expected values to be strictly equal:
+
+2 !== 0
+
+4/4 known defects reproduced
+(node:65490) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
