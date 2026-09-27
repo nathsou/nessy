@@ -33,6 +33,9 @@ struct SpriteData {
     x: u16,
     idx: u8,
     chr: [u8; 8],
+    pattern_addr: u16,
+    flip: bool,
+    low: u8,
     palette_idx: u8,
     behind_background: bool,
 }
@@ -42,16 +45,25 @@ pub struct PPU {
     pub rom: ROM,
     regs: Registers,
     open_bus: u8,
-    vram: [u8; 2 * 1024],
+    vram: [u8; 4 * 1024],
     palette: [u8; 32],
     attributes: [u8; 64 * 4],
+    secondary_oam: [u8; 32],
+    secondary_indices: [u8; 8],
+    eval_n: u8,
+    eval_m: u8,
+    eval_count: u8,
+    eval_data: u8,
     pub cycle: u16,
+    clock: u64,
+    skip_rendering: bool,
+    suppress_vblank: bool,
     scanline: u16,
     frame: u64,
     data_buffer: u8,
     nmi_triggered: bool,
     nmi_edge_detector: bool,
-    should_trigger_nmi: bool,
+    should_trigger_nmi: u8,
     pub frame_complete: bool,
     tile_data: u64,
     nametable_byte: u8,
@@ -70,15 +82,24 @@ impl PPU {
             rom,
             regs: Registers::new(),
             open_bus: 0,
-            vram: [0; 2 * 1024],
+            vram: [0; 4 * 1024],
             palette: [0; 32],
             attributes: [0; 64 * 4],
+            secondary_oam: [0xff; 32],
+            secondary_indices: [0; 8],
+            eval_n: 0,
+            eval_m: 0,
+            eval_count: 0,
+            eval_data: 0xff,
             cycle: 0,
+            clock: 0,
+            skip_rendering: false,
+            suppress_vblank: false,
             scanline: 0,
             frame: 0,
             data_buffer: 0,
             nmi_triggered: false,
-            should_trigger_nmi: false,
+            should_trigger_nmi: 0,
             nmi_edge_detector: false,
             frame_complete: false,
             // background data
@@ -93,6 +114,9 @@ impl PPU {
                 palette_idx: 0,
                 behind_background: false,
                 chr: [0; 8],
+                pattern_addr: 0,
+                flip: false,
+                low: 0,
             }; 8],
             visible_sprites_count: 0,
             frame_buffer: [0; WIDTH * HEIGHT * 3],
@@ -104,26 +128,30 @@ impl PPU {
     }
 
     fn tick(&mut self) {
-        // TODO: handle NMI delay
+        self.clock = self.clock.wrapping_add(1);
 
-        if self.should_trigger_nmi
+        if self.should_trigger_nmi > 0
             && self.regs.ctrl.contains(Ctrl::GENERATE_NMI)
             && self.regs.status.contains(Status::VBLANK_STARTED)
         {
-            self.nmi_triggered = true;
-            self.should_trigger_nmi = false;
+            self.should_trigger_nmi -= 1;
+            if self.should_trigger_nmi == 0 {
+                self.nmi_triggered = true;
+            }
         }
 
-        if self.regs.rendering_enabled() && self.regs.f && self.scanline == 261 && self.cycle == 339
-        {
+        if self.skip_rendering && self.regs.f && self.scanline == 261 && self.cycle == 339 {
             // skip cycle 339 of pre-render scanline
             self.cycle = 0;
             self.scanline = 0;
             self.regs.f = !self.regs.f;
-            self.frame += 1;
+            self.frame = self.frame.wrapping_add(1);
             return;
         }
 
+        if self.cycle == 337 {
+            self.skip_rendering = self.regs.rendering_enabled();
+        }
         self.cycle += 1;
 
         if self.cycle > 340 {
@@ -133,12 +161,8 @@ impl PPU {
             if self.scanline > 261 {
                 self.scanline = 0;
                 self.regs.f = !self.regs.f;
-                self.frame += 1;
+                self.frame = self.frame.wrapping_add(1);
             }
-        }
-
-        if self.regs.rendering_enabled() && self.cycle == 260 && self.scanline < 240 {
-            self.rom.mapper.step_scanline();
         }
     }
 
@@ -152,21 +176,22 @@ impl PPU {
         let visible_cycle = self.cycle >= 1 && self.cycle <= 256;
         let fetch_cycle = pre_fetch_cycle || visible_cycle;
 
-        // background logic
-        if self.regs.show_background() {
-            if visible_line && visible_cycle {
-                self.render_pixel();
+        if visible_line && visible_cycle {
+            if self.regs.rendering_enabled() {
+                self.evaluate_sprite();
             }
-
+            self.render_pixel();
+        }
+        // Both fetch pipelines keep running when either rendering bit is enabled.
+        if self.regs.rendering_enabled() {
             if render_line && fetch_cycle {
                 self.tile_data <<= 4;
 
                 match self.cycle & 7 {
                     1 => self.fetch_nametable_byte(),
                     3 => self.fetch_attribute_table_byte(),
-                    // 5 => self.fetch_pattern_table_low_byte(),
-                    // 7 => self.fetch_pattern_table_high_byte(),
-                    7 => self.fetch_pattern_table_bytes(),
+                    5 => self.fetch_pattern_table_byte(false),
+                    7 => self.fetch_pattern_table_byte(true),
                     0 => self.store_background_tile_data(),
                     _ => {}
                 }
@@ -191,19 +216,66 @@ impl PPU {
             }
         }
 
-        if self.regs.show_sprites() && self.cycle == 257 {
-            if visible_line {
-                self.fetch_next_scanline_sprites();
-            } else {
-                // clear secondary OAM
-                self.visible_sprites_count = 0;
+        if self.regs.rendering_enabled() && render_line && (257..=320).contains(&self.cycle) {
+            if self.cycle == 257 {
+                if visible_line {
+                    self.fetch_next_scanline_sprites();
+                } else {
+                    self.visible_sprites_count = 0;
+                }
+            }
+            self.fetch_sprite_byte();
+        }
+        if self.regs.rendering_enabled() && render_line && (self.cycle == 337 || self.cycle == 339)
+        {
+            self.fetch_nametable_byte();
+        }
+        // The address is driven on the first dot of each two-dot fetch.
+        if self.regs.rendering_enabled() && render_line {
+            if (256..320).contains(&self.cycle) {
+                let phase = (self.cycle - 256) & 7;
+                let slot = ((self.cycle - 256) / 8) as usize;
+                let addr = if phase == 4 || phase == 6 {
+                    let base = if slot < self.visible_sprites_count as usize {
+                        self.scanline_sprites[slot].pattern_addr
+                    } else {
+                        match self.regs.ctrl.sprite_size() {
+                            SpriteSize::Sprite8x8 => self.regs.ctrl.sprite_chr_offset() + 0xff0,
+                            SpriteSize::Sprite8x16 => 0x1ff0,
+                        }
+                    };
+                    base + if phase == 6 { 8 } else { 0 }
+                } else {
+                    0x2000 | (self.regs.v & 0xfff)
+                };
+                if phase & 1 == 0 {
+                    self.observe_address(addr);
+                }
+            } else if self.cycle <= 336 {
+                let phase = self.cycle & 7;
+                let addr = if phase == 4 || phase == 6 {
+                    self.regs.ctrl.background_chr_offset()
+                        + self.nametable_byte as u16 * 16
+                        + self.regs.fine_y() as u16
+                        + if phase == 6 { 8 } else { 0 }
+                } else {
+                    0x2000 | (self.regs.v & 0xfff)
+                };
+                if phase & 1 == 0 {
+                    self.observe_address(addr);
+                }
+            } else if self.cycle == 338 {
+                self.observe_address(0x2000 | (self.regs.v & 0xfff));
             }
         }
 
         // VBlank
         if self.scanline == 241 && self.cycle == 1 {
             self.frame_complete = true;
-            self.regs.status.insert(Status::VBLANK_STARTED);
+            if !self.suppress_vblank {
+                self.regs.status.insert(Status::VBLANK_STARTED);
+            }
+            self.suppress_vblank = false;
             self.detect_nmi_edge();
             self.transfer_frame_buffer();
         }
@@ -226,9 +298,12 @@ impl PPU {
             && self.regs.status.contains(Status::VBLANK_STARTED);
 
         if !self.nmi_edge_detector && nmi {
-            self.should_trigger_nmi = true;
+            self.should_trigger_nmi = 2;
         }
 
+        if !nmi {
+            self.should_trigger_nmi = 0;
+        }
         self.nmi_edge_detector = nmi;
     }
 
@@ -246,14 +321,50 @@ impl PPU {
         self.attribute_table_byte = (self.read_nametable(address) >> shift) & 0b11;
     }
 
-    fn fetch_pattern_table_bytes(&mut self) {
-        let table = self.regs.ctrl.background_chr_offset();
-        let tile = self.nametable_byte as u16;
-        let fine_y = self.regs.fine_y() as u16;
-        let offset = table + tile * 16 + fine_y;
-
-        self.pattern_table_low_byte = self.read_chr(offset);
-        self.pattern_table_high_byte = self.read_chr(offset + 8);
+    fn fetch_pattern_table_byte(&mut self, high: bool) {
+        let addr = self.regs.ctrl.background_chr_offset()
+            + self.nametable_byte as u16 * 16
+            + self.regs.fine_y() as u16
+            + if high { 8 } else { 0 };
+        let value = self.read_chr(addr);
+        if high {
+            self.pattern_table_high_byte = value;
+        } else {
+            self.pattern_table_low_byte = value;
+        }
+    }
+    fn fetch_sprite_byte(&mut self) {
+        let slot = ((self.cycle - 257) / 8) as usize;
+        let phase = (self.cycle - 257) & 7;
+        if phase == 0 || phase == 2 {
+            self.read_nametable(0x2000 | (self.regs.v & 0xfff));
+        }
+        if phase != 4 && phase != 6 {
+            return;
+        }
+        let addr = if slot < self.visible_sprites_count as usize {
+            self.scanline_sprites[slot].pattern_addr
+        } else {
+            match self.regs.ctrl.sprite_size() {
+                SpriteSize::Sprite8x8 => self.regs.ctrl.sprite_chr_offset() + 0xff0,
+                SpriteSize::Sprite8x16 => 0x1ff0,
+            }
+        };
+        let value = self.read_chr(addr + if phase == 6 { 8 } else { 0 });
+        if slot < self.visible_sprites_count as usize {
+            let sprite = &mut self.scanline_sprites[slot];
+            if phase == 4 {
+                sprite.low = value;
+            } else {
+                for i in 0..8 {
+                    let bit = if sprite.flip { i } else { 7 - i };
+                    sprite.chr[i] = ((sprite.low >> bit) & 1) | (((value >> bit) & 1) << 1);
+                }
+            }
+        }
+    }
+    fn observe_address(&mut self, addr: u16) {
+        self.rom.mapper.ppu_address(addr & 0x3fff, self.clock);
     }
 
     fn reset(&mut self) {
@@ -292,7 +403,7 @@ impl PPU {
         } else {
             None
         }
-        .map(|idx| COLOR_PALETTE[(self.palette[idx] & 63) as usize])
+        .map(|idx| self.color(self.palette[idx]))
     }
 
     fn get_sprite_pixel(&mut self) -> Option<((u8, u8, u8), bool, u8)> {
@@ -313,24 +424,71 @@ impl PPU {
         None
     }
 
+    fn evaluate_sprite(&mut self) {
+        if self.cycle <= 64 {
+            if self.cycle & 1 == 0 {
+                self.secondary_oam[(self.cycle / 2 - 1) as usize] = 0xff;
+            }
+            self.eval_n = 0;
+            self.eval_m = 0;
+            self.eval_count = 0;
+            return;
+        }
+        if self.eval_n >= 64 {
+            return;
+        }
+        if self.cycle & 1 != 0 {
+            self.eval_data = self.attributes[(self.eval_n as usize * 4) + self.eval_m as usize];
+            return;
+        }
+        let y = self.eval_data as u16;
+        let in_range =
+            self.scanline >= y && self.scanline < y + self.regs.ctrl.sprite_size().height() as u16;
+        if self.eval_count < 8 {
+            if self.eval_m == 0 && !in_range {
+                self.eval_n += 1;
+                return;
+            }
+            let offset = self.eval_count as usize * 4 + self.eval_m as usize;
+            self.secondary_oam[offset] = self.eval_data;
+            if self.eval_m == 0 {
+                self.secondary_indices[self.eval_count as usize] = self.eval_n;
+            }
+            self.eval_m += 1;
+            if self.eval_m == 4 {
+                self.eval_m = 0;
+                self.eval_n += 1;
+                self.eval_count += 1;
+            }
+        } else {
+            if in_range {
+                self.regs.status.insert(Status::SPRITE_OVERFLOW);
+            }
+            // Once secondary OAM is full the broken incrementer scans diagonally:
+            // tile/attribute/X bytes of subsequent sprites can be interpreted as Y.
+            self.eval_n += 1;
+            self.eval_m = (self.eval_m + 1) & 3;
+        }
+    }
+
     fn fetch_next_scanline_sprites(&mut self) {
         let mut count = 0;
         let sprite_size = self.regs.ctrl.sprite_size();
         let height = sprite_size.height() as u16;
 
-        for i in 0..64 {
+        for i in 0..self.eval_count as usize {
             let offset = i * 4;
-            let y = self.attributes[offset] as u16;
+            let y = self.secondary_oam[offset] as u16;
 
             if self.scanline >= y && self.scanline < y + height {
                 let row = self.scanline - y;
-                let tile_idx = self.attributes[offset + 1] as u16;
-                let attr = self.attributes[offset + 2];
+                let tile_idx = self.secondary_oam[offset + 1] as u16;
+                let attr = self.secondary_oam[offset + 2];
                 let palette_idx = attr & 0b11;
                 let behind_background = attr & 0b0010_0000 != 0;
                 let flip_horizontally = attr & 0b0100_0000 != 0;
                 let flip_vertically = attr & 0b1000_0000 != 0;
-                let x = self.attributes[offset + 3];
+                let x = self.secondary_oam[offset + 3];
 
                 let (chr_bank, row, tile_idx) = match sprite_size {
                     SpriteSize::Sprite8x8 => {
@@ -355,32 +513,18 @@ impl PPU {
                 let tile_offset = chr_bank + tile_idx * 16 + row;
 
                 if count < 8 {
-                    let chr_low = self.read_chr(tile_offset);
-                    let chr_high = self.read_chr(tile_offset + 8);
-                    let mut chr = [0u8; 8];
-
-                    #[allow(clippy::needless_range_loop)]
-                    for i in 0..8 {
-                        let mask = 1 << if flip_horizontally { i } else { 7 - i };
-                        let p1: u8 = (chr_low & mask != 0).into();
-                        let p2: u8 = (chr_high & mask != 0).into();
-                        let pattern = (p2 << 1) | p1;
-                        chr[i] = pattern;
-                    }
-
                     self.scanline_sprites[count] = SpriteData {
                         x: x as u16,
-                        idx: i as u8,
+                        idx: self.secondary_indices[i],
                         palette_idx,
                         behind_background,
-                        chr,
+                        chr: [0; 8],
+                        pattern_addr: tile_offset,
+                        flip: flip_horizontally,
+                        low: 0,
                     };
 
                     count += 1;
-                } else {
-                    // TODO: implement sprite overflow hardware bug
-                    self.regs.status.insert(Status::SPRITE_OVERFLOW);
-                    break;
                 }
             }
         }
@@ -405,7 +549,13 @@ impl PPU {
         }
 
         let color = match (bg, sprite) {
-            (None, None) => COLOR_PALETTE[(self.palette[0] & 63) as usize],
+            (None, None) => self.color(
+                self.palette[if !self.regs.rendering_enabled() && self.regs.v & 0x3f00 == 0x3f00 {
+                    Self::palette_index(self.regs.v)
+                } else {
+                    0
+                }],
+            ),
             (None, Some((sp, _, _))) => sp,
             (Some(bg), None) => bg,
             (Some(bg), Some((sp, behind, _))) => {
@@ -431,6 +581,26 @@ impl PPU {
         self.set_pixel(x as usize, y as usize, color);
     }
 
+    fn color(&self, index: u8) -> (u8, u8, u8) {
+        let mask = self.regs.mask.bits();
+        let (mut r, mut g, mut b) =
+            COLOR_PALETTE[(index & if mask & 1 != 0 { 0x30 } else { 0x3f }) as usize];
+        // Each NTSC emphasis bit attenuates the other two color components.
+        if mask & 0x20 != 0 {
+            g = (g as u16 * 3 / 4) as u8;
+            b = (b as u16 * 3 / 4) as u8;
+        }
+        if mask & 0x40 != 0 {
+            r = (r as u16 * 3 / 4) as u8;
+            b = (b as u16 * 3 / 4) as u8;
+        }
+        if mask & 0x80 != 0 {
+            r = (r as u16 * 3 / 4) as u8;
+            g = (g as u16 * 3 / 4) as u8;
+        }
+        (r, g, b)
+    }
+
     fn set_pixel(&mut self, x: usize, y: usize, (r, g, b): (u8, u8, u8)) {
         if x < WIDTH && y < HEIGHT {
             let offset = (y * WIDTH + x) * 3;
@@ -446,9 +616,9 @@ impl PPU {
 
         match color_idx {
             0 => None,
-            1 => Some(COLOR_PALETTE[(self.palette[palette_offset] & 63) as usize]),
-            2 => Some(COLOR_PALETTE[(self.palette[palette_offset + 1] & 63) as usize]),
-            3 => Some(COLOR_PALETTE[(self.palette[palette_offset + 2] & 63) as usize]),
+            1 => Some(self.color(self.palette[palette_offset])),
+            2 => Some(self.color(self.palette[palette_offset + 1])),
+            3 => Some(self.color(self.palette[palette_offset + 2])),
             _ => unreachable!(),
         }
     }
@@ -501,61 +671,67 @@ impl PPU {
     }
 
     fn read_chr(&mut self, addr: u16) -> u8 {
+        self.observe_address(addr);
         self.rom.mapper.read(&mut self.rom.cart, addr)
     }
 
-    fn read_nametable(&self, addr: u16) -> u8 {
+    fn read_nametable(&mut self, addr: u16) -> u8 {
+        self.observe_address(addr);
         let addr = self.nametable_mirrored_addr(addr);
         self.vram[addr as usize]
     }
 
-    pub fn read_data_reg(&mut self) -> u8 {
-        let addr = self.regs.v;
-
-        let res = match addr {
-            0x0000..=0x1fff => {
-                let res = self.data_buffer;
-                self.data_buffer = self.read_chr(addr);
-                res
-            }
-            0x2000..=0x3eff => {
-                let res = self.data_buffer;
-                self.data_buffer = self.read_nametable(addr);
-                res
-            }
-            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => self.palette[(addr as usize - 0x3f10) & 31],
-            0x3f00..=0x3fff => self.palette[(addr as usize - 0x3f00) & 31],
-            _ => {
-                // panic!("invalid ppu read address: {:04x}", addr);
-                0
-            }
-        };
-
-        self.regs.increment_vram_addr();
-        res
-    }
-
-    pub fn write_data_reg(&mut self, data: u8) {
-        let addr = self.regs.v;
-
-        match addr {
-            0x0000..=0x1fff => self.rom.mapper.write(&mut self.rom.cart, addr, data),
-            0x2000..=0x2fff => {
-                self.vram[self.nametable_mirrored_addr(addr) as usize] = data;
-            }
-            // 0x3000..=0x3eff => unreachable!(),
-            0x3f10 | 0x3f14 | 0x3f18 | 0x3f1c => {
-                self.palette[((addr - 0x3f10) & 31) as usize] = data;
-            }
-            0x3f00..=0x3fff => {
-                self.palette[((addr - 0x3f00) & 31) as usize] = data;
-            }
-            _ => {
-                // ignoring write to {addr:04X}
-            }
+    fn palette_index(addr: u16) -> usize {
+        let idx = addr as usize & 31;
+        if idx & 0x13 == 0x10 {
+            idx & 0x0f
+        } else {
+            idx
         }
-
-        self.regs.increment_vram_addr();
+    }
+    fn increment_data_address(&mut self) {
+        if self.regs.rendering_enabled() && (self.scanline < 240 || self.scanline == 261) {
+            self.regs.increment_x();
+            self.regs.increment_y();
+        } else {
+            self.regs.increment_vram_addr();
+        }
+        self.observe_address(self.regs.v);
+    }
+    pub fn read_data_reg(&mut self) -> u8 {
+        let addr = self.regs.v & 0x3fff;
+        let old = self.data_buffer;
+        let result = if addr >= 0x3f00 {
+            self.data_buffer = self.read_nametable(addr - 0x1000);
+            let mask = if self.regs.mask.bits() & 1 != 0 {
+                0x30
+            } else {
+                0x3f
+            };
+            (self.palette[Self::palette_index(addr)] & mask) | (self.open_bus & 0xc0)
+        } else {
+            self.data_buffer = if addr < 0x2000 {
+                self.read_chr(addr)
+            } else {
+                self.read_nametable(addr)
+            };
+            old
+        };
+        self.increment_data_address();
+        result
+    }
+    pub fn write_data_reg(&mut self, data: u8) {
+        let addr = self.regs.v & 0x3fff;
+        self.observe_address(addr);
+        match addr {
+            0..=0x1fff => self.rom.mapper.write(&mut self.rom.cart, addr, data),
+            0x2000..=0x3eff => {
+                let idx = self.nametable_mirrored_addr(addr) as usize;
+                self.vram[idx] = data;
+            }
+            _ => self.palette[Self::palette_index(addr)] = data & 0x3f,
+        }
+        self.increment_data_address();
     }
 
     pub fn read_oam_data_reg(&mut self) -> u8 {
@@ -578,16 +754,25 @@ impl PPU {
     }
 
     pub fn read_register(&mut self, addr: u16) -> u8 {
-        match addr {
+        let value = match addr {
             0x2002 => {
+                if self.scanline == 241 && self.cycle == 0 {
+                    self.suppress_vblank = true;
+                }
+                if self.scanline == 241 && self.cycle <= 2 {
+                    self.nmi_triggered = false;
+                    self.should_trigger_nmi = 0;
+                }
                 let res = self.regs.read_status(self.open_bus);
                 self.detect_nmi_edge();
                 res
             }
             0x2004 => self.read_oam_data_reg(),
             0x2007 => self.read_data_reg(),
-            _ => 0,
-        }
+            _ => self.open_bus,
+        };
+        self.open_bus = value;
+        value
     }
 
     pub fn write_register(&mut self, addr: u16, data: u8) {
@@ -597,11 +782,16 @@ impl PPU {
         match addr {
             0x2000 => self.write_ctrl_reg(data),
             0x2001 => self.regs.write_mask(data),
-            0x2002 => panic!("PPU status register is read-only"),
+            0x2002 => {}
             0x2003 => self.regs.write_oam_address(data),
             0x2004 => self.write_oam_data_reg(data),
             0x2005 => self.regs.write_scroll(data),
-            0x2006 => self.regs.write_address(data),
+            0x2006 => {
+                self.regs.write_address(data);
+                if !self.regs.w {
+                    self.observe_address(self.regs.v);
+                }
+            }
             0x2007 => self.write_data_reg(data),
             _ => unreachable!("invalid PPU register address"),
         }
@@ -618,6 +808,10 @@ impl savestate::Save for SpriteData {
         s.data.write_u8(self.idx);
         s.data.write_u8(self.palette_idx);
         s.data.write_bool(self.behind_background);
+        s.data.write_u8_slice(&self.chr);
+        s.data.write_u16(self.pattern_addr);
+        s.data.write_bool(self.flip);
+        s.data.write_u8(self.low);
     }
 
     fn load(&mut self, s: &mut savestate::Section) -> Result<(), SaveStateError> {
@@ -625,6 +819,17 @@ impl savestate::Save for SpriteData {
         self.idx = s.data.read_u8()?;
         self.palette_idx = s.data.read_u8()?;
         self.behind_background = s.data.read_bool()?;
+        s.data.read_u8_slice(&mut self.chr)?;
+        self.pattern_addr = s.data.read_u16()?;
+        self.flip = s.data.read_bool()?;
+        self.low = s.data.read_u8()?;
+        if self.x > 255
+            || self.pattern_addr > 0x1ff7
+            || self.palette_idx > 3
+            || self.chr.iter().any(|v| *v > 3)
+        {
+            return Err(SaveStateError::InvalidData);
+        }
 
         Ok(())
     }
@@ -637,16 +842,27 @@ impl savestate::Save for PPU {
         let s = parent.create_child(PPU_SECTION_NAME);
 
         s.data.write_u8(self.open_bus);
+        s.data.write_u64(self.clock);
+        s.data.write_bool(self.skip_rendering);
+        s.data.write_bool(self.suppress_vblank);
+        s.data.write_u8(self.rom.cart.mirroring as u8);
+        s.data.write_u8_slice(&self.frame_buffer);
+        s.data.write_u8_slice(self.frame_buffer_complete.as_slice());
         s.data.write_u8_slice(&self.vram);
         s.data.write_u8_slice(&self.palette);
         s.data.write_u8_slice(&self.attributes);
+        s.data.write_u8_slice(&self.secondary_oam);
+        s.data.write_u8_slice(&self.secondary_indices);
+        for v in [self.eval_n, self.eval_m, self.eval_count, self.eval_data] {
+            s.data.write_u8(v);
+        }
         s.data.write_u16(self.cycle);
         s.data.write_u16(self.scanline);
         s.data.write_u64(self.frame);
         s.data.write_u8(self.data_buffer);
         s.data.write_bool(self.nmi_triggered);
         s.data.write_bool(self.nmi_edge_detector);
-        s.data.write_bool(self.should_trigger_nmi);
+        s.data.write_u8(self.should_trigger_nmi);
         s.data.write_bool(self.frame_complete);
         s.data.write_u64(self.tile_data);
         s.data.write_u8(self.nametable_byte);
@@ -664,16 +880,39 @@ impl savestate::Save for PPU {
         let s = parent.get(PPU_SECTION_NAME)?;
 
         self.open_bus = s.data.read_u8()?;
+        self.clock = s.data.read_u64()?;
+        self.skip_rendering = s.data.read_bool()?;
+        self.suppress_vblank = s.data.read_bool()?;
+        self.rom.cart.mirroring = match s.data.read_u8()? {
+            0 => Mirroring::Horizontal,
+            1 => Mirroring::Vertical,
+            2 => Mirroring::OneScreenLowerBank,
+            3 => Mirroring::OneScreenUpperBank,
+            4 => Mirroring::FourScreen,
+            _ => return Err(SaveStateError::InvalidData),
+        };
+        s.data.read_u8_slice(&mut self.frame_buffer)?;
+        s.data
+            .read_u8_slice(self.frame_buffer_complete.as_mut_slice())?;
         s.data.read_u8_slice(&mut self.vram)?;
         s.data.read_u8_slice(&mut self.palette)?;
         s.data.read_u8_slice(&mut self.attributes)?;
+        s.data.read_u8_slice(&mut self.secondary_oam)?;
+        s.data.read_u8_slice(&mut self.secondary_indices)?;
+        self.eval_n = s.data.read_u8()?;
+        self.eval_m = s.data.read_u8()?;
+        self.eval_count = s.data.read_u8()?;
+        self.eval_data = s.data.read_u8()?;
+        if self.eval_n > 64 || self.eval_m > 3 || self.eval_count > 8 {
+            return Err(SaveStateError::InvalidData);
+        }
         self.cycle = s.data.read_u16()?;
         self.scanline = s.data.read_u16()?;
         self.frame = s.data.read_u64()?;
         self.data_buffer = s.data.read_u8()?;
         self.nmi_triggered = s.data.read_bool()?;
         self.nmi_edge_detector = s.data.read_bool()?;
-        self.should_trigger_nmi = s.data.read_bool()?;
+        self.should_trigger_nmi = s.data.read_u8()?;
         self.frame_complete = s.data.read_bool()?;
         self.tile_data = s.data.read_u64()?;
         self.nametable_byte = s.data.read_u8()?;
@@ -681,11 +920,65 @@ impl savestate::Save for PPU {
         self.pattern_table_low_byte = s.data.read_u8()?;
         self.pattern_table_high_byte = s.data.read_u8()?;
         self.visible_sprites_count = s.data.read_u8()?;
+        if self.should_trigger_nmi > 2
+            || self.attribute_table_byte > 3
+            || self.visible_sprites_count > 8
+            || self.scanline > 261
+            || self.cycle > 340
+        {
+            return Err(SaveStateError::InvalidData);
+        }
         s.read_all(&mut self.scanline_sprites)?;
 
         self.regs.load(s)?;
         self.rom.mapper.load(s)?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sprite_ppu() -> PPU {
+        let mut bytes = vec![0; 16 + 0x4000 + 0x2000];
+        bytes[..4].copy_from_slice(b"NES\x1a");
+        bytes[4] = 1;
+        bytes[5] = 1;
+        let mut ppu = PPU::new(ROM::new(bytes).unwrap());
+        ppu.scanline = 0;
+        ppu.cycle = 0;
+        ppu.attributes.fill(0xff);
+        for i in 0..8 {
+            ppu.attributes[i * 4] = 0;
+        }
+        ppu.write_register(0x2001, 0x18);
+        ppu
+    }
+
+    #[test]
+    fn ninth_sprite_sets_overflow_on_its_evaluation_cycle() {
+        let mut ppu = sprite_ppu();
+        ppu.attributes[8 * 4] = 0;
+        for _ in 0..129 {
+            ppu.step();
+        }
+        assert!(!ppu.regs.status.contains(Status::SPRITE_OVERFLOW));
+        ppu.step();
+        assert!(ppu.regs.status.contains(Status::SPRITE_OVERFLOW));
+    }
+
+    #[test]
+    fn overflow_bug_interprets_tenth_sprites_tile_as_y() {
+        let mut ppu = sprite_ppu();
+        ppu.attributes[9 * 4 + 1] = 0;
+        for _ in 0..131 {
+            ppu.step();
+        }
+        assert!(!ppu.regs.status.contains(Status::SPRITE_OVERFLOW));
+        ppu.step();
+        assert!(ppu.regs.status.contains(Status::SPRITE_OVERFLOW));
+        assert_eq!(ppu.eval_count, 8);
     }
 }

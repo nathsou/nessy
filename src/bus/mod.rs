@@ -39,6 +39,9 @@ pub struct Bus {
     pub joypad1: Joypad,
     pub joypad2: Joypad,
     pub dma_transfer: bool,
+    pub dma_page: u8,
+    cycle: u64,
+    open_bus: u8,
 }
 
 impl Bus {
@@ -50,6 +53,9 @@ impl Bus {
             joypad1: Joypad::new(),
             joypad2: Joypad::new(),
             dma_transfer: false,
+            dma_page: 0,
+            cycle: 0,
+            open_bus: 0,
         }
     }
 
@@ -68,20 +74,16 @@ impl Bus {
         }
     }
 
+    pub fn irq_line(&mut self) -> bool {
+        self.ppu.rom.mapper.is_asserting_irq() | self.apu.is_asserting_irq()
+    }
     pub fn advance(&mut self, cpu_cycles: u32) {
-        let ppu_cycles = cpu_cycles * 3;
-
-        for _ in 0..ppu_cycles {
-            self.ppu.step();
-        }
-
         for _ in 0..cpu_cycles {
-            self.apu.step();
-
-            if let Some(addr) = self.apu.pull_memory_read_request() {
-                let val = self.read_byte(addr);
-                self.apu.push_memory_read_response(val);
+            self.cycle = self.cycle.wrapping_add(1);
+            for _ in 0..3 {
+                self.ppu.step();
             }
+            self.apu.step();
         }
     }
 }
@@ -89,43 +91,56 @@ impl Bus {
 // https://wiki.nesdev.com/w/index.php/CPU_memory_map
 impl Memory for Bus {
     fn read_byte(&mut self, addr: u16) -> u8 {
-        match addr {
+        let value = match addr {
             0x0000..=0x1fff => self.ram.read_byte(addr),
             // 0x2000 | 0x2001 | 0x2003 | 0x2005 | 0x2006 | 0x4014 => {
             //     panic!("PPU address {addr:x} is write-only");
             // }
             0x2000..=0x2007 => self.ppu.read_register(addr),
             0x2008..=0x3fff => self.ppu.read_register(0x2000 + (addr & 7)),
-            0x4016 => self.joypad1.read(),
-            0x4000..=0x4017 => self.apu.read(addr),
-            0x4018..=0x401F => {
+            0x4016 => (self.open_bus & 0xe0) | self.joypad1.read(),
+            0x4017 => (self.open_bus & 0xe0) | self.joypad2.read(),
+            0x4015 => (self.open_bus & 0x20) | self.apu.read(addr),
+            0x4000..=0x4014 => self.open_bus,
+            0x4018..=0x5FFF => {
                 // APU and I/O functionality that is normally disabled.
-                0
+                self.open_bus
             }
-            0x4020..=0xffff => self.ppu.rom.mapper.read(&mut self.ppu.rom.cart, addr),
+            0x6000..=0xffff => self
+                .ppu
+                .rom
+                .mapper
+                .cpu_read(&mut self.ppu.rom.cart, addr)
+                .unwrap_or(self.open_bus),
+        };
+        if addr != 0x4015 {
+            self.open_bus = value;
         }
+        value
     }
 
     fn write_byte(&mut self, addr: u16, val: u8) {
+        self.open_bus = val;
         match addr {
             0x0000..=0x1fff => self.ram.write_byte(addr, val),
             0x2000..=0x2007 => self.ppu.write_register(addr, val),
             0x2008..=0x3fff => self.ppu.write_register(0x2000 + (addr & 7), val),
             0x4014 => {
-                let mut page = [0u8; 256];
-                let high_byte = (val as u16) << 8;
-
-                for low_byte in 0..256u16 {
-                    page[low_byte as usize] = self.read_byte(high_byte | low_byte);
-                }
-
-                self.ppu.write_oam_dma_reg(page);
+                self.dma_page = val;
                 self.dma_transfer = true;
             }
-            0x4016 => self.joypad1.write(val),
+            0x4016 => {
+                self.joypad1.write(val);
+                self.joypad2.write(val);
+            }
             0x4000..=0x4017 => self.apu.write(addr, val),
             0x4018..=0x401F => (), // APU and I/O functionality that is normally disabled.
-            0x4020..=0xffff => self.ppu.rom.mapper.write(&mut self.ppu.rom.cart, addr, val),
+            0x4020..=0xffff => {
+                self.ppu
+                    .rom
+                    .mapper
+                    .cpu_write(&mut self.ppu.rom.cart, addr, val, self.cycle)
+            }
         }
     }
 }
@@ -139,6 +154,10 @@ impl savestate::Save for Bus {
 
         s.data.write_u8_slice(&self.ram.0);
         s.data.write_bool(self.dma_transfer);
+        s.data.write_u8(self.dma_page);
+        s.data.write_u64(self.cycle);
+        s.data.write_u8(self.open_bus);
+        self.apu.save(s);
 
         self.ppu.save(s);
 
@@ -152,6 +171,10 @@ impl savestate::Save for Bus {
 
         s.data.read_u8_slice(&mut self.ram.0)?;
         self.dma_transfer = s.data.read_bool()?;
+        self.dma_page = s.data.read_u8()?;
+        self.cycle = s.data.read_u64()?;
+        self.open_bus = s.data.read_u8()?;
+        self.apu.load(s)?;
 
         self.ppu.load(s)?;
 

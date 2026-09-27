@@ -7,7 +7,7 @@ use super::Mapper;
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct UNROM {
-    prg_ram: [u8; 2048],
+    prg_ram: [u8; 0x2000],
     chr_ram: [u8; 0x2000],
     bank: u8,
 }
@@ -15,7 +15,7 @@ pub struct UNROM {
 impl UNROM {
     pub fn new() -> Self {
         UNROM {
-            prg_ram: [0; 2048],
+            prg_ram: [0; 0x2000],
             chr_ram: [0; 0x2000],
             bank: 0,
         }
@@ -33,10 +33,11 @@ impl Mapper for UNROM {
                     cart.bytes[addr]
                 }
             }
-            0x6000..=0x7FFF => self.prg_ram[((addr - 0x6000) & 0x7FF) as usize],
+            0x6000..=0x7FFF => self.prg_ram[((addr - 0x6000) & 0x1FFF) as usize],
             0x8000..=0xBFFF => {
-                let addr =
-                    cart.prg_rom_start + ((self.bank as usize) * 0x4000) + (addr & 0x3FFF) as usize;
+                let addr = cart.prg_rom_start
+                    + (((self.bank % cart.prg_rom_size) as usize) * 0x4000)
+                    + (addr & 0x3FFF) as usize;
 
                 cart.bytes[addr]
             }
@@ -56,9 +57,6 @@ impl Mapper for UNROM {
             0x0000..=0x1FFF => {
                 if cart.chr_rom_size == 0 {
                     self.chr_ram[addr as usize] = val;
-                } else {
-                    let addr = cart.chr_rom_start + (addr & 0x1fff) as usize;
-                    cart.bytes[addr] = val;
                 }
             }
             0x6000..=0x7FFF => {
@@ -91,5 +89,11 @@ impl savestate::Save for UNROM {
         self.bank = s.data.read_u8()?;
 
         Ok(())
+    }
+}
+
+impl Default for UNROM {
+    fn default() -> Self {
+        Self::new()
     }
 }

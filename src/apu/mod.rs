@@ -48,14 +48,15 @@ pub struct APU {
     buffer: Box<[f32; BUFFER_SIZE]>, // avoid stack overflow in WASM
     front_ptr: u16,
     back_ptr: u16,
-    cycle: u32,
+    cycle: u64,
     frame_counter: u32,
     frame_interrupt: bool,
     frame_mode: FrameMode,
     current_sample: Option<f32>,
-    samples_pushed: u32,
+    sample_phase: f64,
     irq_inhibit: bool,
-    prev_irq: bool,
+    frame_reset_delay: u8,
+    pending_mode: FrameMode,
     pulse1: PulseChannel,
     pulse2: PulseChannel,
     triangle: TriangleChannel,
@@ -108,6 +109,11 @@ const TRIANGLE_MIXER_LOOKUP: [f32; 204] = [
 
 impl APU {
     pub fn new(sample_rate: f64) -> APU {
+        let sample_rate = if sample_rate.is_finite() && sample_rate > 0.0 {
+            sample_rate.clamp(1.0, CPU_FREQ)
+        } else {
+            44100.0
+        };
         APU {
             cycles_per_sample: CPU_FREQ / sample_rate,
             buffer: Box::new([0.0; BUFFER_SIZE]),
@@ -123,9 +129,10 @@ impl APU {
             noise: NoiseChannel::new(),
             dmc: DeltaModulationChannel::new(),
             current_sample: None,
-            samples_pushed: 0,
+            sample_phase: 0.0,
             irq_inhibit: false,
-            prev_irq: false,
+            frame_reset_delay: 0,
+            pending_mode: FrameMode::FourStep,
             filters: [
                 Filter::new_high_pass(sample_rate as f32, 90.0),
                 Filter::new_high_pass(sample_rate as f32, 440.0),
@@ -155,8 +162,11 @@ impl APU {
         let sample = self.get_sample();
         self.current_sample = Some(sample);
         self.buffer[self.front_ptr as usize] = sample;
-        self.samples_pushed += 1;
+
         self.front_ptr = (self.front_ptr + 1) & BUFFER_MASK;
+        if self.front_ptr == self.back_ptr {
+            self.back_ptr = (self.back_ptr + 1) & BUFFER_MASK;
+        }
     }
 
     pub fn pull_sample(&mut self) -> Option<f32> {
@@ -183,8 +193,8 @@ impl APU {
 
             // Frame Counter
             0x4017 => {
-                self.frame_counter = 0;
-                self.frame_mode = if val & 0b1000_0000 == 0 {
+                self.frame_reset_delay = if self.cycle & 1 == 0 { 3 } else { 4 };
+                self.pending_mode = if val & 0b1000_0000 == 0 {
                     FrameMode::FourStep
                 } else {
                     FrameMode::FiveStep
@@ -240,71 +250,80 @@ impl APU {
         }
     }
 
-    fn get_sample_count(&self) -> u32 {
-        (self.cycle as f64 / self.cycles_per_sample) as u32
+    fn quarter_frame(&mut self) {
+        self.pulse1.step_envelope();
+        self.pulse2.step_envelope();
+        self.triangle.step_linear_counter();
+        self.noise.step_envelope();
     }
-
+    fn half_frame(&mut self) {
+        self.pulse1.step_length_counter();
+        self.pulse2.step_length_counter();
+        self.triangle.step_length_counter();
+        self.noise.step_length_counter();
+        self.pulse1.step_sweep();
+        self.pulse2.step_sweep();
+    }
+    pub fn soft_reset(&mut self) {
+        self.write(0x4015, 0);
+        self.write(
+            0x4017,
+            if matches!(self.frame_mode, FrameMode::FiveStep) {
+                0x80
+            } else {
+                0
+            },
+        );
+    }
     pub fn step(&mut self) {
-        self.cycle += 1;
-        let next_sample_count = self.get_sample_count();
-
+        self.cycle = self.cycle.wrapping_add(1);
         self.triangle.step_timer();
-
-        if self.cycle & 1 == 1 {
+        self.noise.step_timer();
+        self.dmc.step_timer();
+        if self.cycle & 1 != 0 {
             self.pulse1.step_timer();
             self.pulse2.step_timer();
-            self.noise.step_timer();
-            self.dmc.step_timer();
-            self.frame_counter += 1;
-
-            let mut quarter_frame = false;
-            let mut half_frame = false;
-
-            match self.frame_counter {
-                3729 => quarter_frame = true,
-                7457 => {
-                    quarter_frame = true;
-                    half_frame = true;
-                }
-                11186 => quarter_frame = true,
-                14915 => {
-                    if matches!(self.frame_mode, FrameMode::FourStep) {
-                        quarter_frame = true;
-                        half_frame = true;
-                        self.frame_counter = 0;
-                        if !self.irq_inhibit {
-                            self.frame_interrupt = true;
-                        }
-                    }
-                }
-                18641 => {
-                    // this only happens in 5 step mode
-                    quarter_frame = true;
-                    half_frame = true;
+        }
+        self.frame_counter += 1;
+        match self.frame_counter {
+            7457 | 22371 => self.quarter_frame(),
+            14913 => {
+                self.quarter_frame();
+                self.half_frame();
+            }
+            29828..=29830 if matches!(self.frame_mode, FrameMode::FourStep) => {
+                if !self.irq_inhibit {
                     self.frame_interrupt = true;
+                }
+                if self.frame_counter == 29829 {
+                    self.quarter_frame();
+                    self.half_frame();
+                }
+                if self.frame_counter == 29830 {
                     self.frame_counter = 0;
                 }
-                _ => {}
-            };
-
-            if quarter_frame {
-                self.pulse1.step_envelope();
-                self.pulse2.step_envelope();
-                self.triangle.step_linear_counter();
-                self.noise.step_envelope();
             }
-
-            if half_frame {
-                self.pulse1.step_length_counter();
-                self.pulse2.step_length_counter();
-                self.triangle.step_length_counter();
-                self.noise.step_length_counter();
-                self.pulse1.step_sweep();
-                self.pulse2.step_sweep();
+            37281 if matches!(self.frame_mode, FrameMode::FiveStep) => {
+                self.quarter_frame();
+                self.half_frame();
+            }
+            37282 if matches!(self.frame_mode, FrameMode::FiveStep) => self.frame_counter = 0,
+            _ => {}
+        }
+        if self.frame_reset_delay > 0 {
+            self.frame_reset_delay -= 1;
+            if self.frame_reset_delay == 0 {
+                self.frame_counter = 0;
+                self.frame_mode = self.pending_mode;
+                if matches!(self.frame_mode, FrameMode::FiveStep) {
+                    self.quarter_frame();
+                    self.half_frame();
+                }
             }
         }
-
-        if self.samples_pushed != next_sample_count {
+        self.sample_phase += 1.0;
+        if self.sample_phase >= self.cycles_per_sample {
+            self.sample_phase -= self.cycles_per_sample;
             self.push_sample();
         }
     }
@@ -318,6 +337,7 @@ impl APU {
     }
 
     pub fn fill(&mut self, buffer: &mut [f32]) {
+        buffer.fill(0.0);
         #[allow(clippy::needless_range_loop)]
         for i in 0..buffer.len().min(self.remaining_samples() as usize) {
             buffer[i] = self.buffer[self.back_ptr as usize];
@@ -332,20 +352,7 @@ impl APU {
     }
 
     pub fn is_asserting_irq(&mut self) -> bool {
-        let irq = self.frame_interrupt || self.dmc.interrupt_flag;
-        let edge = irq && !self.prev_irq;
-        self.prev_irq = irq;
-
-        edge
-    }
-
-    pub fn is_stalling_cpu(&mut self) -> bool {
-        if self.dmc.cpu_stall > 0 {
-            self.dmc.cpu_stall -= 1;
-            true
-        } else {
-            false
-        }
+        self.frame_interrupt || self.dmc.interrupt_flag
     }
 
     // hack to avoid having to pass a mutable reference of the bus to the DMC
@@ -357,5 +364,72 @@ impl APU {
 
     pub fn push_memory_read_response(&mut self, val: u8) {
         self.dmc.set_memory_read_response(val);
+    }
+}
+
+crate::savestate::state_fields!(
+    APU,
+    cycles_per_sample,
+    buffer,
+    front_ptr,
+    back_ptr,
+    cycle,
+    frame_counter,
+    frame_interrupt,
+    frame_mode,
+    current_sample,
+    sample_phase,
+    irq_inhibit,
+    frame_reset_delay,
+    pending_mode,
+    pulse1,
+    pulse2,
+    triangle,
+    noise,
+    dmc,
+    filters
+);
+
+impl crate::savestate::StateValue for FrameMode {
+    fn put(&self, d: &mut crate::savestate::ByteBuffer) {
+        d.write_u8((*self).into());
+    }
+    fn get(
+        &mut self,
+        d: &mut crate::savestate::ByteBuffer,
+    ) -> Result<(), crate::savestate::SaveStateError> {
+        let v = d.read_u8()?;
+        if v > 1 {
+            return Err(crate::savestate::SaveStateError::InvalidData);
+        }
+        *self = v.into();
+        Ok(())
+    }
+}
+impl crate::savestate::Save for APU {
+    fn save(&self, parent: &mut crate::savestate::Section) {
+        crate::savestate::StateValue::put(self, &mut parent.create_child("apu").data);
+    }
+    fn load(
+        &mut self,
+        parent: &mut crate::savestate::Section,
+    ) -> Result<(), crate::savestate::SaveStateError> {
+        crate::savestate::StateValue::get(self, &mut parent.get("apu")?.data)?;
+        if self.front_ptr >= BUFFER_SIZE as u16
+            || self.back_ptr >= BUFFER_SIZE as u16
+            || self.cycles_per_sample < 1.0
+            || self.sample_phase < 0.0
+            || self.sample_phase >= self.cycles_per_sample
+            || self.frame_counter > 37282
+            || self.frame_reset_delay > 4
+            || !self.pulse1.valid()
+            || !self.pulse2.valid()
+            || !self.triangle.valid()
+            || !self.noise.valid()
+            || !self.dmc.valid()
+        {
+            return Err(crate::savestate::SaveStateError::InvalidData);
+        }
+        Ok(())
     }
 }

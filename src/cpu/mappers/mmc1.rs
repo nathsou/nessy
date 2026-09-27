@@ -16,6 +16,8 @@ pub struct MMC1 {
     chr_bank0: u8,
     chr_bank1: u8,
     prg_bank: u8,
+    ram_disabled: bool,
+    last_write: Option<u64>,
 }
 
 impl MMC1 {
@@ -31,22 +33,47 @@ impl MMC1 {
             chr_bank0: 0,
             chr_bank1: 0,
             prg_bank: 0,
+            ram_disabled: false,
+            last_write: None,
         }
     }
 }
 
 impl Mapper for MMC1 {
+    fn cpu_read(&mut self, cart: &mut Cart, addr: u16) -> Option<u8> {
+        if (0x6000..=0x7fff).contains(&addr) && self.ram_disabled {
+            None
+        } else {
+            Some(self.read(cart, addr))
+        }
+    }
+    fn cpu_write(&mut self, cart: &mut Cart, addr: u16, val: u8, cycle: u64) {
+        if addr >= 0x8000 {
+            if self.last_write == Some(cycle.wrapping_sub(1)) {
+                return;
+            }
+            self.last_write = Some(cycle);
+        }
+        self.write(cart, addr, val);
+    }
+
     fn read(&mut self, cart: &mut Cart, addr: u16) -> u8 {
         match addr {
             0x0000..=0x1FFF => {
                 if cart.chr_rom_size == 0 {
-                    self.chr_ram[addr as usize]
+                    self.chr_ram[self.chr_rom_offset(cart, addr) & 0x1fff]
                 } else {
                     let offset = self.chr_rom_offset(cart, addr);
-                    cart.bytes[cart.chr_rom_start + offset]
+                    cart.bytes[cart.chr_rom_start + offset % (cart.chr_rom_size as usize * 0x2000)]
                 }
             }
-            0x6000..=0x7FFF => self.prg_ram[(addr - 0x6000) as usize],
+            0x6000..=0x7FFF => {
+                if self.ram_disabled {
+                    0
+                } else {
+                    self.prg_ram[(addr - 0x6000) as usize]
+                }
+            }
             0x8000..=0xBFFF => {
                 let bank = match self.prg_mode {
                     0 | 1 => self.prg_bank & 0xFE,
@@ -56,7 +83,8 @@ impl Mapper for MMC1 {
                 };
 
                 let offset = addr as usize - 0x8000;
-                let addr = cart.prg_rom_start + (bank as usize * 0x4000) + offset;
+                let addr =
+                    cart.prg_rom_start + ((bank % cart.prg_rom_size) as usize * 0x4000) + offset;
                 cart.bytes[addr]
             }
             0xC000..=0xFFFF => {
@@ -68,12 +96,11 @@ impl Mapper for MMC1 {
                 };
 
                 let offset = (addr as usize - 0x8000) & 0x3fff;
-                let addr = cart.prg_rom_start + (bank as usize * 0x4000) + offset;
+                let addr =
+                    cart.prg_rom_start + ((bank % cart.prg_rom_size) as usize * 0x4000) + offset;
                 cart.bytes[addr]
             }
-            _ => {
-                panic!("Invalid MMC1 read address: {:04X}", addr);
-            }
+            _ => 0,
         }
     }
 
@@ -81,14 +108,13 @@ impl Mapper for MMC1 {
         match addr {
             0x0000..=0x1FFF => {
                 if cart.chr_rom_size == 0 {
-                    self.chr_ram[addr as usize] = val;
-                } else {
-                    let offset = self.chr_rom_offset(cart, addr);
-                    cart.bytes[cart.chr_rom_start + offset] = val;
+                    self.chr_ram[self.chr_rom_offset(cart, addr) & 0x1fff] = val;
                 }
             }
             0x6000..=0x7FFF => {
-                self.prg_ram[(addr - 0x6000) as usize] = val;
+                if !self.ram_disabled {
+                    self.prg_ram[(addr - 0x6000) as usize] = val;
+                }
             }
             0x8000..=0xFFFF => {
                 if val & (1 << 7) != 0 {
@@ -112,6 +138,7 @@ impl Mapper for MMC1 {
                             }
                             0xE000..=0xFFFF => {
                                 self.prg_bank = self.shift_reg & 0b1111;
+                                self.ram_disabled = self.shift_reg & 0x10 != 0;
                             }
                             _ => unreachable!(),
                         }
@@ -120,7 +147,7 @@ impl Mapper for MMC1 {
                     }
                 }
             }
-            _ => panic!("Invalid MMC1 write address: {:04X}", addr),
+            _ => {}
         }
     }
 }
@@ -177,6 +204,8 @@ impl savestate::Save for MMC1 {
         s.data.write_u8(self.chr_bank0);
         s.data.write_u8(self.chr_bank1);
         s.data.write_u8(self.prg_bank);
+        s.data.write_bool(self.ram_disabled);
+        s.data.write_u64(self.last_write.unwrap_or(u64::MAX));
     }
 
     fn load(&mut self, parent: &mut savestate::Section) -> Result<(), SaveStateError> {
@@ -191,6 +220,12 @@ impl savestate::Save for MMC1 {
         self.chr_bank0 = s.data.read_u8()?;
         self.chr_bank1 = s.data.read_u8()?;
         self.prg_bank = s.data.read_u8()?;
+        self.ram_disabled = s.data.read_bool()?;
+        let last = s.data.read_u64()?;
+        self.last_write = (last != u64::MAX).then_some(last);
+        if self.prg_mode > 3 || self.chr_mode > 1 {
+            return Err(SaveStateError::InvalidData);
+        }
 
         Ok(())
     }

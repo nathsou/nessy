@@ -11,6 +11,15 @@ pub trait Mapper: savestate::Save {
     fn read(&mut self, cart: &mut Cart, addr: u16) -> u8;
     fn write(&mut self, cart: &mut Cart, addr: u16, val: u8);
 
+    fn cpu_read(&mut self, cart: &mut Cart, addr: u16) -> Option<u8> {
+        Some(self.read(cart, addr))
+    }
+
+    fn ppu_address(&mut self, _addr: u16, _cycle: u64) {}
+    fn cpu_write(&mut self, cart: &mut Cart, addr: u16, val: u8, _cycle: u64) {
+        self.write(cart, addr, val);
+    }
+
     fn step_scanline(&mut self) {}
 
     fn is_asserting_irq(&mut self) -> bool {

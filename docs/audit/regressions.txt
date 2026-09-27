@@ -1,0 +1,325 @@
+warning: field `id` is never read
+  --> src/apu/pulse.rs:17:5
+   |
+16 | pub struct PulseChannel {
+   |            ------------ field in this struct
+17 |     id: PulseChannelId,
+   |     ^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `nessy` (lib) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.00s
+     Running tests/audit.rs (target/debug/deps/audit-7b723ee4353c76cf)
+
+running 36 tests
+test dmc_completion_irq ... FAILED
+test apu_irq_is_level ... FAILED
+test malformed_rom_returns_error ... FAILED
+test five_step_has_no_frame_irq ... FAILED
+test malformed_savestate_returns_error ... FAILED
+test controller_two_bus_route ... FAILED
+test consecutive_dma_parity ... FAILED
+test irq_stacks_break_clear ... FAILED
+test jsr_from_stack_page_reads_low_operand_before_push ... FAILED
+test forced_blank_outputs_backdrop ... FAILED
+test cli_defers_irq_for_one_instruction ... FAILED
+test four_screen_nametable_capacity ... FAILED
+test mmc3_chr_mode_is_immediate ... FAILED
+test masked_mmc3_irq_survives_until_cli ... FAILED
+test brk_return_address ... FAILED
+test mmc3_chr_ram ... FAILED
+test mmc3_chr_banks_wrap ... FAILED
+test mmc3_four_screen_is_hardwired ... FAILED
+test palette_3f30_aliases_3f00 ... FAILED
+test nrom_ram_window_does_not_panic ... FAILED
+test palette_read_refills_buffer ... FAILED
+test ppu_3000_mirror_writes ... FAILED
+test ppustatus_write_is_ignored ... FAILED
+test mmc3_prg_ram_write_protect ... FAILED
+test mmc3_prg_mode_is_immediate ... FAILED
+test triangle_length_expires ... FAILED
+test mmc3_no_irq_when_a12_stays_low ... FAILED
+test unrom_ram_window_does_not_panic ... FAILED
+test nmi_stacks_break_clear ... FAILED
+test mmc3_irq_is_level ... FAILED
+test rmw_oamdata_writes_old_then_new ... FAILED
+test rts_wraps_address_space ... FAILED
+test nestest_full_trace ... FAILED
+test savestate_restores_mmc3_mirroring ... FAILED
+test savestate_restores_apu_status ... FAILED
+test soft_reset_preserves_stack_position ... FAILED
+
+failures:
+
+---- dmc_completion_irq stdout ----
+
+thread 'dmc_completion_irq' panicked at tests/audit.rs:476:5:
+assertion `left == right` failed
+  left: 0
+ right: 128
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- apu_irq_is_level stdout ----
+
+thread 'apu_irq_is_level' panicked at tests/audit.rs:447:5:
+assertion failed: a.is_asserting_irq()
+
+---- malformed_rom_returns_error stdout ----
+
+thread 'malformed_rom_returns_error' panicked at src/cpu/rom.rs:48:17:
+index out of bounds: the len is 0 but the index is 0
+
+---- five_step_has_no_frame_irq stdout ----
+
+thread 'five_step_has_no_frame_irq' panicked at tests/audit.rs:458:5:
+assertion `left == right` failed
+  left: 64
+ right: 0
+
+---- malformed_savestate_returns_error stdout ----
+
+thread 'malformed_savestate_returns_error' panicked at src/savestate.rs:182:37:
+range end index 38 out of range for slice of length 0
+
+---- controller_two_bus_route stdout ----
+
+thread 'controller_two_bus_route' panicked at tests/audit.rs:499:5:
+assertion `left == right` failed
+  left: 0
+ right: 1
+
+---- consecutive_dma_parity stdout ----
+
+thread 'consecutive_dma_parity' panicked at tests/audit.rs:282:5:
+assertion `left == right` failed
+  left: 513
+ right: 514
+
+---- irq_stacks_break_clear stdout ----
+
+thread 'irq_stacks_break_clear' panicked at tests/audit.rs:198:5:
+assertion `left == right` failed
+  left: 48
+ right: 32
+
+---- jsr_from_stack_page_reads_low_operand_before_push stdout ----
+
+thread 'jsr_from_stack_page_reads_low_operand_before_push' panicked at tests/audit.rs:537:5:
+assertion `left == right` failed
+  left: 769
+ right: 768
+
+---- forced_blank_outputs_backdrop stdout ----
+
+thread 'forced_blank_outputs_backdrop' panicked at tests/audit.rs:393:5:
+assertion `left == right` failed
+  left: [0, 0, 0]
+ right: [15, 215, 255]
+
+---- cli_defers_irq_for_one_instruction stdout ----
+
+thread 'cli_defers_irq_for_one_instruction' panicked at tests/audit.rs:240:5:
+assertion `left == right` failed
+  left: 57345
+ right: 514
+
+---- four_screen_nametable_capacity stdout ----
+
+thread 'four_screen_nametable_capacity' panicked at src/ppu/mod.rs:544:17:
+index out of bounds: the len is 2048 but the index is 2048
+
+---- mmc3_chr_mode_is_immediate stdout ----
+
+thread 'mmc3_chr_mode_is_immediate' panicked at tests/audit.rs:303:5:
+assertion `left == right` failed
+  left: 0
+ right: 5
+
+---- masked_mmc3_irq_survives_until_cli stdout ----
+
+thread 'masked_mmc3_irq_survives_until_cli' panicked at tests/audit.rs:230:5:
+assertion `left == right` failed
+  left: 516
+ right: 57345
+
+---- brk_return_address stdout ----
+
+thread 'brk_return_address' panicked at tests/audit.rs:188:5:
+assertion `left == right` failed
+  left: 1
+ right: 2
+
+---- mmc3_chr_ram stdout ----
+
+thread 'mmc3_chr_ram' panicked at src/cpu/mappers/mmc3.rs:53:27:
+index out of bounds: the len is 65552 but the index is 65552
+
+---- mmc3_chr_banks_wrap stdout ----
+
+thread 'mmc3_chr_banks_wrap' panicked at src/cpu/mappers/mmc3.rs:53:27:
+index out of bounds: the len is 73744 but the index is 326672
+
+---- mmc3_four_screen_is_hardwired stdout ----
+
+thread 'mmc3_four_screen_is_hardwired' panicked at tests/audit.rs:340:5:
+assertion `left == right` failed
+  left: Horizontal
+ right: FourScreen
+
+---- palette_3f30_aliases_3f00 stdout ----
+
+thread 'palette_3f30_aliases_3f00' panicked at tests/audit.rs:414:5:
+assertion `left == right` failed
+  left: 0
+ right: 33
+
+---- nrom_ram_window_does_not_panic stdout ----
+
+thread 'nrom_ram_window_does_not_panic' panicked at src/cpu/mappers/nrom.rs:51:17:
+index out of bounds: the len is 2048 but the index is 2048
+
+---- palette_read_refills_buffer stdout ----
+
+thread 'palette_read_refills_buffer' panicked at tests/audit.rs:426:5:
+assertion `left == right` failed
+  left: 0
+ right: 66
+
+---- ppu_3000_mirror_writes stdout ----
+
+thread 'ppu_3000_mirror_writes' panicked at tests/audit.rs:404:5:
+assertion `left == right` failed
+  left: 0
+ right: 66
+
+---- ppustatus_write_is_ignored stdout ----
+
+thread 'ppustatus_write_is_ignored' panicked at src/ppu/mod.rs:600:23:
+PPU status register is read-only
+
+---- mmc3_prg_ram_write_protect stdout ----
+
+thread 'mmc3_prg_ram_write_protect' panicked at tests/audit.rs:331:5:
+assertion `left == right` failed
+  left: 52
+ right: 18
+
+---- mmc3_prg_mode_is_immediate stdout ----
+
+thread 'mmc3_prg_mode_is_immediate' panicked at tests/audit.rs:292:5:
+assertion `left == right` failed
+  left: 3
+ right: 6
+
+---- triangle_length_expires stdout ----
+
+thread 'triangle_length_expires' panicked at tests/audit.rs:489:5:
+assertion `left == right` failed
+  left: 4
+ right: 0
+
+---- mmc3_no_irq_when_a12_stays_low stdout ----
+
+thread 'mmc3_no_irq_when_a12_stays_low' panicked at tests/audit.rs:353:9:
+assertion failed: !p.rom.mapper.is_asserting_irq()
+
+---- unrom_ram_window_does_not_panic stdout ----
+
+thread 'unrom_ram_window_does_not_panic' panicked at src/cpu/mappers/unrom.rs:65:17:
+index out of bounds: the len is 2048 but the index is 2048
+
+---- nmi_stacks_break_clear stdout ----
+
+thread 'nmi_stacks_break_clear' panicked at tests/audit.rs:210:5:
+assertion `left == right` failed
+  left: 48
+ right: 32
+
+---- mmc3_irq_is_level stdout ----
+
+thread 'mmc3_irq_is_level' panicked at tests/audit.rs:219:5:
+assertion failed: c.bus.ppu.rom.mapper.is_asserting_irq()
+
+---- rmw_oamdata_writes_old_then_new stdout ----
+
+thread 'rmw_oamdata_writes_old_then_new' panicked at tests/audit.rs:252:5:
+assertion `left == right` failed
+  left: 65
+ right: 64
+
+---- rts_wraps_address_space stdout ----
+
+thread 'rts_wraps_address_space' panicked at src/cpu/instructions.rs:1208:19:
+attempt to add with overflow
+
+---- nestest_full_trace stdout ----
+
+thread 'nestest_full_trace' panicked at tests/audit.rs:84:9:
+assertion `left == right` failed: trace line 5005
+  left: "C6BE"
+ right: "C6BF"
+
+---- savestate_restores_mmc3_mirroring stdout ----
+
+thread 'savestate_restores_mmc3_mirroring' panicked at tests/audit.rs:366:5:
+assertion `left == right` failed
+  left: Horizontal
+ right: Vertical
+
+---- savestate_restores_apu_status stdout ----
+
+thread 'savestate_restores_apu_status' panicked at tests/audit.rs:379:5:
+assertion `left == right` failed
+  left: 0
+ right: 1
+
+---- soft_reset_preserves_stack_position stdout ----
+
+thread 'soft_reset_preserves_stack_position' panicked at tests/audit.rs:554:5:
+assertion `left == right` failed
+  left: 253
+ right: 125
+
+
+failures:
+    apu_irq_is_level
+    brk_return_address
+    cli_defers_irq_for_one_instruction
+    consecutive_dma_parity
+    controller_two_bus_route
+    dmc_completion_irq
+    five_step_has_no_frame_irq
+    forced_blank_outputs_backdrop
+    four_screen_nametable_capacity
+    irq_stacks_break_clear
+    jsr_from_stack_page_reads_low_operand_before_push
+    malformed_rom_returns_error
+    malformed_savestate_returns_error
+    masked_mmc3_irq_survives_until_cli
+    mmc3_chr_banks_wrap
+    mmc3_chr_mode_is_immediate
+    mmc3_chr_ram
+    mmc3_four_screen_is_hardwired
+    mmc3_irq_is_level
+    mmc3_no_irq_when_a12_stays_low
+    mmc3_prg_mode_is_immediate
+    mmc3_prg_ram_write_protect
+    nestest_full_trace
+    nmi_stacks_break_clear
+    nrom_ram_window_does_not_panic
+    palette_3f30_aliases_3f00
+    palette_read_refills_buffer
+    ppu_3000_mirror_writes
+    ppustatus_write_is_ignored
+    rmw_oamdata_writes_old_then_new
+    rts_wraps_address_space
+    savestate_restores_apu_status
+    savestate_restores_mmc3_mirroring
+    soft_reset_preserves_stack_position
+    triangle_length_expires
+    unrom_ram_window_does_not_panic
+
+test result: FAILED. 0 passed; 36 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test audit`

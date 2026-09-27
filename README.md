@@ -43,9 +43,8 @@ Use the arrow keys to navigate the menus and press enter to validate
 
 - Support more mappers (3, 66, 118, ...)
 - Use an AudioWorkletNode instead of a scriptProcessor
-- Lock framerate at 60fps even on higher refresh rate displays
 - Support iNes 2.0 roms
-- Support Joypad2
+- Expose the core's second joypad in frontend controls
 - Time travel mode (Save states recorded at regular intervals)
 - Replay mode (Replay all inputs from the start)
 - Different color palettes
@@ -59,3 +58,11 @@ Use the arrow keys to navigate the menus and press enter to validate
 Nessy can easily be embedded on other platforms, see the `3ds/` folder for a 3ds port (no sound and very slow frame rate for now).
 
 ![3DS](resources/3ds.png)
+## Validation and compatibility
+
+Run `cargo test --all-targets --locked` and `node tests/audit_controls.mjs` (Node 24+).
+The [audit fixes and conformance results](docs/audit/fixes.md) include the pinned public ROM suite and reproduction commands.
+
+Emulation now advances peripherals on each CPU bus cycle. Direct users of `CPU::step()` must not also call `Bus::advance()` for those cycles. The `Nes` interface handles this automatically.
+
+Save format 1 includes audio, mapper IRQ timing, and complete video state. Older format-0 saves are rejected rather than restored incompletely; create new saves after upgrading. The web frontend still starts if an old automatic save cannot be resumed.

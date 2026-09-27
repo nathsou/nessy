@@ -308,7 +308,7 @@ impl Registers {
 
     pub fn increment_vram_addr(&mut self) {
         let step = self.ctrl.vram_addr_increment();
-        self.v = self.v.wrapping_add(step) & 0x3fff;
+        self.v = self.v.wrapping_add(step) & 0x7fff;
     }
 }
 
@@ -335,6 +335,9 @@ impl savestate::Save for Registers {
         self.v = s.data.read_u16()?;
         self.t = s.data.read_u16()?;
         self.x = s.data.read_u8()?;
+        if self.x > 7 || self.v > 0x7fff || self.t > 0x7fff {
+            return Err(SaveStateError::InvalidData);
+        }
         self.w = s.data.read_bool()?;
         self.f = s.data.read_bool()?;
         *self.ctrl.0.bits_mut() = s.data.read_u8()?;

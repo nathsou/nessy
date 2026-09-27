@@ -1,7 +1,6 @@
 mod instructions;
 pub mod mappers;
 pub mod memory;
-mod opcodes;
 pub mod rom;
 
 use bitflags::bitflags;
@@ -62,11 +61,17 @@ pub struct CPU {
     y: u8,
     pub pc: u16,
     sp: u8,
-    instr_cycles: u32,
-    total_cycles: u32,
+    total_cycles: u64,
     status: Status,
     pub bus: Bus,
-    stall: u32,
+    opcode: u8,
+    irq_pending: bool,
+    nmi_pending: bool,
+    irq_sample: bool,
+    irq_previous: bool,
+    nmi_sample: bool,
+    nmi_previous: bool,
+    jammed: bool,
     instructions: [fn(&mut CPU); 256],
 }
 
@@ -80,29 +85,103 @@ impl CPU {
             y: 0,
             pc,
             sp: STACK_TOP,
-            instr_cycles: 0,
             total_cycles: 0,
             status: Status::new(),
             bus,
-            stall: 0,
+            opcode: 0,
+            irq_pending: false,
+            nmi_pending: false,
+            irq_sample: false,
+            irq_previous: false,
+            nmi_sample: false,
+            nmi_previous: false,
+            jammed: false,
             instructions: CPU::instructions_lut(),
         }
     }
 
     pub fn soft_reset(&mut self) {
-        self.pc = self.bus.read_word(RESET_VECTOR);
-        self.sp = STACK_TOP;
-        self.instr_cycles = 0;
-        self.total_cycles = 0;
-        self.status = Status::new();
-        self.stall = 0;
+        self.jammed = false;
+        self.irq_pending = false;
+        self.nmi_pending = false;
+        self.irq_sample = false;
+        self.irq_previous = false;
+        self.nmi_sample = false;
+        self.nmi_previous = false;
+        self.bus.apu.soft_reset();
+        self.read(self.pc);
+        self.read(self.pc);
+        for _ in 0..3 {
+            self.read(STACK_START + self.sp as u16);
+            self.sp = self.sp.wrapping_sub(1);
+        }
+        self.status.insert(Status::INTERRUPT_DISABLE);
+        self.pc = self.read_word(RESET_VECTOR);
+    }
+
+    fn tick(&mut self) {
+        self.bus.advance(1);
+        self.total_cycles = self.total_cycles.wrapping_add(1);
+        self.irq_previous = self.irq_sample;
+        self.nmi_previous = self.nmi_sample;
+        self.irq_sample = self.bus.irq_line() && !self.status.contains(Status::INTERRUPT_DISABLE);
+        self.nmi_sample |= self.bus.ppu.is_asserting_nmi();
+    }
+    fn raw_read(&mut self, addr: u16) -> u8 {
+        self.tick();
+        self.bus.read_byte(addr)
+    }
+    fn service_dmc(&mut self, halted_addr: u16, oam: bool) {
+        if let Some(addr) = self.bus.apu.pull_memory_read_request() {
+            // DMA may halt reads, never CPU writes. DMC gets take priority over OAM gets.
+            if !oam {
+                self.raw_read(halted_addr);
+                self.raw_read(halted_addr);
+            }
+            if self.total_cycles & 1 != 0 {
+                self.raw_read(halted_addr);
+            }
+            let value = self.raw_read(addr);
+            self.bus.apu.push_memory_read_response(value);
+            if oam {
+                // The stolen get is followed by a put-phase idle cycle before OAM resumes.
+                self.raw_read(halted_addr);
+            }
+        }
+    }
+    fn read(&mut self, addr: u16) -> u8 {
+        self.service_dmc(addr, false);
+        self.raw_read(addr)
+    }
+    fn write(&mut self, addr: u16, val: u8) {
+        self.tick();
+        self.bus.write_byte(addr, val);
+    }
+    fn read_word(&mut self, addr: u16) -> u16 {
+        let lo = self.read(addr) as u16;
+        let hi = self.read(addr.wrapping_add(1)) as u16;
+        lo | hi << 8
+    }
+    fn dma(&mut self) {
+        self.bus.dma_transfer = false;
+        // OAM gets use the same odd-cycle phase as DMC gets.
+        let align = self.total_cycles & 1 == 0;
+        self.raw_read(self.pc);
+        if align {
+            self.raw_read(self.pc);
+        }
+        for low in 0..256u16 {
+            self.service_dmc(self.pc, true);
+            let val = self.raw_read((self.bus.dma_page as u16) << 8 | low);
+            self.write(0x2004, val);
+        }
     }
 
     // Stack utils
 
     fn push(&mut self, val: u8) {
         let addr = STACK_START + self.sp as u16;
-        self.bus.write_byte(addr, val);
+        self.write(addr, val);
         self.sp = self.sp.wrapping_sub(1);
     }
 
@@ -116,7 +195,7 @@ impl CPU {
 
     fn pull(&mut self) -> u8 {
         self.sp = self.sp.wrapping_add(1);
-        self.bus.read_byte(STACK_START + self.sp as u16)
+        self.read(STACK_START + self.sp as u16)
     }
 
     fn pull_word(&mut self) -> u16 {
@@ -128,15 +207,14 @@ impl CPU {
     // Memory utils
 
     fn next_byte(&mut self) -> u8 {
-        let byte = self.bus.read_byte(self.pc);
+        let byte = self.read(self.pc);
         self.pc = self.pc.wrapping_add(1);
         byte
     }
 
     fn next_word(&mut self) -> u16 {
-        let low = self.bus.read_byte(self.pc) as u16;
-        let high = self.bus.read_byte(self.pc + 1) as u16;
-        self.pc = self.pc.wrapping_add(2);
+        let low = self.next_byte() as u16;
+        let high = self.next_byte() as u16;
         high << 8 | low
     }
 
@@ -148,26 +226,34 @@ impl CPU {
 
     fn zero_page_val(&mut self) -> u8 {
         let addr = self.next_byte() as u16;
-        self.bus.read_byte(addr)
+        self.read(addr)
     }
 
     fn zero_page_x(&mut self) -> u16 {
         // val = PEEK((arg + X) % 256)
-        self.next_byte().wrapping_add(self.x) as u16
+        {
+            let addr = self.next_byte();
+            self.read(addr as u16);
+            addr.wrapping_add(self.x) as u16
+        }
     }
 
     fn zero_page_x_val(&mut self) -> u8 {
         let addr = self.zero_page_x();
-        self.bus.read_byte(addr)
+        self.read(addr)
     }
 
     fn zero_page_y(&mut self) -> u16 {
-        self.next_byte().wrapping_add(self.y) as u16
+        {
+            let addr = self.next_byte();
+            self.read(addr as u16);
+            addr.wrapping_add(self.y) as u16
+        }
     }
 
     fn zero_page_y_val(&mut self) -> u8 {
         let addr = self.zero_page_y();
-        self.bus.read_byte(addr)
+        self.read(addr)
     }
 
     fn absolute(&mut self) -> u16 {
@@ -176,7 +262,7 @@ impl CPU {
 
     fn absolute_val(&mut self) -> u8 {
         let addr = self.absolute();
-        self.bus.read_byte(addr)
+        self.read(addr)
     }
 
     fn absolute_x(&mut self, add_on_boundary_crossed: bool) -> u16 {
@@ -185,8 +271,8 @@ impl CPU {
         let res = addr.wrapping_add(x);
 
         // if page boundary crossed
-        if add_on_boundary_crossed && self.page_crossed(addr, res) {
-            self.instr_cycles += 1;
+        if !add_on_boundary_crossed || self.page_crossed(addr, res) {
+            self.read((addr & 0xff00) | (res & 0xff));
         }
 
         res
@@ -194,7 +280,7 @@ impl CPU {
 
     fn absolute_x_val(&mut self, add_on_boundary_crossed: bool) -> u8 {
         let addr = self.absolute_x(add_on_boundary_crossed);
-        self.bus.read_byte(addr)
+        self.read(addr)
     }
 
     fn page_crossed(&self, prev: u16, next: u16) -> bool {
@@ -207,8 +293,8 @@ impl CPU {
         let res = addr.wrapping_add(y);
 
         // if page boundary crossed
-        if add_on_boundary_crossed && self.page_crossed(addr, res) {
-            self.instr_cycles += 1;
+        if !add_on_boundary_crossed || self.page_crossed(addr, res) {
+            self.read((addr & 0xff00) | (res & 0xff));
         }
 
         res
@@ -216,7 +302,7 @@ impl CPU {
 
     fn absolute_y_val(&mut self, add_on_boundary_crossed: bool) -> u8 {
         let addr = self.absolute_y(add_on_boundary_crossed);
-        self.bus.read_byte(addr)
+        self.read(addr)
     }
 
     // indirect_indexed
@@ -225,13 +311,13 @@ impl CPU {
         // val = PEEK(PEEK(arg) + PEEK((arg + 1) % 256) * 256 + Y)
         let addr1 = self.next_byte();
         let addr2 = addr1.wrapping_add(1);
-        let val1 = self.bus.read_byte(addr1 as u16);
-        let val2 = self.bus.read_byte(addr2 as u16);
+        let val1 = self.read(addr1 as u16);
+        let val2 = self.read(addr2 as u16);
         let addr = (val1 as u16) + (val2 as u16) * 256;
         let final_addr = addr.wrapping_add(self.y as u16);
 
-        if add_on_boundary_crossed && self.page_crossed(addr, final_addr) {
-            self.instr_cycles += 1;
+        if !add_on_boundary_crossed || self.page_crossed(addr, final_addr) {
+            self.read((addr & 0xff00) | (final_addr & 0xff));
         }
 
         final_addr
@@ -239,7 +325,7 @@ impl CPU {
 
     fn indirect_y_val(&mut self, add_on_boundary_crossed: bool) -> u8 {
         let addr = self.indirect_y(add_on_boundary_crossed);
-        self.bus.read_byte(addr)
+        self.read(addr)
     }
 
     // indexed_indirect
@@ -247,17 +333,18 @@ impl CPU {
     fn indirect_x(&mut self) -> u16 {
         // val = PEEK(PEEK((arg + X) % 256) + PEEK((arg + X + 1) % 256) * 256)
         let addr = self.next_byte();
+        self.read(addr as u16);
         let addr1 = addr.wrapping_add(self.x);
         let addr2 = addr1.wrapping_add(1);
-        let val1 = self.bus.read_byte(addr1 as u16);
-        let val2 = self.bus.read_byte(addr2 as u16);
+        let val1 = self.read(addr1 as u16);
+        let val2 = self.read(addr2 as u16);
 
         (val1 as u16) + (val2 as u16) * 256
     }
 
     fn indirect_x_val(&mut self) -> u8 {
         let addr = self.indirect_x();
-        self.bus.read_byte(addr)
+        self.read(addr)
     }
 
     fn toggle_zero_flag(&mut self, val: u8) {
@@ -299,11 +386,21 @@ impl savestate::Save for CPU {
         s.data.write_u8(self.y);
         s.data.write_u16(self.pc);
         s.data.write_u8(self.sp);
-        s.data.write_u32(self.instr_cycles);
-        s.data.write_u32(self.total_cycles);
+        s.data.write_u64(self.total_cycles);
         s.data.write_u8(self.status.bits());
-        s.data.write_u32(self.stall);
 
+        s.data.write_u8(self.opcode);
+        for b in [
+            self.irq_pending,
+            self.nmi_pending,
+            self.irq_sample,
+            self.irq_previous,
+            self.nmi_sample,
+            self.nmi_previous,
+            self.jammed,
+        ] {
+            s.data.write_bool(b);
+        }
         self.bus.save(s);
     }
 
@@ -315,11 +412,17 @@ impl savestate::Save for CPU {
         self.y = s.data.read_u8()?;
         self.pc = s.data.read_u16()?;
         self.sp = s.data.read_u8()?;
-        self.instr_cycles = s.data.read_u32()?;
-        self.total_cycles = s.data.read_u32()?;
+        self.total_cycles = s.data.read_u64()?;
         *self.status.0.bits_mut() = s.data.read_u8()?;
-        self.stall = s.data.read_u32()?;
 
+        self.opcode = s.data.read_u8()?;
+        self.irq_pending = s.data.read_bool()?;
+        self.nmi_pending = s.data.read_bool()?;
+        self.irq_sample = s.data.read_bool()?;
+        self.irq_previous = s.data.read_bool()?;
+        self.nmi_sample = s.data.read_bool()?;
+        self.nmi_previous = s.data.read_bool()?;
+        self.jammed = s.data.read_bool()?;
         self.bus.load(s)?;
 
         Ok(())

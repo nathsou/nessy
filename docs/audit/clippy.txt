@@ -1,0 +1,107 @@
+    Checking cfg-if v1.0.0
+    Checking bitflags v2.3.1
+    Checking typenum v1.16.0
+    Checking libc v0.2.146
+    Checking cpufeatures v0.2.9
+    Checking generic-array v0.14.7
+    Checking block-buffer v0.10.4
+    Checking crypto-common v0.1.6
+    Checking digest v0.10.7
+    Checking sha2 v0.10.7
+    Checking nessy v0.1.0 (<nessy>)
+warning: field `id` is never read
+  --> src/apu/pulse.rs:17:5
+   |
+16 | pub struct PulseChannel {
+   |            ------------ field in this struct
+17 |     id: PulseChannelId,
+   |     ^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: manual arithmetic check found
+   --> src/apu/pulse.rs:112:13
+    |
+112 | /             if change_amount > self.timer.period {
+113 | |                 0
+114 | |             } else {
+115 | |                 self.timer.period - change_amount
+116 | |             }
+    | |_____________^ help: replace it with: `self.timer.period.saturating_sub(change_amount)`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#implicit_saturating_sub
+    = note: `#[warn(clippy::implicit_saturating_sub)]` on by default
+
+warning: you should consider adding a `Default` implementation for `NROM`
+  --> src/cpu/mappers/nrom.rs:14:5
+   |
+14 | /     pub fn new() -> Self {
+15 | |         NROM { ram: [0; 2048] }
+16 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+   = note: `#[warn(clippy::new_without_default)]` on by default
+help: try adding this
+   |
+13 + impl Default for NROM {
+14 +     fn default() -> Self {
+15 +         Self::new()
+16 +     }
+17 + }
+   |
+
+warning: you should consider adding a `Default` implementation for `UNROM`
+  --> src/cpu/mappers/unrom.rs:16:5
+   |
+16 | /     pub fn new() -> Self {
+17 | |         UNROM {
+18 | |             prg_ram: [0; 2048],
+19 | |             chr_ram: [0; 0x2000],
+...  |
+22 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+   |
+15 + impl Default for UNROM {
+16 +     fn default() -> Self {
+17 +         Self::new()
+18 +     }
+19 + }
+   |
+
+warning: needless call to `as_bytes`
+   --> src/savestate.rs:133:9
+    |
+133 |         self.name.as_bytes().len() + 1 // name + null terminator
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^ help: `len()` can be called directly on strings: `self.name.len()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#needless_as_bytes
+    = note: `#[warn(clippy::needless_as_bytes)]` on by default
+
+warning: you should consider adding a `Default` implementation for `ByteBuffer`
+   --> src/savestate.rs:227:5
+    |
+227 | /     pub fn new() -> Self {
+228 | |         ByteBuffer {
+229 | |             data: vec![],
+230 | |             read_index: 0,
+231 | |         }
+232 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#new_without_default
+help: try adding this
+    |
+226 + impl Default for ByteBuffer {
+227 +     fn default() -> Self {
+228 +         Self::new()
+229 +     }
+230 + }
+    |
+
+warning: `nessy` (lib test) generated 6 warnings (3 duplicates) (run `cargo clippy --fix --lib -p nessy --tests` to apply 3 suggestions)
+warning: `nessy` (lib) generated 6 warnings (3 duplicates) (run `cargo clippy --fix --lib -p nessy` to apply 2 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.94s

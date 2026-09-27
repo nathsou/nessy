@@ -1,0 +1,63 @@
+   Compiling typenum v1.16.0
+   Compiling version_check v0.9.4
+   Compiling libc v0.2.146
+   Compiling cfg-if v1.0.0
+   Compiling bitflags v2.3.1
+   Compiling generic-array v0.14.7
+   Compiling cpufeatures v0.2.9
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.6
+   Compiling digest v0.10.7
+   Compiling sha2 v0.10.7
+   Compiling nessy v0.1.0 (<nessy>)
+warning: field `id` is never read
+  --> src/apu/pulse.rs:17:5
+   |
+16 | pub struct PulseChannel {
+   |            ------------ field in this struct
+17 |     id: PulseChannelId,
+   |     ^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `nessy` (lib) generated 1 warning
+    Finished `release` profile [optimized] target(s) in 2.14s
+     Running `target/release/examples/audit_rom <test-roms>/mmc3_test_2/rom_singles/1-clocking.nes <test-roms>/mmc3_test_2/rom_singles/2-details.nes <test-roms>/mmc3_test_2/rom_singles/3-A12_clocking.nes <test-roms>/mmc3_test_2/rom_singles/4-scanline_timing.nes <test-roms>/mmc3_test_2/rom_singles/5-MMC3.nes <test-roms>/mmc3_test_2/rom_singles/6-MMC3_alt.nes <test-roms>/cpu_interrupts_v2/rom_singles/1-cli_latency.nes <test-roms>/cpu_interrupts_v2/rom_singles/2-nmi_and_brk.nes <test-roms>/cpu_interrupts_v2/rom_singles/3-nmi_and_irq.nes <test-roms>/cpu_interrupts_v2/rom_singles/4-irq_and_dma.nes <test-roms>/cpu_interrupts_v2/rom_singles/5-branch_delays_irq.nes <test-roms>/instr_misc/rom_singles/01-abs_x_wrap.nes <test-roms>/instr_misc/rom_singles/02-branch_wrap.nes <test-roms>/instr_misc/rom_singles/03-dummy_reads.nes <test-roms>/instr_misc/rom_singles/04-dummy_reads_apu.nes <test-roms>/apu_test/rom_singles/1-len_ctr.nes <test-roms>/apu_test/rom_singles/2-len_table.nes <test-roms>/apu_test/rom_singles/3-irq_flag.nes <test-roms>/apu_test/rom_singles/4-jitter.nes <test-roms>/apu_test/rom_singles/5-len_timing.nes <test-roms>/apu_test/rom_singles/6-irq_flag_timing.nes <test-roms>/apu_test/rom_singles/7-dmc_basics.nes <test-roms>/apu_test/rom_singles/8-dmc_rates.nes <test-roms>/ppu_vbl_nmi/rom_singles/01-vbl_basics.nes <test-roms>/ppu_vbl_nmi/rom_singles/02-vbl_set_time.nes <test-roms>/ppu_vbl_nmi/rom_singles/03-vbl_clear_time.nes <test-roms>/ppu_vbl_nmi/rom_singles/04-nmi_control.nes <test-roms>/ppu_vbl_nmi/rom_singles/05-nmi_timing.nes <test-roms>/ppu_vbl_nmi/rom_singles/06-suppression.nes <test-roms>/ppu_vbl_nmi/rom_singles/07-nmi_on_timing.nes <test-roms>/ppu_vbl_nmi/rom_singles/08-nmi_off_timing.nes <test-roms>/ppu_vbl_nmi/rom_singles/09-even_odd_frames.nes <test-roms>/ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes`
+<test-roms>/mmc3_test_2/rom_singles/1-clocking.nes: FAIL 3; cycles=837636; pc=E542; text="\nShould decrement when A12 is toggled via PPUADDR\n\n1-clocking\n\nFailed #3\n"
+<test-roms>/mmc3_test_2/rom_singles/2-details.nes: FAIL 2; cycles=868354; pc=E540; text="\nCounter isn't working when reloaded with 255\n\n2-details\n\nFailed #2\n"
+<test-roms>/mmc3_test_2/rom_singles/3-A12_clocking.nes: FAIL 4; cycles=837635; pc=E442; text="\nShould be clocked when A12 changes to 1 via PPUADDR write\n\n3-A12_clocking\n\nFailed #4\n"
+<test-roms>/mmc3_test_2/rom_singles/4-scanline_timing.nes: FAIL 3; cycles=2207744; pc=E842; text="\nScanline 0 IRQ should occur sooner when $2000=$08\n\n4-scanline_timing\n\nFailed #3\n"
+<test-roms>/mmc3_test_2/rom_singles/5-MMC3.nes: FAIL 2; cycles=837633; pc=E45B; text="\nShould reload and set IRQ every clock when reload is 0\n\n5-MMC3\n\nFailed #2\n"
+<test-roms>/mmc3_test_2/rom_singles/6-MMC3_alt.nes: FAIL 2; cycles=898048; pc=E444; text="\nIRQ shouldn't be set when reloading to 0 due to counter naturally reaching 0 previously\n\n6-MMC3_alt\n\nFailed #2\n"
+<test-roms>/cpu_interrupts_v2/rom_singles/1-cli_latency.nes: FAIL 3; cycles=540674; pc=E540; text="\nAPU should generate IRQ when $4017 = $00\n\n1-cli_latency\n\nFailed #3\n"
+<test-roms>/cpu_interrupts_v2/rom_singles/2-nmi_and_brk.nes: FAIL 1; cycles=2863104; pc=E444; text="NMI BRK 00\n37  36  01 \n37  36  01 \n37  36  01 \n37  36  01 \n37  36  01 \n37  36  01 \n36  36  01 \n36  36  01 \n36  36  01 \n36  36  01 \n\nB3217360\n2-nmi_and_brk\n\nFailed\n"
+<test-roms>/cpu_interrupts_v2/rom_singles/3-nmi_and_irq.nes: FAIL 1; cycles=3429376; pc=E442; text="NMI BRK\n32  00 \n37  32 \n33  00 \n37  33 \n37  33 \n37  32 \n37  33 \n37  32 \n37  32 \n37  33 \n37  33 \n37  33 \n\n22F6FD4A\n3-nmi_and_irq\n\nFailed\n"
+<test-roms>/cpu_interrupts_v2/rom_singles/4-irq_and_dma.nes: FAIL 1; cycles=2059265; pc=E542; text="53 +0\n53 +1\n53 +2\n0 +3\n0 +4\n0 +5\n0 +6\n1 +7\n1 +8\n2 +9\n2 +10\n2 +11\n4 +12\n7 +13\n...\n7 +524\n7 +525\n7 +526\n7 +527\n\nEC611252\n4-irq_and_dma\n\nFailed\n"
+<test-roms>/cpu_interrupts_v2/rom_singles/5-branch_delays_irq.nes: FAIL 1; cycles=4590592; pc=E640; text="test_jmp\nT+ CK PC\n00 FC 0E \n01 00 03 \n02 FF 03 \n03 FE 03 \n04 FE 03 \n05 FC 03 \n06 FC 03 \n07 FC 04 \n08 FC 04 \n09 FE 07 \n\n\n5ABC1033\n5-branch_delays_irq\n\nFailed\n"
+<test-roms>/instr_misc/rom_singles/01-abs_x_wrap.nes: PASS; cycles=328706; pc=E7B5; text="\n01-abs_x_wrap\n\nPassed\n"
+<test-roms>/instr_misc/rom_singles/02-branch_wrap.nes: PASS; cycles=328706; pc=E7B5; text="\n02-branch_wrap\n\nPassed\n"
+<test-roms>/instr_misc/rom_singles/03-dummy_reads.nes: FAIL 3; cycles=567296; pc=E7B5; text="\nLDA abs,x\n\n03-dummy_reads\n\nFailed #3\n"
+<test-roms>/instr_misc/rom_singles/04-dummy_reads_apu.nes: FAIL 2; cycles=2383874; pc=E7B5; text="1D 19 11 3D 39 31 5D 59 51 7D 79 71 9D 99 91 BD B9 B1 DD D9 D1 FD F9 F1 1E 3E 5E 7E DE FE BC BE \nOfficial opcodes failed\n\n04-dummy_reads_apu\n\nFailed #2\n"
+<test-roms>/apu_test/rom_singles/1-len_ctr.nes: FAIL 4; cycles=570368; pc=E458; text="Channel: 0\n\nWriting $80 to $4017 should clock length immediately\n\n1-len_ctr\n\nFailed #4\n"
+<test-roms>/apu_test/rom_singles/2-len_table.nes: FAIL 1; cycles=420864; pc=E340; text="Channel: 0\n\n2-len_table\n\nFailed\n"
+<test-roms>/apu_test/rom_singles/3-irq_flag.nes: PASS; cycles=600064; pc=E444; text="\n3-irq_flag\n\nPassed\n"
+<test-roms>/apu_test/rom_singles/4-jitter.nes: FAIL 2; cycles=480256; pc=E82D; text="\nFrame irq is set too soon\n\n4-jitter\n\nFailed #2\n"
+<test-roms>/apu_test/rom_singles/5-len_timing.nes: FAIL 3; cycles=600065; pc=E642; text="Channel: 0\n\nFirst length of mode 0 is too late\n\n5-len_timing\n\nFailed #3\n"
+<test-roms>/apu_test/rom_singles/6-irq_flag_timing.nes: FAIL 2; cycles=510976; pc=E342; text="\nFlag first set too soon\n\n6-irq_flag_timing\n\nFailed #2\n"
+<test-roms>/apu_test/rom_singles/7-dmc_basics.nes: FAIL 2; cycles=510978; pc=E840; text="Channel: 0\n\nDMC isn't working well enough to test further\n\n7-dmc_basics\n\nFailed #2\n"
+<test-roms>/apu_test/rom_singles/8-dmc_rates.nes: FAIL 3; cycles=480256; pc=EE2D; text="\nRate 0's period is too long\n\n8-dmc_rates\n\nFailed #3\n"
+
+thread 'main' panicked at src/ppu/mod.rs:600:23:
+PPU status register is read-only
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+<test-roms>/ppu_vbl_nmi/rom_singles/01-vbl_basics.nes: PANIC; cycles=238591; pc=E268; text=""
+<test-roms>/ppu_vbl_nmi/rom_singles/02-vbl_set_time.nes: FAIL 1; cycles=4798469; pc=E442; text="T+ 1 2\n00 - V\n01 - V\n02 - V\n03 - V\n04 - V\n05 V -\n06 V -\n07 V -\n08 V -\n\n4103C340\n02-vbl_set_time\n\nFailed\n"
+<test-roms>/ppu_vbl_nmi/rom_singles/03-vbl_clear_time.nes: PASS; cycles=4768768; pc=E442; text="00 V\n01 V\n02 V\n03 V\n04 V\n05 V\n06 -\n07 -\n08 -\n\n03-vbl_clear_time\n\nPassed\n"
+<test-roms>/ppu_vbl_nmi/rom_singles/04-nmi_control.nes: FAIL 11; cycles=1076225; pc=E440; text="\nImmediate occurence should be after NEXT instruction\n\n04-nmi_control\n\nFailed #11\n"
+<test-roms>/ppu_vbl_nmi/rom_singles/05-nmi_timing.nes: FAIL 1; cycles=6109185; pc=E442; text="00 2\n01 2\n02 1\n03 1\n04 1\n05 1\n06 1\n07 1\n08 0\n09 0\n\nB8720AAA\n05-nmi_timing\n\nFailed\n"
+<test-roms>/ppu_vbl_nmi/rom_singles/06-suppression.nes: FAIL 1; cycles=5811200; pc=E444; text="00 - N\n01 - N\n02 - N\n03 - N\n04 - N\n05 V -\n06 V N\n07 V N\n08 V N\n09 V N\n\n8CD8E386\n06-suppression\n\nFailed\n"
+<test-roms>/ppu_vbl_nmi/rom_singles/07-nmi_on_timing.nes: FAIL 1; cycles=5155841; pc=E444; text="00 N\n01 N\n02 N\n03 N\n04 N\n05 N\n06 -\n07 -\n08 -\n\n2B1F5269\n07-nmi_on_timing\n\nFailed\n"
+<test-roms>/ppu_vbl_nmi/rom_singles/08-nmi_off_timing.nes: FAIL 1; cycles=6794241; pc=E447; text="03 -\n04 -\n05 -\n06 N\n07 N\n08 N\n09 N\n0A N\n0B N\n0C N\n\n1F8BA6BD\n08-nmi_off_timing\n\nFailed\n"
+<test-roms>/ppu_vbl_nmi/rom_singles/09-even_odd_frames.nes: PASS; cycles=2267136; pc=E444; text="00 01 01 02 \n09-even_odd_frames\n\nPassed\n"
+<test-roms>/ppu_vbl_nmi/rom_singles/10-even_odd_timing.nes: FAIL 3; cycles=2357249; pc=E644; text="08 07 \nClock is skipped too late, relative to enabling BG\n\n10-even_odd_timing\n\nFailed #3\n"
+5/33 ROMs passed

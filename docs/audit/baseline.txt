@@ -1,0 +1,71 @@
+warning: field `id` is never read
+  --> src/apu/pulse.rs:17:5
+   |
+16 | pub struct PulseChannel {
+   |            ------------ field in this struct
+17 |     id: PulseChannelId,
+   |     ^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `nessy` (lib) generated 1 warning
+warning: `nessy` (lib test) generated 1 warning (1 duplicate)
+   Compiling nessy v0.1.0 (<nessy>)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.19s
+     Running unittests src/lib.rs (target/debug/deps/nessy-6271af38c2994f63)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/audit.rs (target/debug/deps/audit-7b723ee4353c76cf)
+
+running 39 tests
+test apu_irq_is_level ... ignored, A01: APU IRQ is exposed as an edge
+test brk_return_address ... ignored, C02: BRK pushes PC+1 instead of PC+2
+test cli_defers_irq_for_one_instruction ... ignored, C04: CLI has no interrupt polling delay
+test consecutive_dma_parity ... ignored, C07: DMA stall cycles do not advance total_cycles/parity
+test controller_two_bus_route ... ignored, I01: second controller is not routed at $4017
+test dmc_completion_irq ... ignored, A03: DMC completion checks interrupt_flag instead of irq_enabled
+test five_step_has_no_frame_irq ... ignored, A02: five-step mode asserts frame IRQ even with inhibit set
+test forced_blank_outputs_backdrop ... ignored, P01: background-disabled frames never render pixels
+test four_screen_nametable_capacity ... ignored, M06: four-screen addressing indexes a 2 KiB allocation
+test irq_stacks_break_clear ... ignored, C03: IRQ stacks B=1 through PHP
+test jsr_from_stack_page_reads_low_operand_before_push ... ignored, C05: JSR pushes before fetching the low operand byte
+test malformed_rom_returns_error ... ignored, R01: short ROM panics instead of returning an error
+test malformed_savestate_returns_error ... ignored, S03: short savestate panics instead of returning an error
+test masked_mmc3_irq_survives_until_cli ... ignored, M01: IRQ raised while I=1 disappears before CLI
+test mmc3_chr_banks_wrap ... ignored, M04: CHR selection is not masked to the connected ROM lines
+test mmc3_chr_mode_is_immediate ... ignored, M02: $8000 mode change does not recompute CHR offsets
+test mmc3_chr_ram ... ignored, M04: CHR-RAM is absent
+test mmc3_four_screen_is_hardwired ... ignored, M06: $A000 overrides hardwired four-screen mirroring
+test mmc3_irq_is_level ... ignored, M01: polling acknowledges MMC3 IRQ
+test mmc3_no_irq_when_a12_stays_low ... ignored, M03: fixed scanline callback creates an IRQ without an A12 edge
+test mmc3_prg_mode_is_immediate ... ignored, M02: $8000 mode change does not recompute PRG offsets
+test mmc3_prg_ram_write_protect ... ignored, M05: $A001 protection is ignored
+test nestest_full_trace ... ignored, C01: unofficial opcodes default to a one-byte NOP
+test nmi_stacks_break_clear ... ignored, C03: NMI stacks B=1 through PHP
+test nrom_ram_window_does_not_panic ... ignored, R02: NROM allocates 2 KiB but writes index an 8 KiB window
+test palette_3f30_aliases_3f00 ... ignored, P02: palette aliases are handled before normalizing the address
+test palette_read_refills_buffer ... ignored, P03: palette reads do not refill the PPUDATA read buffer
+test ppu_3000_mirror_writes ... ignored, P02: mirrored nametable writes $3000-$3EFF are dropped
+test ppustatus_write_is_ignored ... ignored, P04: writes to PPUSTATUS panic instead of being ignored
+test rmw_oamdata_writes_old_then_new ... ignored, C05: RMW omits the old-value write to memory-mapped I/O
+test rts_wraps_address_space ... ignored, C06: RTS uses checked addition at $FFFF
+test savestate_restores_apu_status ... ignored, S02: APU is omitted from savestates
+test savestate_restores_mmc3_mirroring ... ignored, S01: cartridge mirroring is omitted from savestates
+test soft_reset_preserves_stack_position ... ignored, C09: soft reset resets SP instead of decrementing it by three
+test triangle_length_expires ... ignored, A04: triangle length counter is never enabled for decrement
+test unrom_ram_window_does_not_panic ... ignored, R02: UNROM allocates 2 KiB but writes index an 8 KiB window
+test mmc3_bank_data_and_counter_baseline ... ok
+test nestest_official_trace ... ok
+test exhaustive_adc_sbc_binary_flags ... ok
+
+test result: ok. 3 passed; 0 failed; 36 ignored; 0 measured; 0 filtered out; finished in 0.49s
+
+     Running unittests examples/audit_rom.rs (target/debug/examples/audit_rom-33049af18dcfd902)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
